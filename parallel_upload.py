@@ -123,7 +123,7 @@ def update_progress(msg,tag,msg_src):
         sys.stdout.flush() 
       
 
-def agent_auth(transport, username,rsa_private_key):
+def agent_auth(transport, username,rsa_private_key,rank):
     """
     Attempt to authenticate to the given transport using any of the private
     keys available from an SSH agent or from a local private RSA key file (assumes no pass phrase).
@@ -132,12 +132,14 @@ def agent_auth(transport, username,rsa_private_key):
     try:
         ki = paramiko.RSAKey.from_private_key_file(rsa_private_key)
     except Exception, e:
-        print 'Failed loading %s %s' % (rsa_private_key, e)
+        if rank == 0:
+            print 'Failed loading %s %s' % (rsa_private_key, e)
 
     agent = paramiko.Agent()
     agent_keys = agent.get_keys() + (ki,)
     if len(agent_keys) == 0:
-        print "NO SSH keys found"
+        if rank == 0:
+            print "NO SSH keys found"
         return
 
     for key in agent_keys:
@@ -147,7 +149,8 @@ def agent_auth(transport, username,rsa_private_key):
             #print '... success!'
             return
         except paramiko.SSHException, e:
-            print '... failed!', e
+            if rank == 0:
+                print '... failed!', e
 #            sys.exit()
 
 
@@ -196,7 +199,7 @@ def process_arguments(rank):
     return dir_local, dir_remote, username_remote
 
 
-def sftp_connect(hostname, port, username_remote):
+def sftp_connect(hostname, port, username_remote, rank):
     rsa_private_key = os.path.join(os.getenv("HOME"), ".ssh/id_rsa")
     # print rsa_private_key
     # get host key, if we know one
@@ -209,7 +212,8 @@ def sftp_connect(hostname, port, username_remote):
             # try ~/ssh/ too, e.g. on windows
             host_keys = paramiko.util.load_host_keys(os.path.expanduser('~/ssh/known_hosts'))
         except IOError:
-            print '*** Unable to open host keys file'
+            if rank == 0:
+                print '*** Unable to open host keys file'
             host_keys = {}
 
     # print host_keys.keys()
@@ -224,12 +228,18 @@ def sftp_connect(hostname, port, username_remote):
     # dirlist on remote host
     #    dirlist = sftp.listdir('.')
     #    print "Dirlist:", dirlist
-    print 'Establishing SSH connection to:', hostname, port, '...'
+    if rank == 0:
+        print 'Establishing SSH connection to:', hostname, port, '...'
     t = paramiko.Transport((hostname, port))
     t.start_client()
-    agent_auth(t, username_remote, rsa_private_key)
+    agent_auth(t, username_remote, rsa_private_key,rank)
     if not t.is_authenticated():
-        print 'RSA key auth failed! Set up your ssh key first'
+        if rank == 0:
+            print "Error: RSA key auth failed! Set up your ssh key first. "
+            print "1. cat ~/.ssh/id_rsa.pub"
+            print "2. if nothing, generate your key. ssh-keygen -t rsa."
+            print "3. ssh %s@%s mkdir -p .ssh" %(hostname,username_remote)
+            print "4. cat .ssh/id_rsa.pub | ssh %s@%s 'cat >> .ssh/authorized_keys'" %(hostname,username_remote)
         sys.exit(0)
     t.open_session()
     return paramiko.SFTPClient.from_transport(t), t
@@ -245,7 +255,7 @@ if __name__ == '__main__':
 
     dir_local, dir_remote, username_remote = process_arguments(rank)
 
-    sftp, t = sftp_connect(hostname, port,username_remote)
+    sftp, t = sftp_connect(hostname, port,username_remote,rank)
 
     #if we are copying A/B/C to X/Y, we want A/B/C/* to be copied to X/Y/C/*
     if dir_local.split(os.sep)[-1] == dir_remote.split(os.sep)[-1]:
