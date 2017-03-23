@@ -138,7 +138,7 @@ if __name__ == '__main__':
     #print "local ",dir_local
     #print "remote ", dir_remote
     
-    sftp, t = parallel_upload.sftp_connect(hostname, port, username_remote)
+    sftp, t = parallel_upload.sftp_connect(hostname, port, username_remote,rank)
     #if we are copying A/B/C to X/Y, we want A/B/C/* to be copied to X/Y/C/*
     if dir_remote.split(os.sep)[-1] == dir_local.split(os.sep)[-1]:
     #the destination is already X/Y/C, it's good. We just use the specified dir_remote

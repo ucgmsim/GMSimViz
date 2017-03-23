@@ -237,9 +237,8 @@ def sftp_connect(hostname, port, username_remote, rank):
         if rank == 0:
             print "Error: RSA key auth failed! Set up your ssh key first. "
             print "1. cat ~/.ssh/id_rsa.pub"
-            print "2. if nothing, generate your key. ssh-keygen -t rsa."
-            print "3. ssh %s@%s mkdir -p .ssh" %(hostname,username_remote)
-            print "4. cat .ssh/id_rsa.pub | ssh %s@%s 'cat >> .ssh/authorized_keys'" %(hostname,username_remote)
+            print "2. if nothing, generate your key. ssh-keygen"
+            print "3. ssh-copy-id -i ~/.ssh/id_rsa.pub %s@%s" %(username_remote,hostname)
         sys.exit(0)
     t.open_session()
     return paramiko.SFTPClient.from_transport(t), t
