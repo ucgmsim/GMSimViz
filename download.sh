@@ -1,5 +1,5 @@
 #!/bin/bash
-mydir=`dirname $0
+mydir=`dirname $0`
 if [[ $# -ne 3 ]]; then
     echo "Usage: $0 local_dir fitzroy_dir fitzroy_username"
     echo "   Eg. $0 /home/seb56 /a/b/x baes"
