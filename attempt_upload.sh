@@ -2,9 +2,11 @@
 
 upload_src_dir=$1
 remote_dir=$2
-admin_file=$3
+#admin_file=$3
+remote_admin=$3
+local_admin=$4
 
-source $admin_file
+#source $admin_file
 info=$upload_src_dir/Info
 
 upload_sh=`pwd`/sendme.sh
