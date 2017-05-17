@@ -45,9 +45,10 @@ from time import time
 
 import numpy as np
 
+import qcore_path
 from shared import get_corners
-from shared_gmt import *
-from shared_srf import srf2corners
+from gmt import *
+from srf import srf2corners
 try:
     import params_base as sim_params
     SIM_DIR = True

@@ -26,9 +26,10 @@ import sys
 
 import numpy as np
 
-from shared_gmt import *
-from shared_srf import *
-from tools import *
+import qcore_path
+from gmt import *
+from srf import *
+from geo import *
 
 # illumination file should be in the same directory
 topo = '/nesi/projects/nesi00213/PlottingData/Topo/srtm_all_filt_nz.grd'

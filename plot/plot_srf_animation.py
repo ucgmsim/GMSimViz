@@ -12,9 +12,10 @@ import sys
 
 import numpy as np
 
-from tools import path_from_corners
-import shared_gmt as gmt
-import shared_srf as srf
+import qcore_path
+from geo import path_from_corners
+import gmt
+import srf
 
 # for repository resources
 script_dir = os.path.dirname(os.path.abspath(__file__))

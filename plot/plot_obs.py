@@ -10,10 +10,11 @@ import sys
 
 import numpy as np
 
+import qcore_path
 from shared import get_corners
-import shared_gmt as gmt
-import shared_ts as ts
-from tools import ll_dist, path_from_corners
+import gmt
+import timeseries as ts
+from geo import ll_dist, path_from_corners
 
 ###
 ### verify parameters

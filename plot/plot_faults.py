@@ -5,7 +5,10 @@ Plot faults that have been studied by QuakeCoRE
 
 import os
 
-import shared_gmt as gmt
+import qcore_path
+import gmt
+print gmt.sites_major
+exit()
 
 title = 'QuakeCoRE Simulations'
 

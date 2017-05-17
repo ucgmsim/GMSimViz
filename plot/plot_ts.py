@@ -36,7 +36,8 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 if not os.path.exists('params_plot.py'):
     copy('%s/params_plot.template.py' % (script_dir), './')
 
-from tools import path_from_corners
+import qcore_path
+from geo import path_from_corners
 from params_base import *
 srf_cnrs = srf_cnrs[0]
 xyts_file = xyts_files[0]
@@ -44,8 +45,8 @@ import params_plot as plot
 tsplot = plot.TS
 base_dir = os.path.abspath(sim_dir)
 from shared import get_corners
-from shared_gmt import *
-from shared_xyts import XYTSFile
+from gmt import *
+from xyts import XYTSFile
 
 # output directory
 png_dir = os.path.join(base_dir, 'PNG_timeslices')

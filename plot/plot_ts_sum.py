@@ -24,9 +24,10 @@ import sys
 import h5py as h5
 import numpy as np
 
-from tools import path_from_corners, wgs_nztm2000x
-import shared_gmt as gmt
-from shared_xyts import XYTSFile
+import qcore_path
+from geo import path_from_corners, wgs_nztm2000x
+import gmt
+from xyts import XYTSFile
 # to import local parameters add them to path
 sys.path.append(os.path.abspath(os.path.curdir))
 from params_base import *
