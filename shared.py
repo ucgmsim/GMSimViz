@@ -311,4 +311,95 @@ def exe(cmd, debug=True,shell=False, stdout=subprocess.PIPE, stderr=subprocess.P
     return out, err
 
 
+###functions mostly used in regression_test
+
+def get_list_of_files(folder_dir):
+ 
+    #make sure folder_dir ends with /
+    folder_dir = os.path.join(folder_dir, '')
+    if os.path.isdir(folder_dir):
+        list_of_files = os.listdir(folder_dir)
+        return list_of_files
+    return False
+
+def filter_list_of_files(list_of_files, filter_list):
+    for file in list_of_files:
+        if file.rsplit('.',1)[0] not in filter_list:
+            #print "filtered out:",file," %s not found"%file.rsplit('.',1)[0]
+            list_of_files.remove(file)
+    return list_of_files
+
+def get_list_of_prefix(list_of_files):
+    list_of_prefix = []
+    for file in list_of_files:
+        prefix = file.rsplit('.',1)[0]
+        if prefix not in list_of_prefix:
+            list_of_prefix.append(prefix)
+    return list_of_prefix
+
+def check_seismo_files(list_of_stations,list_of_files):
+    '''
+    check if all station in list has .000 .090 .ver files
+    '''
+    for station in list_of_stations:
+        if station + ".000" not in list_of_files:
+            return False
+        if station + ".090" not in list_of_files:
+            return False
+        if station + ".ver" not in list_of_files:
+            return False
+    return True
+
+def last_line(in_file, block_size=1024, ignore_ending_newline=True):
+    suffix = ""
+    in_file.seek(0, os.SEEK_END)
+    in_file_length = in_file.tell()
+    seek_offset = 0
+
+    while(-seek_offset < in_file_length):
+        # Read from end.
+        seek_offset -= block_size
+        if -seek_offset > in_file_length:
+            # Limit if we ran out of file (can't seek backward from start).
+            block_size -= -seek_offset - in_file_length
+            if block_size == 0:
+                break
+            seek_offset = -in_file_length
+        in_file.seek(seek_offset, os.SEEK_END)
+        buf = in_file.read(block_size)
+
+        # Search for line end.
+        if ignore_ending_newline and seek_offset == -block_size and buf[-1] == '\n':
+            buf = buf[:-1]
+        pos = buf.rfind('\n')
+        if pos != -1:
+            # Found line end.
+            return buf[pos+1:] + suffix
+
+        suffix = buf + suffix
+
+    # One-line file.
+    return suffix
+
+def get_core_count(llscript):
+    for line in llscript.readlines():
+        if "@ node =" in line:
+            #print line
+            #print line.rsplit(' ',2)
+            node = int(line.rsplit(' ', 2)[1])
+        if "tasks_per_node =" in line:
+            #print line
+            tasks_per_node = int(line.rsplit(' ', 2)[1])
+    #print int(node)*int(task_per_node)
+    return node*tasks_per_node
+
+def get_rlog_count(rlog_dir):
+    list_of_rlogs = os.listdir(rlog_dir)
+    for file in list_of_rlogs:
+        #get the extension of the files
+        extension = file.rsplit('.',1)[1]
+        #if it is not an rlog file, remove from list(in case someone created non-rlog-files)
+        if extension != "rlog":
+            list_of_rlogs.remove(file)
+    return len(list_of_rlogs)
 

@@ -10,7 +10,7 @@ from subprocess import Popen, PIPE
 
 import numpy as np
 
-from tools import *
+from geo import *
 
 # binary paths
 srf2xyz = '/nesi/projects/nesi00213/tools/srf2xyz'
@@ -151,7 +151,8 @@ def get_lonlat(sf, value = None):
         tinit = float(h1[6])
         srfdt = float(h1[7])
         # time series over wanted time
-        value = np.empty(int(float(t) / float(dt)))
+        # python thinks int(9.6/0.1) is 95, rounding is a must
+        value = np.empty(int(round(float(t) / float(dt))))
         value.fill(np.nan)
         # fill with values during rupture period at this subfault
         for r in xrange(int(h2[2])):
@@ -229,7 +230,7 @@ def get_bounds(srf, seg = -1):
             bounds.append(plane_bounds)
     return bounds
 
-def get_hypo(srf):
+def get_hypo(srf, lonlat = True):
     """
     Return hypocentre.
     srf: srf source
@@ -241,6 +242,10 @@ def get_hypo(srf):
         strike, dip = plane[6:8]
         # plane 9 11?? dum dum dum....
         shyp, dhyp = plane[9:11]
+
+        if not lonlat:
+            # along strike, along dip
+            return shyp, dhyp
 
         # move along strike for shyp km
         lat, lon = ll_shift(lat, lon, shyp, strike)

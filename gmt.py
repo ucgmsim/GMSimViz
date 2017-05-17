@@ -7,6 +7,7 @@ grid dx and dy should be by default automatically calculated
 consistency among accessory functions' working directory logic
 add support for different interpolation methods
     (xyz2grd, surface, nearestneighbour etc...)
+avg_ll calculated elsewhere should be local function that works over equator
 """
 
 from math import ceil, log10
@@ -20,14 +21,14 @@ import numpy as np
 
 # only needed if plotting fault planes direct from SRF
 try:
-    from shared_srf import *
+    from srf import *
 except ImportError:
     print('shared_srf.py not found. will not be able to plot faults from SRF.')
-# only needed for xyv_spacing
+# only needed for xyv_spacing and dist_scale
 try:
-    from tools import ll_dist
+    from geo import ll_dist, path_from_corners
 except ImportError:
-    print('tools.py not found. xyv_spacing() will not work.')
+    print('geo.py not found. xyv_spacing() and path_from_corners() will not work.')
 
 # if gmt available in $PATH, gmt_install_bin should be ''
 # to use a custom location, set full path to gmt 'bin' folder below
@@ -94,6 +95,25 @@ nz_region = (166, 179, -47.5, -34)
 ###
 ### ACCESSORY FUNCTIONS
 ###
+def make_movie(input_pattern, output, fps = 20):
+    """
+    Makes animation from output images.
+    Must have ffmpeg available in $PATH.
+    ffmpeg compiled with:
+     - local filesystem input support,
+     - qtrle video encoder support,
+     - quicktime container write support
+    input_pattern: matches sequence of images eg: PNG/image-%04d.png
+    output: movie output filename
+    fps: frames per second (images per second of video)
+    """
+    if output[-4:] != '.mov':
+        output = '%s.mov' % (output)
+
+    with open('/dev/null', 'w') as sink:
+        Popen(['ffmpeg', '-y', '-framerate', str(fps), '-i', input_pattern, \
+                '-c:v', 'qtrle', '-r', str(fps), output], stderr = sink).wait()
+
 def get_region(region_name, as_components = False):
     """
     Returns region as tuple (x_min, x_max, y_min, y_max).
@@ -295,7 +315,7 @@ def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', cpt_percentile = 95)
 #       background colour is extended just like foreground (bidirectional)
 def makecpt(source, output, low, high, inc = None, invert = False, \
         wd = None, bg = None, fg = None, continuing = False, \
-        continuous = False, log = False):
+        continuous = False, log = False, transparency = 0):
     """
     Creates a colour palette file.
     source: inbuilt scale or template file
@@ -311,6 +331,7 @@ def makecpt(source, output, low, high, inc = None, invert = False, \
     continuing: bg and fg colours match lowest and highest values
     continuous: set to True to prevent discrete colour transitions
     log: logarithmic cpt (input is log10(z))
+    transparency: cpt colour value transparency (0 for opaque)
     """
     # determine working directory
     if wd == None:
@@ -325,7 +346,8 @@ def makecpt(source, output, low, high, inc = None, invert = False, \
 
     if os.path.exists(source):
         source = os.path.abspath(source)
-    cmd = [GMT, 'makecpt', '-T%s' % (crange), '-C%s' % (source)]
+    cmd = [GMT, 'makecpt', '-A%s' % (transparency), \
+            '-T%s' % (crange), '-C%s' % (source)]
     if invert:
         cmd.append('-I')
     if log:
@@ -346,10 +368,11 @@ def makecpt(source, output, low, high, inc = None, invert = False, \
 
 def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
         region = None, dx = '1k', dy = None, climit = 1, wd = None, \
-        geo = True, sectors = 4, min_sectors = 2, search = '1k'):
+        geo = True, sectors = 4, min_sectors = 2, search = '1k', header = 0, \
+        cols = None, tension = '0.0'):
     """
     Create a grid file from an xyz (table data) file.
-    Currently tested with "surface" and "xyz2grd".
+    Currently tested with "surface", "xyz2grd" and "nearneighbor".
     More feature expansion will take place as required.
     table_in: contains x, y and value columns
     grd_file: output file
@@ -365,6 +388,8 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
         takes average of closest point per sector
     min_sectors: for nearneighbour, min sectors to contain values, else nan
     search: for nearneighbour, search radius
+    header: number of lines to skip at beginning of input file
+    cols: gmt column definition, eg: '0,1,2'
     """
     # determine working directory
     if wd == None:
@@ -390,8 +415,12 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
             '-I%s/%s' % (dx, dy), region]
     if geo:
         cmd.append('-fg')
+    if header > 0:
+        cmd.append('-hi%d' % (header))
+    if cols != None:
+        cmd.append('-i%s' % (cols))
     if grd_type == 'surface':
-        cmd.append('-T0.0')
+        cmd.append('-T%s' % (tension))
         cmd.append('-C%s' % (climit))
     elif grd_type == 'xyz2grd':
         cmd.append('-r')
@@ -406,8 +435,11 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
         cmd.append(os.path.abspath(table_in))
         # test if text (otherwise binary assumed)
         try:
-            # TODO: don't try to load entire file
-            np.loadtxt(table_in, dtype = 'f')
+            # test if text file
+            with open(table_in, 'r') as tf:
+                for _ in xrange(header):
+                    tf.readline()
+                map(float, tf.readline().split()[:2])
         except ValueError:
             cmd.append('-bi3f')
         # run command
@@ -793,6 +825,9 @@ class GMTPlot:
             gmt_defaults(wd = self.wd)
         # place to reject unwanted warnings
         self.sink = open('/dev/null', 'a')
+        # keep track of region internally
+        # TODO: figure out starting region?
+        self.region = None
 
     def background(self, length, height, \
             x_margin = 0, y_margin = 0, colour = 'white'):
@@ -864,6 +899,9 @@ class GMTPlot:
         else:
             cmd.append('-T')
             Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+
+        # update local region
+        self.region = region
 
     def text(self, x, y, text, dx = 0, dy = 0, align = 'CB', \
             size = '10p', font = 'Helvetica', colour = 'black', \
@@ -1153,6 +1191,26 @@ class GMTPlot:
         sp = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
         sp.communicate(gmt_in)
         sp.wait()
+
+    def dist_scale(self, x_inch, y_inch, region, length = 10):
+        """
+        Create a distance scale on map, must have set a geographic region.
+        # XXX: DO NOT USE THIS FUNCTION UNTIL IT'S NOT TOTAL CRAP
+        # NOTE: PARSE GMT HISTORY FILE INSTEAD
+        """
+        # TODO: fix as per file comment, should work over equator
+        avg_lat = (region[3] + region[2]) / 2.0
+        total_lon = region[1] - region[0]
+        # TODO: fix sizing!!
+        x_km = ll_dist(region[0], avg_lat, region[1], avg_lat)
+        scale_lon = length / float(x_km) * total_lon
+        degpi = (region[3] - region[2]) / float(y_inch)
+        scale_lat = region[2] + (0.1 * y_inch * degpi)
+        scale_start = region[1] - 0.2 * (total_lon - scale_lon)
+        self.path('%f %f\n%f %f' % (scale_start, scale_lat, \
+                scale_start - scale_lon, scale_lat), is_file = False, \
+                width = '1p')
+        self.text(scale_start - scale_lon / 2., scale_lat, '%s km' % (length), dy = -0.15)
 
     def cpt_scale(self, x, y, cpt, major, minor, label = None, \
             length = 5.0, thickness = 0.15, horiz = True, \

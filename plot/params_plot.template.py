@@ -106,11 +106,10 @@ class STATION:
 
 # observed / simulated seismogram plotting
 class SEISMO:
-    title = 'Observed and Simulated Low Frequency'
-    output = os.path.abspath('PNG_seis')
+    title = 'Observed Ground Motions'
     wd = os.path.abspath('GMT_SEIS_WD')
     # output filename excluding file extension
-    name = 'seismo_plot'
+    name = 'ObservedMap'
     dpi = 300
     width = '7i'
     # override velocity model region default = None
@@ -119,7 +118,7 @@ class SEISMO:
     # list of stations that should always be plotted
     wanted_stats = []
     # minimum distance stations should be appart (km)
-    min_dist = 50
+    min_dist = None
     # GMT seismo files
     # set obs_src or sim_src to None to only plot one
     obs_ts = 'obsVelBB/%s.090'
@@ -128,13 +127,13 @@ class SEISMO:
     sim_ts = 'simVelBB/%s.090'
     sim_src = 'gmt-seismo_sim.xy'
     sim_colour = 'red'
-    width = 0.3
+    seis_width = 0.3
     # timestep cutoff: with dt = 0.005, 200 per second
     max_ts = 20000
     # timeseries x-azimuth, x length and max y length in degrees
     ts_xaz = 90
-    ts_xlen = 1.0
-    ts_ymax = 0.2
+    ts_xlen = None
+    ts_ymax = None
 
 class SRF:
     # default is the filename without extention

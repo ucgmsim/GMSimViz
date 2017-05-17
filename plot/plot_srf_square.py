@@ -318,6 +318,11 @@ for s, seg in enumerate(planes):
             p.overlay(grd_file, None, dx = srf_dx, dy = srf_dy, \
                     acontours = acontour, font_size = annot_size, \
                     contour_thickness = scale_factor, contour_colour = 'black')
+            # and hypocentre if first segment
+            if s == 0:
+                p.points('%s %s' % (seg[length] / 2. + seg[shyp], seg[dhyp]), is_file = False, \
+                        shape = 'a', size = (scale_factor * 0.6), \
+                        line = 'red', line_thickness = '%sp' % (scale_factor))
 
         # no more tick labels than neccessary
         p.ticks(major = major_tick, minor = major_tick / 4, sides = tick_labels)

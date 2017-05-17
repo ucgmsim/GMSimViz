@@ -201,9 +201,12 @@ def path_from_corners(corners = None, output = 'sim.modelpath_hr', min_edge_poin
             corners.insert(i, val)
 
     # write points the make the path
-    with open(output, 'w') as mp:
-        for point in corners:
-            mp.write('%s %s\n' % (point[0], point[1]))
+    if output != None:
+        with open(output, 'w') as mp:
+            for point in corners:
+                mp.write('%s %s\n' % (point[0], point[1]))
+    else:
+        return corners
 
 def wgs_nztm2000x(points):
     """
