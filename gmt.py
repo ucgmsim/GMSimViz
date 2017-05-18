@@ -23,12 +23,12 @@ import numpy as np
 try:
     from srf import *
 except ImportError:
-    print('shared_srf.py not found. will not be able to plot faults from SRF.')
-# only needed for xyv_spacing and dist_scale
+    print('srf.py not found. will not be able to plot faults from SRF.')
+# only needed for some functions
 try:
-    from geo import ll_dist, path_from_corners
+    import geo
 except ImportError:
-    print('geo.py not found. xyv_spacing() and path_from_corners() will not work.')
+    print('geo.py not found. some functions will not work.')
 
 # if gmt available in $PATH, gmt_install_bin should be ''
 # to use a custom location, set full path to gmt 'bin' folder below
@@ -224,7 +224,7 @@ def xyv_spacing(xyv_file, factor = 0.5):
     factor: multiply spacing by this number in returned value
     """
     lonlat = np.memmap(xyv_file, dtype = '3f')
-    spacing = ll_dist(lonlat[0, 0], lonlat[0, 1], lonlat[1, 0], lonlat[1, 1])
+    spacing = geo.ll_dist(lonlat[0, 0], lonlat[0, 1], lonlat[1, 0], lonlat[1, 1])
     return spacing * factor
 
 def xyv_cpt_range(xyv_file, max_step = 12, percentile = 99.5, \
@@ -299,7 +299,7 @@ def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', cpt_percentile = 95)
         seg_llvs[s].astype(np.float32).tofile('%s/%s_%d_slip.bin' \
                 % (out_dir, prefix, s))
         # mask path
-        path_from_corners(corners = bounds[s], min_edge_points = 100, \
+        geo.path_from_corners(corners = bounds[s], min_edge_points = 100, \
                 output = '%s/%s_%d_bounds.ll' % (out_dir, prefix, s))
         x_min, y_min = np.min(np_bounds[s], axis = 0)
         x_max, y_max = np.max(np_bounds[s], axis = 0)
@@ -537,13 +537,15 @@ def gmt_defaults(wd = '.', font_annot_primary = 16, \
     cmd.extend(map(str, extra))
     Popen(cmd, cwd = wd).wait()
 
-def mapproject(x, y, wd = '.', projection = None, region = None, unit = None):
+def mapproject(x, y, wd = '.', projection = None, region = None, \
+    inverse = False, unit = None):
     """
-    Project coordinates to get position. Currently only one way.
-    WARNING: if projection specifies units of length,
+    Project coordinates to get position or get coordinates from position.
+    NOTE: if projection specifies units of length,
             output will still be in default units
     projection: map projection, default uses history file
     region: map region (x_min, x_max, y_min, y_max), default uses history file
+    inverse: False to get coords from pos, True to get pos from coords
     unit: return value units, default uses PROJ_LENGTH_UNIT from gmt.conf
     """
     # calculation should not affect plotting
@@ -558,6 +560,8 @@ def mapproject(x, y, wd = '.', projection = None, region = None, unit = None):
         cmd.append('-R')
     else:
         cmd.append('-R%s/%s/%s/%s' % (region))
+    if inverse:
+        cmd.append('-I')
     if unit != None:
         cmd.append('-D%s' % (unit))
 
@@ -825,9 +829,20 @@ class GMTPlot:
             gmt_defaults(wd = self.wd)
         # place to reject unwanted warnings
         self.sink = open('/dev/null', 'a')
-        # keep track of region internally
-        # TODO: figure out starting region?
-        self.region = None
+
+    def history(self, item):
+        """
+        Retrieve properties from GMT history file.
+        item: item wanted eg: 'J' or 'R'
+        """
+        with open(os.path.join(self.wd, 'gmt.history')) as hf:
+            for line in hf:
+                line_data = line.split()
+                if len(line_data) > 0 and line_data[0] == item:
+                    # assuming values will never contain white space
+                    return line_data[1]
+        # wanted item has not been set yet
+        return None
 
     def background(self, length, height, \
             x_margin = 0, y_margin = 0, colour = 'white'):
@@ -899,9 +914,6 @@ class GMTPlot:
         else:
             cmd.append('-T')
             Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
-
-        # update local region
-        self.region = region
 
     def text(self, x, y, text, dx = 0, dy = 0, align = 'CB', \
             size = '10p', font = 'Helvetica', colour = 'black', \
@@ -1192,25 +1204,57 @@ class GMTPlot:
         sp.communicate(gmt_in)
         sp.wait()
 
-    def dist_scale(self, x_inch, y_inch, region, length = 10):
+    def dist_scale(self, x, y, length, pos = 'map', slat = None, \
+                align = None, dx = 0, dy = 0, label = None, label_pos = None, \
+                fancy = False):
         """
-        Create a distance scale on map, must have set a geographic region.
-        # XXX: DO NOT USE THIS FUNCTION UNTIL IT'S NOT TOTAL CRAP
-        # NOTE: PARSE GMT HISTORY FILE INSTEAD
+        Create a distance scale on map.
+        x: x position
+        y: y position
+        length: length of scale (default in km or append GMT symbol)
+        pos: x, y position style
+        align: justification of scale
+        slat: latitude at which scale is accurate
+        dx: offset x by distance
+        dy: offset y by distance
+        label: label on scale (seems to only work with fancy = True)
+        label_pos: show label on (t)op | (b)elow | (l)eft | (r)ight
+        fancy: fancy scale has black and white strips, simple is a line
         """
-        # TODO: fix as per file comment, should work over equator
-        avg_lat = (region[3] + region[2]) / 2.0
-        total_lon = region[1] - region[0]
-        # TODO: fix sizing!!
-        x_km = ll_dist(region[0], avg_lat, region[1], avg_lat)
-        scale_lon = length / float(x_km) * total_lon
-        degpi = (region[3] - region[2]) / float(y_inch)
-        scale_lat = region[2] + (0.1 * y_inch * degpi)
-        scale_start = region[1] - 0.2 * (total_lon - scale_lon)
-        self.path('%f %f\n%f %f' % (scale_start, scale_lat, \
-                scale_start - scale_lon, scale_lat), is_file = False, \
-                width = '1p')
-        self.text(scale_start - scale_lon / 2., scale_lat, '%s km' % (length), dy = -0.15)
+
+        cmd = [GMT, 'pscoast', '-J', '-R', '-N2', \
+                '-K', '-O']
+        if GMT_MAJOR == 5 and GMT_MINOR < 2:
+            # convert longitude, latitude location to offset
+            if pos == 'map':
+                x, y = mapproject(x, y, wd = self.wd)
+            elif pos != 'plot':
+                print('GMT < v5.2 DOES NOT SUPPORT THIS POSITIONING')
+                return
+            x += dx
+            y += dy
+            # old style positioning
+            pos_spec = '-L%sx%s/%s/%s/%s' % ('f' * fancy, x, y, slat, length)
+            if align != None:
+                pos_spec = '%s+j%s' % (pos_spec, align)
+            if label != None:
+                pos_spec = '%s+l%s' % (pos_spec, label)
+            cmd.append(pos_spec)
+        else:
+            # new style positioning
+            pos_spec = '-L%s%s%s%s+c%s+w%s+o%s/%s' % (GMT52_POS[pos], x, \
+                    '/' * (pos[:3] != 'rel'), y, slat, length, dx, dy)
+            if align != None:
+                pos_spec = '%s+j%s' % (pos_spec, align)
+            if fancy:
+                pos_spec = '%s+f' % (pos_spec)
+            if label != None:
+                pos_spec = '%s+l%s' % (pos_spec, label)
+            if label_pos != None:
+                pos_spec = '%s+a%s' % (pos_spec, label_pos.lower())
+            cmd.append(pos_spec)
+
+        Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def cpt_scale(self, x, y, cpt, major, minor, label = None, \
             length = 5.0, thickness = 0.15, horiz = True, \
