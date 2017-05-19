@@ -97,12 +97,13 @@ class STATION:
     # override velocity model region default = None
     # eg: region = (x_min, x_max, y_min, y_max)
     region = None
-    # major, minor tick increment on map edges
-    tick_major = '0.5d'
-    tick_minor = '0.1d'
-    # 'major' only include major sites 'all' include all sites
+    # major, minor tick increment on map edges. None for automatic
+    tick_major = None
+    tick_minor = None
+    # 'major' only include major sites, 'all' include all sites,
+    # 'auto' to choose between major and all, None for [] (no sites listed)
     # or specify list of sites manualy ['Kaikoura', 'Wellington']...
-    sites = 'all'
+    sites = 'auto'
 
 # observed / simulated seismogram plotting
 class SEISMO:

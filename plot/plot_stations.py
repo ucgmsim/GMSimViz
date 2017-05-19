@@ -47,13 +47,10 @@ import numpy as np
 
 import qcore_path
 from shared import get_corners
+import geo
 from gmt import *
 from srf import srf2corners
-try:
-    import params_base as sim_params
-    SIM_DIR = True
-except ImportError:
-    SIM_DIR = False
+
 script_dir = os.path.abspath(os.path.dirname(__file__))
 if not os.path.exists('params_plot.py'):
     copyfile('%s/params_plot.template.py' % (script_dir), 'params_plot.py')
@@ -69,6 +66,32 @@ except IndexError:
 except AssertionError:
     print('Cannot find input file: %s' % (station_file))
     exit(1)
+
+# check for sim data
+try:
+    import params_base as sim_params
+    SIM_DIR = True
+except ImportError:
+    SIM_DIR = False
+
+# find files in standard folder structure
+# TODO: EXPORT THIS INTO LIBRARY, REPEATED ELSEWHERE
+# XXX: SYS.ARGV[2] ALREADY USED DANGER DANGER
+if len(sys.argv) > 2:
+    base_dir = os.path.abspath(sys.argv[2])
+    event_name = os.path.basename(base_dir.rstrip(os.sep))
+    event_name = '_'.join(event_name.split('_')[:3])
+    try:
+        sfs_modelparams = glob('%s/VM/Model/%s/*/model_params_*' % (base_dir, event_name))[0]
+    except IndexError:
+        sfs_modelparams = None
+    try:
+        sfs_srf = glob('%s/Src/Model/*/Srf/*.srf' % (base_dir))[0]
+    except IndexError:
+        sfs_srf = None
+else:
+    sfs_modelparams = None
+    sfs_srf = None
 
 # all numerical values in input
 val_pool = np.loadtxt(station_file, dtype = 'f', skiprows = 6)[:, 2:].flatten()
@@ -108,9 +131,12 @@ with open(station_file) as statf:
         cpt_properties = []
     if len(cpt_info) > 1:
         stat_size = cpt_info[1].split(':')[0]
+        # also default nearneighbor search distance
+        nn_search = stat_size
         # default properties
         shape = 't'
         grid = None
+        grd_mask_dist = None
         try:
             stat_properties = cpt_info[1].split(':')[1].split(',')
             for p in stat_properties:
@@ -118,6 +144,10 @@ with open(station_file) as statf:
                     shape = p[6]
                 elif p[:2] == 'g-':
                     grid = p[2:]
+                elif p[:3] == 'nns-':
+                    nn_search = p[3:]
+                elif p[:6] == 'gmask-':
+                    grd_mask_dist = p[6:]
         except IndexError:
             stat_properties = []
 
@@ -171,42 +201,35 @@ if len(sys.argv) > 2:
     statplot.out_dir = os.path.abspath(sys.argv[2])
 # clear output dirs
 for out_dir in [statplot.out_dir, gmt_temp]:
-    if os.path.isdir(out_dir):
-        rmtree(out_dir)
-    os.makedirs(out_dir)
+    if not os.path.isdir(out_dir):
+        os.makedirs(out_dir)
 
-if SIM_DIR:
-    if os.path.exists(sim_params.MODELPARAMS):
+###
+### boundaries
+###
+if statplot.region == None and (SIM_DIR or sfs_modelparams != None):
+    try:
         corners, cnr_str = get_corners(sim_params.MODELPARAMS, gmt_format = True)
-    else:
-        print("MODELPARAMS path in params_base.py is invalid.")
-        print("Looking for XYTS file to extract simulation boundary instead.")
-        # xyts file is placed here in some cases when transferred from fitzroy
-        try:
-            if os.path.exists(sim_params.xyts_files[0]):
-                xytsf = XYTSFile(sim_params.xyts_files[0])
-                corners, cnr_str = xytsf.corners(gmt_format = True)
-        except NameError:
-            print('Couldn\'t find simulation domain. Fix params_base.py.')
-
-if statplot.region == None and SIM_DIR:
+    except (NameError, IOError):
+        corners, cnr_str = get_corners(sfs_modelparams, gmt_format = True)
+    # path following sim domain curved on mercator like projections
+    fine_path = geo.path_from_corners(corners = corners, output = None)
     # fit simulation region
-    x_min = min([xy[0] for xy in corners])
-    x_max = max([xy[0] for xy in corners])
-    y_min = min([xy[1] for xy in corners])
-    y_max = max([xy[1] for xy in corners])
+    x_min = min([xy[0] for xy in fine_path])
+    x_max = max([xy[0] for xy in fine_path])
+    y_min = min([xy[1] for xy in fine_path])
+    y_max = max([xy[1] for xy in fine_path])
 elif statplot.region == None:
     # fit all values
-    xy = np.loadtxt(station_file, dtype = 'f', skiprows = 6)[:, :2]
+    xy = np.loadtxt(station_file, skiprows = 6, usecols = (0, 1), dtype = 'f')
     x_min, y_min = np.min(xy, axis = 0) - 0.1
     x_max, y_max = np.max(xy, axis = 0) + 0.1
 else:
     x_min, x_max, y_min, y_max = statplot.region
-
-# avg lon/lat (midpoint of plotting region)
-ll_avg = (x_min + x_max) / 2.0, (y_min + y_max) / 2.0
 # combined region
 ll_region = (x_min, x_max, y_min, y_max)
+# avg lon/lat (midpoint of plotting region)
+ll_avg = sum(ll_region[:2]) / 2, sum(ll_region[2:]) / 2
 
 # create masking if using grid overlay
 if grid != None:
@@ -223,7 +246,27 @@ if grid != None:
     grd_mask('%s/sim.modelpath_hr' % (gmt_temp), mask, \
             dx = stat_size, dy = stat_size, region = ll_region)
 
-if statplot.sites == None or statplot.sites == 'major':
+# work out an ideal tick increment (ticks per inch)
+# x axis is more constrainig
+if statplot.tick_major == None:
+    try:
+        width = float(statplot.width)
+    except ValueError:
+        # expecting a unit suffix even though formula only works for inches
+        width = float(statplot.width[:-1])
+    statplot.tick_major, statplot.tick_minor = \
+            auto_tick(x_min, x_max, width)
+elif statplot.tick_minor == None:
+    statplot.tick_minor = statplot.tick_major / 5.
+
+if statplot.sites == None:
+    region_sites = []
+if statplot.sites == 'auto':
+    if x_max - x_min > 3:
+        region_sites = sites_major
+    else:
+        region_sites = sites.keys()
+elif statplot.sites == 'major':
     region_sites = sites_major
 elif statplot.sites == 'all':
     region_sites = sites.keys()
@@ -279,8 +322,6 @@ if SIM_DIR:
             copyfile(sim_params.srf_cnrs[0], '%s/srf_cnrs.txt' % (gmt_temp))
     except AttributeError:
         print('SRF or corners file not found, not adding fault planes to plot.')
-# ticks on top otherwise parts of map border may be drawn over
-t.ticks(major = statplot.tick_major, minor = statplot.tick_minor, sides = 'ws')
 t.leave()
 print('Created template resources (%.2fs)' % (time() - t0))
 
@@ -310,11 +351,6 @@ def render_period(n):
         p.text(ll_avg[0], y_max, title, colour = 'black', \
                 align = 'CB', size = 28, dy = 0.2)
 
-    # title for this data column
-    if len(col_labels):
-        p.text(x_min, y_max, col_labels[n], colour = label_colour, \
-                align = 'LB', size = '18p', dx = 0.2, dy = -0.35)
-
     # add ratios to map
     if grid == None:
         p.points(station_file, shape = shape, size = stat_size, \
@@ -322,11 +358,17 @@ def render_period(n):
                 cols = '0,1,%d' % (n + 2), header = 6)
     else:
         grd_file = '%s/overlay.grd' % (swd)
+        if grd_mask_dist != None:
+            col_mask = '%s/column_mask.grd' % (swd)
+            mask = col_mask
+        else:
+            col_mask = None
         table2grd(station_file, grd_file, file_input = True, \
                 grd_type = grid, region = ll_region, dx = stat_size, \
                 climit = cpt_inc * 0.5, wd = swd, geo = True, \
-                sectors = 4, min_sectors = 1, search = stat_size, \
-                cols = '0,1,%d' % (n + 2), header = 6)
+                sectors = 4, min_sectors = 1, search = nn_search, \
+                cols = '0,1,%d' % (n + 2), header = 6, \
+                automask = col_mask, mask_dist = grd_mask_dist)
         p.overlay(grd_file, cpt_stations, dx = stat_size, dy = stat_size, \
                 crop_grd = mask, land_crop = False, transparency = transparency)
     # add srf to map
@@ -335,6 +377,15 @@ def render_period(n):
                 plane_width = 0.5, top_width = 1, hyp_width = 0.5)
     # add locations to map
     p.sites(region_sites)
+
+    # title for this data column
+    if len(col_labels):
+        p.text(x_min, y_max, col_labels[n], colour = label_colour, \
+                align = 'LB', size = '18p', dx = 0.2, dy = -0.35)
+
+    # ticks on top otherwise parts of map border may be drawn over
+    p.ticks(major = statplot.tick_major, minor = statplot.tick_minor, sides = 'ws')
+
 
     # create PNG
     p.finalise()

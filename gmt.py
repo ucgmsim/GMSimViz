@@ -114,6 +114,36 @@ def make_movie(input_pattern, output, fps = 20):
         Popen(['ffmpeg', '-y', '-framerate', str(fps), '-i', input_pattern, \
                 '-c:v', 'qtrle', '-r', str(fps), output], stderr = sink).wait()
 
+def auto_tick(x_min, x_max, width):
+    """
+    Try to determine ideal major tick interval on map for x axis.
+    # TODO: allow font size specification to modify factors
+    x_min: minimum longitude
+    x_max: maximum longitude
+    width: width of map
+    """
+    # maximum ticks per inch - 18 point with 0 decimal places
+    # this should be modified based on font size
+    tpi = 1.4
+    # adjusted for 1dp and 2dp, looping
+    tpi_dp = [tpi, tpi * 0.93, tpi * 0.86]
+
+    # starting tick is increased until ticks per inch is less than max
+    major_tick = 0.01
+    for i in xrange(12):
+        # check tpi vs tpi max for decimal places in major_tick
+        if ((x_max - x_min) / major_tick) / width \
+                > tpi_dp[max(0, 2 - i // 3)]:
+            # increase by factor of 2, 2.5, 2, 2, 2.5, 2, 2, 2.5...
+            # this gives a major_tick of 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1...
+            major_tick *= 2 + ((i + 2) % 3 == 0) * 0.5
+        else:
+            break
+    # minor tick 10 times per major unless ending with 5 in which case 5 times
+    minor_tick = major_tick / 10.0 / (((i + 2) % 3 == 0) + 1)
+
+    return major_tick, minor_tick
+
 def get_region(region_name, as_components = False):
     """
     Returns region as tuple (x_min, x_max, y_min, y_max).
@@ -369,7 +399,8 @@ def makecpt(source, output, low, high, inc = None, invert = False, \
 def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
         region = None, dx = '1k', dy = None, climit = 1, wd = None, \
         geo = True, sectors = 4, min_sectors = 2, search = '1k', header = 0, \
-        cols = None, tension = '0.0'):
+        cols = None, tension = '0.0', \
+        automask = None, mask_dist = '1k', outside = 'NaN'):
     """
     Create a grid file from an xyz (table data) file.
     Currently tested with "surface", "xyz2grd" and "nearneighbor".
@@ -390,6 +421,10 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
     search: for nearneighbour, search radius
     header: number of lines to skip at beginning of input file
     cols: gmt column definition, eg: '0,1,2'
+    automask: filename to store mask generated with mask_search option below
+    mask_dist: generate mask using grdmask -S option
+        inside mask: anything which has at most this distance to any location
+    outside: value outside of mask
     """
     # determine working directory
     if wd == None:
@@ -413,12 +448,26 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
     cmd = [GMT, grd_type, \
             '-G%s' % (os.path.abspath(grd_file)), \
             '-I%s/%s' % (dx, dy), region]
+    # second command for optionally creating a mask
+    # input for grdmask cannot be stdin as at GMT 5.3
+    if file_input and automask != None:
+        cmd_mask = [GMT, 'grdmask', os.path.abspath(table_in), \
+                '-G%s' % (os.path.abspath(automask)), \
+                '-I%s/%s' % (dx, dy), region, \
+                '-N%s/1/1' % (outside), '-S%s' % (mask_dist)]
+    else:
+        cmd_mask = []
+
     if geo:
         cmd.append('-fg')
+        cmd_mask.append('-fg')
     if header > 0:
         cmd.append('-hi%d' % (header))
+        cmd_mask.append('-hi%d' % (header))
     if cols != None:
         cmd.append('-i%s' % (cols))
+        cmd_mask.append('-i%s' % (cols))
+
     if grd_type == 'surface':
         cmd.append('-T%s' % (tension))
         cmd.append('-C%s' % (climit))
@@ -444,6 +493,9 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
             cmd.append('-bi3f')
         # run command
         Popen(cmd, cwd = wd).wait()
+        # also create radius based mask if wanted
+        if automask != None:
+            Popen(cmd_mask, cwd = wd).wait()
     else:
         grdp = Popen(cmd, stdin = PIPE, cwd = wd)
         grdp.communicate(table_in)
@@ -452,9 +504,9 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
     write_history(True, wd = wd)
 
 def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
-        wd = None, outside = 'NaN', geo = True):
+        wd = None, outside = 'NaN', geo = True, mask_dist = None):
     """
-    Creates a mask file from a path. Inside = 1, outside = NaN.
+    Creates a mask file from a path or surrounding point area with mask_dist.
     xy_file: file containing a path
     out_file: name of output GMT grd file
     region: tuple region of grd file (must be set if gmt.history doesn't exist)
@@ -463,6 +515,7 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
     wd: GMT working directory (default is destination folder)
     outside: value placed outside the mask
     geo: True if given lon lat coords, False if given cartesian coords
+    mask_dist: -S option, mask includes area of this distance around each point
     """
     if wd == None:
         wd = os.path.dirname(out_file)
@@ -473,6 +526,8 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
             '-N%s/1/1' % (outside), '-I%s/%s' % (dx, dy)])
     if geo:
         cmd.append('-fg')
+    if mask_dist != None:
+        cmd.append('-S%s' % (mask_dist))
     if region == None:
         cmd.append('-R')
     else:
@@ -1075,11 +1130,9 @@ class GMTPlot:
             if direction not in sides:
                 sides = '%s%s' % (sides, direction.lower())
 
-        p = Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', \
+        p = Popen([GMT, 'psbasemap', '-J', '-R', '-K', '-O', \
                 '-Ba%sf%s%s' % (major, minor, sides)], \
-                stdin = PIPE, stdout = self.psf, cwd = self.wd)
-        p.communicate('\n')
-        p.wait()
+                stdout = self.psf, cwd = self.wd).wait()
 
     def points(self, in_data, is_file = True, shape = 't', size = 0.08, \
             fill = None, line = 'white', line_thickness = '0.8p', \
@@ -1222,8 +1275,12 @@ class GMTPlot:
         fancy: fancy scale has black and white strips, simple is a line
         """
 
-        cmd = [GMT, 'pscoast', '-J', '-R', '-N2', \
-                '-K', '-O']
+        if slat == None:
+            region = map(float, self.history('R').split('/'))
+            # TODO: fix geographic midpoint calculation (make a function)
+            slat = (region[3] + region[2]) / 2.
+
+        cmd = [GMT, 'psbasemap', '-J', '-R', '-K', '-O']
         if GMT_MAJOR == 5 and GMT_MINOR < 2:
             # convert longitude, latitude location to offset
             if pos == 'map':

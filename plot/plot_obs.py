@@ -57,7 +57,6 @@ seisplot = plot.SEISMO
 ###
 try:
     import params_base as sim_params
-    srf_file = srf_files[0]
     SIM_DIR = True
 except ImportError:
     SIM_DIR = False
@@ -219,8 +218,8 @@ with open(plot_stats, 'r') as psf:
 if SIM_DIR or sfs_srf != None:
     # fault file - creating direct from SRF is slower
     # OK if only done in template
-    if SIM_DIR and os.path.exists(srf_file):
-        b.fault(srf_file, is_srf = True, \
+    if SIM_DIR and os.path.exists(sim_params.srf_files[0]):
+        b.fault(sim_params.srf_files[0], is_srf = True, \
                 plane_width = 0.5, top_width = 1, hyp_width = 0.5, \
                 plane_colour = 'red', top_colour = 'red', hyp_colour = 'red')
     elif sfs_srf != None:
