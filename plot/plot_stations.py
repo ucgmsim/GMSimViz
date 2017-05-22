@@ -75,26 +75,26 @@ except ImportError:
     SIM_DIR = False
 
 # find files in standard folder structure
-# TODO: EXPORT THIS INTO LIBRARY, REPEATED ELSEWHERE
-# XXX: SYS.ARGV[2] ALREADY USED DANGER DANGER
-if len(sys.argv) > 2:
-    base_dir = os.path.abspath(sys.argv[2])
-    event_name = os.path.basename(base_dir.rstrip(os.sep))
-    event_name = '_'.join(event_name.split('_')[:3])
-    try:
-        sfs_modelparams = glob('%s/VM/Model/%s/*/model_params_*' % (base_dir, event_name))[0]
-    except IndexError:
-        sfs_modelparams = None
-    try:
-        sfs_srf = glob('%s/Src/Model/*/Srf/*.srf' % (base_dir))[0]
-    except IndexError:
-        sfs_srf = None
-else:
-    sfs_modelparams = None
-    sfs_srf = None
+# working directory must be base of structure for this functionality
+base_dir = os.path.abspath(os.getcwd())
+event_name = os.path.basename(base_dir.rstrip(os.sep))
+event_name = '_'.join(event_name.split('_')[:3])
+# default values - nothing found
+sfs_modelparams = None
+sfs_srf = None
+try:
+    sfs_modelparams = glob('%s/VM/Model/%s/*/model_params_*' % (base_dir, event_name))[0]
+except IndexError:
+    pass
+try:
+    sfs_srf = glob('%s/Src/Model/*/Srf/*.srf' % (base_dir))[0]
+except IndexError:
+    pass
 
 # all numerical values in input
-val_pool = np.loadtxt(station_file, dtype = 'f', skiprows = 6)[:, 2:].flatten()
+val_pool = np.atleast_2d( \
+        np.loadtxt(station_file, dtype = 'f', skiprows = 6)[:, 2:].T)
+ncol = val_pool.shape[0]
 
 # process file header
 print('Processing input header...')
@@ -155,23 +155,31 @@ with open(station_file) as statf:
     # cpt_min, cpt_max, cpt_inc, cpt_tick
     cpt_info2 = head[3].split()
     if len(cpt_info2) > 1:
-        cpt_min, cpt_max = map(float, cpt_info2[:2])
+        usr_min, usr_max = map(float, cpt_info2[:2])
+        cpt_min = [usr_min] * ncol
+        cpt_max = [usr_max] * ncol
     else:
-        cpt_max = np.percentile(val_pool, 99.5)
-        # 2 significant figures
-        cpt_max = round(cpt_max, 2 - int(np.floor(np.log10(cpt_max))) - 1)
-        if val_pool.min() < 0:
-            cpt_min = -cpt_max
-        else:
-            cpt_min = 0
+        cpt_min = []
+        cpt_max = np.percentile(val_pool, 99.5, axis = 1)
+        cpt_inc = []
+        cpt_tick = []
+        for i in xrange(len(cpt_max)):
+            if cpt_max[i] > 115:
+                # 2 significant figures
+                cpt_max[i] = round(cpt_max[i], 1 - int(np.floor(np.log10(cpt_max[i]))))
+            else:
+                # 1 significant figures
+                cpt_max[i] = round(cpt_max[i], - int(np.floor(np.log10(cpt_max[i]))))
+            if val_pool[i].min() < 0:
+                cpt_min.append(-cpt_max)
+            else:
+                cpt_min.append(0)
+            cpt_inc.append(cpt_max[i] / 10.)
+            cpt_tick.append(cpt_inc[i] * 2.)
     if len(cpt_info2) > 2:
-        cpt_inc = float(cpt_info2[2])
-    else:
-        cpt_inc = cpt_max / 6.
+        cpt_inc = [float(cpt_info2[2])] * ncol
     if len(cpt_info2) > 3:
-        cpt_tick = float(cpt_info2[3])
-    else:
-        cpt_tick = cpt_inc * 2
+        cpt_tick = [float(cpt_info2[3])] * ncol
 
     # 5th line ncols and optional column label prefix
     col_info = head[4].split()
@@ -279,7 +287,6 @@ else:
 ######################################################
 
 cpt_land = '%s/land.cpt' % (gmt_temp)
-cpt_stations = '%s/stations.cpt' % (gmt_temp)
 ps_template = '%s/template.ps' % (gmt_temp)
 
 ### create resources that are used throughout the process
@@ -288,10 +295,6 @@ t0 = time()
 makecpt('%s/cpt/palm_springs_1.cpt' % \
         (os.path.abspath(os.path.dirname(__file__))), cpt_land, \
         -250, 9000, inc = 10, invert = True)
-# overlay colour scale
-makecpt(cpt, cpt_stations, cpt_min, cpt_max, \
-        inc = cpt_inc, invert = 'invert' in cpt_properties, \
-        fg = cpt_fg, bg = cpt_bg, transparency = transparency)
 
 ### create a basemap template which all maps start with
 t = GMTPlot(ps_template)
@@ -304,9 +307,6 @@ t.land(fill = 'darkgreen')
 t.topo(statplot.topo_file, cpt = cpt_land)
 t.water(colour = 'lightblue', res = 'f')
 t.coastlines()
-t.cpt_scale(3, -0.5, cpt_stations, cpt_tick, cpt_inc, \
-        label = legend, \
-        arrow_f = cpt_max > 0, arrow_b = cpt_min < 0)
 try:
     # simulation domain if loaded before
     t.path(cnr_str, is_file = False, split = '-', \
@@ -322,6 +322,8 @@ if SIM_DIR:
             copyfile(sim_params.srf_cnrs[0], '%s/srf_cnrs.txt' % (gmt_temp))
     except AttributeError:
         print('SRF or corners file not found, not adding fault planes to plot.')
+elif sfs_srf != None:
+    srf2corners(sfs_srf, cnrs = '%s/srf_cnrs.txt' % (gmt_temp))
 t.leave()
 print('Created template resources (%.2fs)' % (time() - t0))
 
@@ -346,6 +348,13 @@ def render_period(n):
     copyfile(ps_template, ps)
     p = GMTPlot(ps, append = True)
 
+    # prepare cpt
+    cpt_stations = '%s/stations.cpt' % (swd)
+    # overlay colour scale
+    makecpt(cpt, cpt_stations, cpt_min[n], cpt_max[n], \
+            inc = cpt_inc[n], invert = 'invert' in cpt_properties, \
+            fg = cpt_fg, bg = cpt_bg, transparency = transparency)
+
     # common title
     if len(title):
         p.text(ll_avg[0], y_max, title, colour = 'black', \
@@ -365,7 +374,7 @@ def render_period(n):
             col_mask = None
         table2grd(station_file, grd_file, file_input = True, \
                 grd_type = grid, region = ll_region, dx = stat_size, \
-                climit = cpt_inc * 0.5, wd = swd, geo = True, \
+                climit = cpt_inc[n] * 0.5, wd = swd, geo = True, \
                 sectors = 4, min_sectors = 1, search = nn_search, \
                 cols = '0,1,%d' % (n + 2), header = 6, \
                 automask = col_mask, mask_dist = grd_mask_dist)
@@ -386,6 +395,10 @@ def render_period(n):
     # ticks on top otherwise parts of map border may be drawn over
     p.ticks(major = statplot.tick_major, minor = statplot.tick_minor, sides = 'ws')
 
+    # colour scale
+    p.cpt_scale(3, -0.5, cpt_stations, cpt_tick[n], cpt_inc[n], \
+        label = legend, \
+        arrow_f = cpt_max[n] > 0, arrow_b = cpt_min[n] < 0)
 
     # create PNG
     p.finalise()

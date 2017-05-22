@@ -140,7 +140,7 @@ def auto_tick(x_min, x_max, width):
         else:
             break
     # minor tick 10 times per major unless ending with 5 in which case 5 times
-    minor_tick = major_tick / 10.0 / (((i + 2) % 3 == 0) + 1)
+    minor_tick = major_tick / 10.0 / (2 - ((i + 2) % 3 == 0))
 
     return major_tick, minor_tick
 
