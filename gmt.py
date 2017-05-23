@@ -51,6 +51,18 @@ else:
 
 # GMT 5.2+ argument mapping
 GMT52_POS = {'map':'g', 'plot':'x', 'norm':'n', 'rel':'j', 'rel_out':'J'}
+# LINZ DATA
+LINZ_COAST = {
+        '150k':'/home/nesi00213/PlottingData/Paths/lds-nz-coastlines-and-islands/150k.gmt'
+}
+LINZ_LAKE = {
+        '150k':'/home/nesi00213/PlottingData/Paths/lds-nz-lake-polygons/150k.gmt',
+        '1500k':'/home/nesi00213/PlottingData/Paths/lds-nz-lake-polygons/1500k.gmt',
+        '1250k':'/home/nesi00213/PlottingData/Paths/lds-nz-lake-polygons/1250k.gmt'
+}
+LINZ_RIVER = {
+    '150k':'/home/nesi00213/PlottingData/Paths/lds-nz-river-polygons/150k.gmt'
+}
 
 ###
 ### COMMON RESOURCES
@@ -1037,16 +1049,39 @@ class GMTPlot:
         tproc.communicate('\n'.join(xyan))
         tproc.wait()
 
-    def water(self, colour = 'lightblue', res = 'f'):
+    def water(self, colour = 'lightblue', res = '150k'):
         """
         Adds water areas.
         colour: colour of water
-        res: resolution
+        res: resolution of GMT internal data (f,h,i,l,c)
+                or use LINZ data (150k, 1250k, 1500k)
         """
         # GMT land areas are made up of smaller segments
         # as such you can see lines on them and affect visuals
         # therefore the entire area is filled, but then clipped to water
         # pscoast etc can also slightly overlay tickmark (map) outline
+
+        # using LINZ data
+        if len(res) > 1:
+            # start cropping inverted (-N) land area
+            Popen([GMT, 'psclip', '-J', '-R', '-K', '-O', \
+                    LINZ_COAST[res], '-N'], \
+                    stdout = self.psf, cwd = self.wd).wait()
+            # fill map with water colour
+            Popen([GMT, 'pscoast', '-J', '-R', '-G%s' % (colour), \
+                '-Dc', '-K', '-O', '-S%s' % (colour)], \
+                stdout = self.psf, cwd = self.wd).wait()
+            # finish crop
+            Popen([GMT, 'psclip', '-C', '-K', '-O'], \
+                    stdout = self.psf, cwd = self.wd).wait()
+            # also add lakes and rivers
+            Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', \
+                    '-G%s' % (colour), LINZ_LAKE[res]], \
+                    stdout = self.psf, cwd = self.wd).wait()
+            Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', \
+                    '-G%s' % (colour), LINZ_RIVER[res]], \
+                    stdout = self.psf, cwd = self.wd).wait()
+            return
 
         # start cropping to only show wet areas
         Popen([GMT, 'pscoast', '-J', '-R', '-D%s' % (res), \
@@ -1054,18 +1089,26 @@ class GMTPlot:
                 stdout = self.psf, cwd = self.wd).wait()
         # fill land and water to prevent segment artifacts
         Popen([GMT, 'pscoast', '-J', '-R', '-G%s' % (colour), \
-                '-D%s' % (res), '-K', '-O', '-S%s' % (colour)], \
+                '-Dc', '-K', '-O', '-S%s' % (colour)], \
                 stdout = self.psf, cwd = self.wd).wait()
         # crop (-Q) land area off to show only water
         Popen([GMT, 'pscoast', '-J', '-R', '-Q', '-K', '-O'], \
                 stdout = self.psf, cwd = self.wd).wait()
 
-    def land(self, fill = 'lightgray', res = 'f'):
+    def land(self, fill = 'lightgray', res = '150k'):
         """
         Fills land area.
         fill: colour of land
         res: resolution 'f' full, 'h' high, 'i' intermediate, 'l' low, 'c' crude
         """
+
+        # LINZ correct res option
+        if len(res) > 1:
+            Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', \
+                    '-G%s' % (fill), LINZ_COAST[res]], \
+                    stdout = self.psf, cwd = self.wd).wait()
+            return
+
         # just like with water, land will show segment artifacts
         # therefore the whole area needs to be filled
         # then cropped to only include land
@@ -1103,13 +1146,21 @@ class GMTPlot:
                 '-C%s' % (cpt), '-J', '-R', '-K', '-O', '-Q'], \
                 stdout = self.psf, cwd = self.wd).wait()
 
-    def coastlines(self, width = 0.3, colour = 'black', res = 'f'):
+    def coastlines(self, width = 0.3, colour = 'black', res = '150k'):
         """
         Draws outline of land.
         width: thickness of line
         colour: colour of line
         res: resolution of coastlines
         """
+        # LINZ correct high res option
+        if len(res) > 1:
+            Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', \
+                    '-W%s,%s' % (width, colour), LINZ_COAST[res]], \
+                    stdout = self.psf, cwd = self.wd).wait()
+            return
+
+        # internal GMT GSHHG rough traces
         Popen([GMT, 'pscoast', '-J', '-R', '-D%s' % (res), '-K', '-O', \
                 '-W%s,%s' % (width, colour)], \
                 stdout = self.psf, cwd = self.wd).wait()
