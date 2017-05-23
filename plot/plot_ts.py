@@ -179,6 +179,10 @@ b.text(x_min, y_max, plot.vel_model, size = 14, align = 'LB', dy = 0.1)
 b.land(fill = 'darkgreen')
 b.topo(plot.topo_file_high, cpt = cpt_land)
 b.water(colour = 'lightblue', res = 'f')
+b.path('/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gmt', \
+        width = '0.2p', colour = 'white')
+b.path('/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt', \
+        width = '0.4p', colour = 'yellow')
 b.cpt_scale(3, -0.5, cpt_overlay, tsplot.cpt_inc, tsplot.cpt_inc, \
         label = tsplot.cpt_legend, arrow_f = tsplot.cpt_max > 0, \
         arrow_b = tsplot.cpt_min < 0)

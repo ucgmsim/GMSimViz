@@ -306,6 +306,10 @@ t.spacial('M', ll_region, sizing = statplot.width, \
 t.land(fill = 'darkgreen')
 t.topo(statplot.topo_file, cpt = cpt_land)
 t.water(colour = 'lightblue', res = 'f')
+t.path('/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gmt', \
+        width = '0.2p', colour = 'white')
+t.path('/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt', \
+        width = '0.4p', colour = 'yellow')
 t.coastlines()
 try:
     # simulation domain if loaded before

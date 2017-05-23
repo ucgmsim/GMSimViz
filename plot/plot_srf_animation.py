@@ -166,6 +166,10 @@ def zoom_sequence(frame):
     z.land(fill = 'darkgreen')
     z.topo(topo_file, cpt = cpt_topo)
     z.water()
+    z.path('/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gmt', \
+            width = zfactor, colour = 'gray')
+    z.path('/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt', \
+            width = zfactor * 2, colour = 'white')
     z.fault(srf_corners, is_srf = False, top_width = zfactor * 2, \
             plane_width = zfactor, hyp_width = zfactor)
     z.coastlines(width = 0.2)
@@ -209,6 +213,10 @@ b.spacial('M', region_srf, sizing = map_width)
 b.land(fill = 'darkgreen')
 b.topo(topo_file, cpt = cpt_topo)
 b.water()
+b.path('/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gmt', \
+        width = '1p', colour = 'white')
+b.path('/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt', \
+        width = '2p', colour = 'yellow')
 # fault thickness must be related to zfactor used during zoom
 b.fault(srf_corners, is_srf = False, \
         plane_width = '1', hyp_width = '1', top_width = '2')
