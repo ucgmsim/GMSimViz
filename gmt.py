@@ -10,7 +10,7 @@ add support for different interpolation methods
 avg_ll calculated elsewhere should be local function that works over equator
 """
 
-from math import ceil, log10
+from math import ceil, log10, sqrt
 import os
 from shutil import copyfile, move
 from subprocess import call, PIPE, Popen
@@ -63,6 +63,19 @@ LINZ_LAKE = {
 LINZ_RIVER = {
     '150k':'/home/nesi00213/PlottingData/Paths/lds-nz-river-polygons/150k.gmt'
 }
+LINZ_ROAD = '/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gmt'
+LINZ_HWY = '/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt'
+# OTHER GEO DATA
+TOPO_HIGH = '/nesi/projects/nesi00213/PlottingData/Topo/srtm_all_filt_nz.grd'
+# CPT DATA
+CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plot', 'cpt')
+CPTS = {
+    'nztopo-green-brown':os.path.join(CPT_DIR, 'palm_springs_nz_topo.cpt'),
+    'mmi':os.path.join(CPT_DIR, 'mmi.cpt'),
+    'slip':os.path.join(CPT_DIR, 'slip.cpt'),
+    'trise':os.path.join(CPT_DIR, 'trise.cpt')
+}
+
 
 ###
 ### COMMON RESOURCES
@@ -1145,6 +1158,46 @@ class GMTPlot:
         Popen([GMT, 'grdimage', topo_file, '-I%s' % (topo_file_illu), \
                 '-C%s' % (cpt), '-J', '-R', '-K', '-O', '-Q'], \
                 stdout = self.psf, cwd = self.wd).wait()
+
+    def basemap(self, land = 'darkgreen', water = 'lightblue', \
+                topo = TOPO_HIGH, topo_cpt = 'green-brown', \
+                coastlines = 'auto', \
+                highway = 'auto', highway_colour = 'yellow', \
+                road = 'auto', road_colour = 'white'):
+        """
+        Adds land/water/features to map.
+        highway: thickness of highway paths or None
+        highway_colour: colour of highway paths
+        road: thickness of road paths or None
+        road_colour: colour of road paths
+        """
+        # auto sizing factor calculation
+        region = map(float, self.history('R').split('/'))
+        km = geo.ll_dist(region[0], region[2], region[1], region[3])
+        size = mapproject(region[1], region[3], wd = self.wd, unit = 'inch')
+        inch = sqrt(sum(np.power(size, 2)))
+        refs = inch / (km * 0.618)
+
+        if land != None:
+            self.land(fill = land)
+        if topo != None:
+            if topo_cpt == 'green-brown':
+                topo_cpt = CPTS['nztopo-green-brown']
+            self.topo(topo, cpt = topo_cpt)
+        if water != None:
+            self.water(colour = water)
+        if road != None:
+            if road == 'auto':
+                road = '%sp' % (refs * 2)
+            self.path(LINZ_ROAD, width = road, colour = road_colour)
+        if highway != None:
+            if highway == 'auto':
+                highway = '%sp' % (refs * 4)
+            self.path(LINZ_HWY, width = highway, colour = highway_colour)
+        if coastlines != None:
+            if coastlines == 'auto':
+                coastlines = '%sp' % (refs * 3)
+            self.coastlines(width = coastlines)
 
     def coastlines(self, width = 0.3, colour = 'black', res = '150k'):
         """

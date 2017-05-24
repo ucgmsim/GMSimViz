@@ -163,16 +163,9 @@ def zoom_sequence(frame):
     z = gmt.GMTPlot(ps_file, append = True, reset = False)
     z.spacial('M', plot_region, sizing = plot_width, \
             x_shift = x_margin, y_shift = y_margin)
-    z.land(fill = 'darkgreen')
-    z.topo(topo_file, cpt = cpt_topo)
-    z.water()
-    z.path('/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gmt', \
-            width = zfactor, colour = 'gray')
-    z.path('/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt', \
-            width = zfactor * 2, colour = 'white')
+    z.basemap()
     z.fault(srf_corners, is_srf = False, top_width = zfactor * 2, \
             plane_width = zfactor, hyp_width = zfactor)
-    z.coastlines(width = 0.2)
     z.ticks()
     z.finalise()
     z.png(dpi = dpi, out_dir = out)
@@ -210,13 +203,7 @@ b.cpt_scale('R', 'B', cpt_sliprate, cpt_max / 10., cpt_max / 50., \
         length = map_height - 0.2, thickness = 0.2, \
         dx = 0.2, pos = 'rel_out', align = 'LB', label = 'Slip Rate (cm/s)')
 b.spacial('M', region_srf, sizing = map_width)
-b.land(fill = 'darkgreen')
-b.topo(topo_file, cpt = cpt_topo)
-b.water()
-b.path('/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gmt', \
-        width = '1p', colour = 'white')
-b.path('/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt', \
-        width = '2p', colour = 'yellow')
+b.basemap()
 # fault thickness must be related to zfactor used during zoom
 b.fault(srf_corners, is_srf = False, \
         plane_width = '1', hyp_width = '1', top_width = '2')
