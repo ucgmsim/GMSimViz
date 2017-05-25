@@ -47,13 +47,10 @@ import numpy as np
 
 import qcore_path
 from shared import get_corners
+import geo
 from gmt import *
 from srf import srf2corners
-try:
-    import params_base as sim_params
-    SIM_DIR = True
-except ImportError:
-    SIM_DIR = False
+
 script_dir = os.path.abspath(os.path.dirname(__file__))
 if not os.path.exists('params_plot.py'):
     copyfile('%s/params_plot.template.py' % (script_dir), 'params_plot.py')
@@ -70,8 +67,34 @@ except AssertionError:
     print('Cannot find input file: %s' % (station_file))
     exit(1)
 
+# check for sim data
+try:
+    import params_base as sim_params
+    SIM_DIR = True
+except ImportError:
+    SIM_DIR = False
+
+# find files in standard folder structure
+# working directory must be base of structure for this functionality
+base_dir = os.path.abspath(os.getcwd())
+event_name = os.path.basename(base_dir.rstrip(os.sep))
+event_name = '_'.join(event_name.split('_')[:3])
+# default values - nothing found
+sfs_modelparams = None
+sfs_srf = None
+try:
+    sfs_modelparams = glob('%s/VM/Model/%s/*/model_params_*' % (base_dir, event_name))[0]
+except IndexError:
+    pass
+try:
+    sfs_srf = glob('%s/Src/Model/*/Srf/*.srf' % (base_dir))[0]
+except IndexError:
+    pass
+
 # all numerical values in input
-val_pool = np.loadtxt(station_file, dtype = 'f', skiprows = 6)[:, 2:].flatten()
+val_pool = np.atleast_2d( \
+        np.loadtxt(station_file, dtype = 'f', skiprows = 6)[:, 2:].T)
+ncol = val_pool.shape[0]
 
 # process file header
 print('Processing input header...')
@@ -108,9 +131,12 @@ with open(station_file) as statf:
         cpt_properties = []
     if len(cpt_info) > 1:
         stat_size = cpt_info[1].split(':')[0]
+        # also default nearneighbor search distance
+        nn_search = stat_size
         # default properties
         shape = 't'
         grid = None
+        grd_mask_dist = None
         try:
             stat_properties = cpt_info[1].split(':')[1].split(',')
             for p in stat_properties:
@@ -118,6 +144,10 @@ with open(station_file) as statf:
                     shape = p[6]
                 elif p[:2] == 'g-':
                     grid = p[2:]
+                elif p[:3] == 'nns-':
+                    nn_search = p[3:]
+                elif p[:6] == 'gmask-':
+                    grd_mask_dist = p[6:]
         except IndexError:
             stat_properties = []
 
@@ -125,23 +155,31 @@ with open(station_file) as statf:
     # cpt_min, cpt_max, cpt_inc, cpt_tick
     cpt_info2 = head[3].split()
     if len(cpt_info2) > 1:
-        cpt_min, cpt_max = map(float, cpt_info2[:2])
+        usr_min, usr_max = map(float, cpt_info2[:2])
+        cpt_min = [usr_min] * ncol
+        cpt_max = [usr_max] * ncol
     else:
-        cpt_max = np.percentile(val_pool, 99.5)
-        # 2 significant figures
-        cpt_max = round(cpt_max, 2 - int(np.floor(np.log10(cpt_max))) - 1)
-        if val_pool.min() < 0:
-            cpt_min = -cpt_max
-        else:
-            cpt_min = 0
+        cpt_min = []
+        cpt_max = np.percentile(val_pool, 99.5, axis = 1)
+        cpt_inc = []
+        cpt_tick = []
+        for i in xrange(len(cpt_max)):
+            if cpt_max[i] > 115:
+                # 2 significant figures
+                cpt_max[i] = round(cpt_max[i], 1 - int(np.floor(np.log10(cpt_max[i]))))
+            else:
+                # 1 significant figures
+                cpt_max[i] = round(cpt_max[i], - int(np.floor(np.log10(cpt_max[i]))))
+            if val_pool[i].min() < 0:
+                cpt_min.append(-cpt_max)
+            else:
+                cpt_min.append(0)
+            cpt_inc.append(cpt_max[i] / 10.)
+            cpt_tick.append(cpt_inc[i] * 2.)
     if len(cpt_info2) > 2:
-        cpt_inc = float(cpt_info2[2])
-    else:
-        cpt_inc = cpt_max / 6.
+        cpt_inc = [float(cpt_info2[2])] * ncol
     if len(cpt_info2) > 3:
-        cpt_tick = float(cpt_info2[3])
-    else:
-        cpt_tick = cpt_inc * 2
+        cpt_tick = [float(cpt_info2[3])] * ncol
 
     # 5th line ncols and optional column label prefix
     col_info = head[4].split()
@@ -171,42 +209,35 @@ if len(sys.argv) > 2:
     statplot.out_dir = os.path.abspath(sys.argv[2])
 # clear output dirs
 for out_dir in [statplot.out_dir, gmt_temp]:
-    if os.path.isdir(out_dir):
-        rmtree(out_dir)
-    os.makedirs(out_dir)
+    if not os.path.isdir(out_dir):
+        os.makedirs(out_dir)
 
-if SIM_DIR:
-    if os.path.exists(sim_params.MODELPARAMS):
+###
+### boundaries
+###
+if statplot.region == None and (SIM_DIR or sfs_modelparams != None):
+    try:
         corners, cnr_str = get_corners(sim_params.MODELPARAMS, gmt_format = True)
-    else:
-        print("MODELPARAMS path in params_base.py is invalid.")
-        print("Looking for XYTS file to extract simulation boundary instead.")
-        # xyts file is placed here in some cases when transferred from fitzroy
-        try:
-            if os.path.exists(sim_params.xyts_files[0]):
-                xytsf = XYTSFile(sim_params.xyts_files[0])
-                corners, cnr_str = xytsf.corners(gmt_format = True)
-        except NameError:
-            print('Couldn\'t find simulation domain. Fix params_base.py.')
-
-if statplot.region == None and SIM_DIR:
+    except (NameError, IOError):
+        corners, cnr_str = get_corners(sfs_modelparams, gmt_format = True)
+    # path following sim domain curved on mercator like projections
+    fine_path = geo.path_from_corners(corners = corners, output = None)
     # fit simulation region
-    x_min = min([xy[0] for xy in corners])
-    x_max = max([xy[0] for xy in corners])
-    y_min = min([xy[1] for xy in corners])
-    y_max = max([xy[1] for xy in corners])
+    x_min = min([xy[0] for xy in fine_path])
+    x_max = max([xy[0] for xy in fine_path])
+    y_min = min([xy[1] for xy in fine_path])
+    y_max = max([xy[1] for xy in fine_path])
 elif statplot.region == None:
     # fit all values
-    xy = np.loadtxt(station_file, dtype = 'f', skiprows = 6)[:, :2]
+    xy = np.loadtxt(station_file, skiprows = 6, usecols = (0, 1), dtype = 'f')
     x_min, y_min = np.min(xy, axis = 0) - 0.1
     x_max, y_max = np.max(xy, axis = 0) + 0.1
 else:
     x_min, x_max, y_min, y_max = statplot.region
-
-# avg lon/lat (midpoint of plotting region)
-ll_avg = (x_min + x_max) / 2.0, (y_min + y_max) / 2.0
 # combined region
 ll_region = (x_min, x_max, y_min, y_max)
+# avg lon/lat (midpoint of plotting region)
+ll_avg = sum(ll_region[:2]) / 2, sum(ll_region[2:]) / 2
 
 # create masking if using grid overlay
 if grid != None:
@@ -223,7 +254,27 @@ if grid != None:
     grd_mask('%s/sim.modelpath_hr' % (gmt_temp), mask, \
             dx = stat_size, dy = stat_size, region = ll_region)
 
-if statplot.sites == None or statplot.sites == 'major':
+# work out an ideal tick increment (ticks per inch)
+# x axis is more constrainig
+if statplot.tick_major == None:
+    try:
+        width = float(statplot.width)
+    except ValueError:
+        # expecting a unit suffix even though formula only works for inches
+        width = float(statplot.width[:-1])
+    statplot.tick_major, statplot.tick_minor = \
+            auto_tick(x_min, x_max, width)
+elif statplot.tick_minor == None:
+    statplot.tick_minor = statplot.tick_major / 5.
+
+if statplot.sites == None:
+    region_sites = []
+if statplot.sites == 'auto':
+    if x_max - x_min > 3:
+        region_sites = sites_major
+    else:
+        region_sites = sites.keys()
+elif statplot.sites == 'major':
     region_sites = sites_major
 elif statplot.sites == 'all':
     region_sites = sites.keys()
@@ -236,7 +287,6 @@ else:
 ######################################################
 
 cpt_land = '%s/land.cpt' % (gmt_temp)
-cpt_stations = '%s/stations.cpt' % (gmt_temp)
 ps_template = '%s/template.ps' % (gmt_temp)
 
 ### create resources that are used throughout the process
@@ -245,10 +295,6 @@ t0 = time()
 makecpt('%s/cpt/palm_springs_1.cpt' % \
         (os.path.abspath(os.path.dirname(__file__))), cpt_land, \
         -250, 9000, inc = 10, invert = True)
-# overlay colour scale
-makecpt(cpt, cpt_stations, cpt_min, cpt_max, \
-        inc = cpt_inc, invert = 'invert' in cpt_properties, \
-        fg = cpt_fg, bg = cpt_bg, transparency = transparency)
 
 ### create a basemap template which all maps start with
 t = GMTPlot(ps_template)
@@ -260,10 +306,11 @@ t.spacial('M', ll_region, sizing = statplot.width, \
 t.land(fill = 'darkgreen')
 t.topo(statplot.topo_file, cpt = cpt_land)
 t.water(colour = 'lightblue', res = 'f')
+t.path('/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gmt', \
+        width = '0.2p', colour = 'white')
+t.path('/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt', \
+        width = '0.4p', colour = 'yellow')
 t.coastlines()
-t.cpt_scale(3, -0.5, cpt_stations, cpt_tick, cpt_inc, \
-        label = legend, \
-        arrow_f = cpt_max > 0, arrow_b = cpt_min < 0)
 try:
     # simulation domain if loaded before
     t.path(cnr_str, is_file = False, split = '-', \
@@ -279,8 +326,8 @@ if SIM_DIR:
             copyfile(sim_params.srf_cnrs[0], '%s/srf_cnrs.txt' % (gmt_temp))
     except AttributeError:
         print('SRF or corners file not found, not adding fault planes to plot.')
-# ticks on top otherwise parts of map border may be drawn over
-t.ticks(major = statplot.tick_major, minor = statplot.tick_minor, sides = 'ws')
+elif sfs_srf != None:
+    srf2corners(sfs_srf, cnrs = '%s/srf_cnrs.txt' % (gmt_temp))
 t.leave()
 print('Created template resources (%.2fs)' % (time() - t0))
 
@@ -305,15 +352,17 @@ def render_period(n):
     copyfile(ps_template, ps)
     p = GMTPlot(ps, append = True)
 
+    # prepare cpt
+    cpt_stations = '%s/stations.cpt' % (swd)
+    # overlay colour scale
+    makecpt(cpt, cpt_stations, cpt_min[n], cpt_max[n], \
+            inc = cpt_inc[n], invert = 'invert' in cpt_properties, \
+            fg = cpt_fg, bg = cpt_bg, transparency = transparency)
+
     # common title
     if len(title):
         p.text(ll_avg[0], y_max, title, colour = 'black', \
                 align = 'CB', size = 28, dy = 0.2)
-
-    # title for this data column
-    if len(col_labels):
-        p.text(x_min, y_max, col_labels[n], colour = label_colour, \
-                align = 'LB', size = '18p', dx = 0.2, dy = -0.35)
 
     # add ratios to map
     if grid == None:
@@ -322,11 +371,17 @@ def render_period(n):
                 cols = '0,1,%d' % (n + 2), header = 6)
     else:
         grd_file = '%s/overlay.grd' % (swd)
+        if grd_mask_dist != None:
+            col_mask = '%s/column_mask.grd' % (swd)
+            mask = col_mask
+        else:
+            col_mask = None
         table2grd(station_file, grd_file, file_input = True, \
                 grd_type = grid, region = ll_region, dx = stat_size, \
-                climit = cpt_inc * 0.5, wd = swd, geo = True, \
-                sectors = 4, min_sectors = 1, search = stat_size, \
-                cols = '0,1,%d' % (n + 2), header = 6)
+                climit = cpt_inc[n] * 0.5, wd = swd, geo = True, \
+                sectors = 4, min_sectors = 1, search = nn_search, \
+                cols = '0,1,%d' % (n + 2), header = 6, \
+                automask = col_mask, mask_dist = grd_mask_dist)
         p.overlay(grd_file, cpt_stations, dx = stat_size, dy = stat_size, \
                 crop_grd = mask, land_crop = False, transparency = transparency)
     # add srf to map
@@ -335,6 +390,19 @@ def render_period(n):
                 plane_width = 0.5, top_width = 1, hyp_width = 0.5)
     # add locations to map
     p.sites(region_sites)
+
+    # title for this data column
+    if len(col_labels):
+        p.text(x_min, y_max, col_labels[n], colour = label_colour, \
+                align = 'LB', size = '18p', dx = 0.2, dy = -0.35)
+
+    # ticks on top otherwise parts of map border may be drawn over
+    p.ticks(major = statplot.tick_major, minor = statplot.tick_minor, sides = 'ws')
+
+    # colour scale
+    p.cpt_scale(3, -0.5, cpt_stations, cpt_tick[n], cpt_inc[n], \
+        label = legend, \
+        arrow_f = cpt_max[n] > 0, arrow_b = cpt_min[n] < 0)
 
     # create PNG
     p.finalise()

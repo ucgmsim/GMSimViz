@@ -254,6 +254,10 @@ p.text(x_min, y_max, plot.vel_model, size = 14, align = 'LB', dy = 0.1)
 # common features
 p.topo(plot.topo_file_low, cpt = cpt_land)
 p.water(colour = 'lightblue', res = 'f')
+p.path('/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gmt', \
+        width = '0.2p', colour = 'white')
+p.path('/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt', \
+        width = '0.4p', colour = 'yellow')
 # stations - split into real and virtual
 with open(stat_file, 'r') as sf:
     stations = sf.readlines()
