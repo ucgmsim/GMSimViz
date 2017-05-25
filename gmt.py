@@ -67,6 +67,7 @@ LINZ_ROAD = '/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gm
 LINZ_HWY = '/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt'
 # OTHER GEO DATA
 TOPO_HIGH = '/nesi/projects/nesi00213/PlottingData/Topo/srtm_all_filt_nz.grd'
+CHCH_WATER = '/home/nesi00213/PlottingData/Paths/water_network/water.gmt'
 # CPT DATA
 CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plot', 'cpt')
 CPTS = {
@@ -1163,7 +1164,8 @@ class GMTPlot:
                 topo = TOPO_HIGH, topo_cpt = 'green-brown', \
                 coastlines = 'auto', \
                 highway = 'auto', highway_colour = 'yellow', \
-                road = 'auto', road_colour = 'white'):
+                road = 'auto', road_colour = 'white', \
+                waternet = None, waternet_colour = 'darkblue'):
         """
         Adds land/water/features to map.
         highway: thickness of highway paths or None
@@ -1194,6 +1196,10 @@ class GMTPlot:
             if highway == 'auto':
                 highway = '%sp' % (refs * 4)
             self.path(LINZ_HWY, width = highway, colour = highway_colour)
+        if waternet != None:
+            if waternet == 'auto':
+                waternet = '%sp' % (refs * 0.1)
+            self.path(CHCH_WATER, width = waternet, colour = waternet_colour)
         if coastlines != None:
             if coastlines == 'auto':
                 coastlines = '%sp' % (refs * 3)
