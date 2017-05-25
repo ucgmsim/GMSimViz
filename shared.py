@@ -14,7 +14,10 @@ import sys
 def write_to_py(pyfile,vardict):
     with open(pyfile,'w') as fp:
         for key,value in vardict.iteritems():
-            fp.write('%s="%s"\n'%(key,value))
+            if type(value) == str:
+                fp.write('%s="%s"\n'%(key,value))
+            else:
+                fp.write('%s=%s\n'%(key,value))
 
 # reads a parameter from the parameters file (e3d.par)
 # should not be necessary as you can just 'from params import *' (params.py)
