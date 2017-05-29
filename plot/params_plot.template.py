@@ -23,8 +23,9 @@ class TS:
     component = -1
     # width of map area
     width = '6i'
-    major_tick = '1d'
-    minor_tick = '30m'
+    # map tick labels. examples include '1d', '0.5d', '30m'
+    major_tick = None
+    minor_tick = None
     # timeslices should be relatively low DPI for video
     dpi = 96
     # larger overlay grd limit improves speed, too large = bad results
@@ -64,6 +65,10 @@ class TS:
     seis_colour = 'red'
     # 'time' if data move, 'inc' if data extends
     seis_fmt = 'time'
+    # 'major' only include major sites, 'all' include all sites,
+    # 'auto' to choose between major and all, None for [] (no sites listed)
+    # or specify list of sites manualy ['Kaikoura', 'Wellington']...
+    sites = 'auto'
 
 # PGV plotting
 class PGV(TS):

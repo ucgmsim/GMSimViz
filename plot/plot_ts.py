@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.abspath(os.path.curdir))
 # copy params_plot template from repo if it doesn't exist
 script_dir = os.path.dirname(os.path.abspath(__file__))
 if not os.path.exists('params_plot.py'):
-    copy('%s/params_plot.template.py' % (script_dir), './')
+    copy('%s/params_plot.template.py' % (script_dir), './params_plot.py')
 
 import qcore_path
 from geo import path_from_corners
@@ -100,10 +100,6 @@ else:
     x_max = max([xy[0] for xy in corners])
     y_min = min([xy[1] for xy in corners])
     y_max = max([xy[1] for xy in corners])
-    # default set includes sites that wouldn't be crowded on an NZ map
-    #region_sites = sites_major
-    # alternative if reion is very small - display all defined sites
-    region_sites = sites.keys()
 
 # avg lon/lat (midpoint of plotting region)
 ll_avg = (x_min + x_max) / 2.0, (y_min + y_max) / 2.0
@@ -126,6 +122,31 @@ template_top = '%s/top.ps' % (gmt_temp)
 ### create resources that are used throughout the process
 ###
 t0 = time()
+# AUTOPARAMS - sites
+if tsplot.sites == None:
+    region_sites = []
+elif tsplot.sites == 'auto':
+    if x_max - x_min > 3:
+        region_sites = sites_major
+    else:
+        region_sites = sites.keys()
+elif tsplot.sites == 'major':
+    region_sites = sites_major
+elif tsplot.sites == 'all':
+    region_sites = sites.keys()
+else:
+    region_sites = tsplot.sites
+# AUTOPARAMS - tick labels
+if tsplot.major_tick == None:
+    try:
+        width = float(tsplot.width)
+    except ValueError:
+        # expecting a unit suffix even though formula only works for inches
+        width = float(tsplot.width[:-1])
+    tsplot.major_tick, tsplot.minor_tick = \
+            auto_tick(x_min, x_max, width)
+elif tsplot.minor_tick == None:
+    tsplot.minor_tick = tsplot.tick_major / 5.
 # AUTOPARAMS - overlay spacing
 if tsplot.grd_dx == None or tsplot.grd_dy == None:
     # TODO: work out x, y spacing considering rotation of data

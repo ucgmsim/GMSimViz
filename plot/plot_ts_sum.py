@@ -220,14 +220,23 @@ print('PAGER MMI input ready.')
 print ('Plotting PGV and MMI...')
 # resources
 ll_avg = (x_min + x_max) / 2.0, (y_min + y_max) / 2.0
-plot_sites = gmt.sites_major
+if (x_max - x_min) > 3:
+    plot_sites = gmt.sites_major
+else:
+    plot_sites = gmt.sites.keys()
+if pgvplot.major_tick == None:
+    try:
+        width = float(pgvplot.width)
+    except ValueError:
+        # expecting a unit suffix even though formula only works for inches
+        width = float(pgvplot.width[:-1])
+    pgvplot.tick_major, pgvplot.minor_tick = \
+            gmt.auto_tick(x_min, x_max, width)
+elif pgvplot.minor_tick == None:
+    pgvplot.minor_tick = pgvplot.major_tick / 5.
 # colour palettes
-cpt_land = '%s/land.cpt' % (gmt_temp)
 cpt_pgv = '%s/pgv.cpt' % (gmt_temp)
 cpt_mmi = '%s/cpt/mmi.cpt' % (os.path.abspath(os.path.dirname(__file__)))
-gmt.makecpt('%s/cpt/palm_springs_1.cpt' % \
-        (os.path.abspath(os.path.dirname(__file__))), \
-        cpt_land, -250, 9000, inc = 10, invert = True)
 if scenarios == 1:
     reference = '%s/PGV.bin' % (gmt_temp)
 else:
@@ -252,12 +261,7 @@ p.spacial('M', plot_region, sizing = pgvplot.width, \
 p.text(x_min, y_max, plot.fault_model, size = 14, align = 'LB', dy = 0.3)
 p.text(x_min, y_max, plot.vel_model, size = 14, align = 'LB', dy = 0.1)
 # common features
-p.topo(plot.topo_file_low, cpt = cpt_land)
-p.water(colour = 'lightblue', res = 'f')
-p.path('/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gmt', \
-        width = '0.2p', colour = 'white')
-p.path('/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt', \
-        width = '0.4p', colour = 'yellow')
+p.basemap()
 # stations - split into real and virtual
 with open(stat_file, 'r') as sf:
     stations = sf.readlines()

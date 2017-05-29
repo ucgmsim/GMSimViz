@@ -107,7 +107,7 @@ if len(sys.argv) < 4:
     print('USAGE: %s <prepare|retrieve|auto> <src> <dest>' % (sys.argv[0]))
     exit(1)
 if sys.argv[1] == 'prepare':
-    from shared_srf import srf2corners
+    from srf import srf2corners
 
     if os.path.isdir(sys.argv[2]):
         prepare(os.path.abspath(sys.argv[2]), sys.argv[3])
@@ -140,9 +140,12 @@ elif sys.argv[1] == 'auto':
     # make sure user has temp directory
     Popen(['ssh', '%s@fitzroy.nesi.org.nz' % (ruser), \
             'mkdir -p %s' % (rtemp)]).wait()
+    # everything is put in same location, no need for qcore_path.py
+    Popen(['ssh', '%s@fitzroy.nesi.org.nz' % (ruser), \
+            'touch %s/qcore_path.py' % (rtemp)]).wait()
     # copy scripts to remote temp
-    Popen(['scp', __file__, '%s/shared_srf.py' % (lbase), \
-            '%s/tools.py' % (lbase),\
+    Popen(['scp', __file__, '%s/../srf.py' % (lbase), \
+            '%s/../geo.py' % (lbase),\
             '%s@fitzroy.nesi.org.nz:%s/' % (ruser, rtemp)]).wait()
     # run prepare in temp
     Popen(['ssh', '%s@fitzroy.nesi.org.nz' % (ruser), \

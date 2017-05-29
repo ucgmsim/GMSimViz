@@ -737,6 +737,39 @@ def adjust_latitude(projection, width, height, region, wd = '.', \
 
     return new_height, region
 
+def fill_space(space_x, space_y, region, dpi, proj = 'M', wd = '.'):
+    """
+    Given minimal region, extend vertically or horizontally to fit avaliable space.
+    Only works with perpendicular north, east projections.
+    Will return exact dimentions and extended region.
+    """
+    # scale image size to fit and extend to prevent letterboxing
+    # note map project units may be different but ratios remain same
+    letterbox_width, letterbox_height = \
+            mapproject(region[1], region[3], \
+            projection = '%s%s' % (proj, space_x), \
+            region = region, wd = wd)
+    # make sure total height fits into square of max_edge sides
+    if letterbox_height > space_y:
+        letterbox_width, letterbox_height = map_width(proj, space_y, \
+                region, wd = wd, abs_diff = True, accuracy = 0.4 / float(dpi))
+        # extend longitude to fit width
+        diff_lon = (space_x / float(letterbox_width) \
+                * (region[1] - region[0]) \
+                - (region[1] - region[0])) * 0.5
+        region = (region[0] - diff_lon, region[1] + diff_lon, \
+                region[2], region[3])
+        # adjust final hight very slightly
+        space_x, space_y = mapproject(region[1], region[3], \
+                projection = '%s%s' % (proj, space_x), region = region, wd = wd)
+    else:
+        # extend latitude to fit height
+        space_y, region = adjust_latitude(proj, \
+                space_x, space_y, region, wd = wd, \
+                abs_diff = True, accuracy = 0.4 / float(dpi))
+
+    return space_x, space_y, region
+
 def region_transition(projection, region_start, region_end, \
         space_x, space_y, dpi_target, frame, frame_total, \
         wd = '.', movement = 'sqrt'):

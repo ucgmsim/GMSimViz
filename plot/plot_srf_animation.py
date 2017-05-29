@@ -53,7 +53,7 @@ page_height = 9
 # space around map for titles, tick labels and scales etc
 margin_top = 0.6
 margin_bottom = 0.4
-margin_left = 0.7
+margin_left = 1.0
 margin_right = 1.7
 map_width = page_width - margin_left - margin_right
 map_height = page_height - margin_top - margin_bottom
@@ -99,30 +99,9 @@ srf_frames = int(ceil(rup_time / ftime))
 ###
 region_nz = gmt.nz_region
 region_srf = (srf_x_min, srf_x_max, srf_y_min, srf_y_max)
-# scale image size to fit and extend to prevent letterboxing
-# note map project units may be different but ratios remain same
-letterbox_width, letterbox_height = \
-        gmt.mapproject(region_srf[1], region_srf[3], \
-        projection = 'M%s' % (map_width), \
-        region = region_srf, wd = gwd)
-# make sure total height fits into square of max_edge sides
-if letterbox_height > map_height:
-    letterbox_width, letterbox_height = gmt.map_width('M', map_height, \
-            region_srf, wd = gwd, abs_diff = True, accuracy = 0.4 / float(dpi))
-    # extend longitude to fit width
-    diff_lon = (map_width / float(letterbox_width) \
-            * (region_srf[1] - region_srf[0]) \
-            - (region_srf[1] - region_srf[0])) * 0.5
-    region_srf = (region_srf[0] - diff_lon, region_srf[1] + diff_lon, \
-            region_srf[2], region_srf[3])
-    # adjust final hight very slightly
-    map_width, map_height = gmt.mapproject(region_srf[1], region_srf[3], \
-            projection = 'M%s' % (map_width), region = region_srf, wd = gwd)
-else:
-    # extend latitude to fit height
-    map_height, region_srf = gmt.adjust_latitude('M', \
-            map_width, map_height, region_srf, wd = gwd, \
-            abs_diff = True, accuracy = 0.4 / float(dpi))
+map_width, map_height, region_srf = \
+        gmt.fill_space(map_width, map_height, region_srf, \
+                proj = 'M', dpi = dpi, wd = gwd)
 
 ###
 ### STAGE 2: Zoom from NZ Region
@@ -139,10 +118,6 @@ b.spacial('X', (0, map_width, 0, map_height), \
 b.text(map_width / 2., map_height, os.path.basename(srf_file), \
         dy = 0.2, align = 'CB', size = '20p')
 b.leave()
-# topo colour palette
-cpt_topo = '%s/topo.cpt' % (gwd)
-gmt.makecpt('%s/cpt/palm_springs_1.cpt' % (script_dir), cpt_topo, \
-        -250, 9000, inc = 10, invert = True)
 
 def zoom_sequence(frame):
     # working directory for this process
@@ -164,9 +139,11 @@ def zoom_sequence(frame):
     z.spacial('M', plot_region, sizing = plot_width, \
             x_shift = x_margin, y_shift = y_margin)
     z.basemap()
-    z.fault(srf_corners, is_srf = False, top_width = zfactor * 2, \
-            plane_width = zfactor, hyp_width = zfactor)
-    z.ticks()
+    z.fault(srf_corners, is_srf = False, top_width = zfactor * 2.4, \
+            plane_width = zfactor * 1.2, hyp_width = zfactor * 1.2)
+    tick_major, tick_minor = \
+            gmt.auto_tick(plot_region[0], plot_region[1], plot_width)
+    z.ticks(major = tick_major, minor = tick_minor)
     z.finalise()
     z.png(dpi = dpi, out_dir = out)
     print('Opening zoom sequence %.3d/%.3d complete.' \
@@ -208,6 +185,8 @@ b.basemap()
 b.fault(srf_corners, is_srf = False, \
         plane_width = '1', hyp_width = '1', top_width = '2')
 b.leave()
+tick_major, tick_minor = \
+        gmt.auto_tick(region_srf[0], region_srf[1], map_width)
 
 def slip_sequence(frame):
     # working directory for this process
@@ -244,7 +223,7 @@ def slip_sequence(frame):
                 land_crop = False, custom_region = plane_regions[plane], \
                 transparency = 0)
     s.coastlines(width = 0.2)
-    s.ticks()
+    s.ticks(major = tick_major, minor = tick_minor)
     s.finalise()
     s.png(dpi = dpi, out_dir = out)
     print('Slip sequence %.3d/%.3d complete.' % (frame + 1, srf_frames))
