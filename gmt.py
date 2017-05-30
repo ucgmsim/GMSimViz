@@ -165,8 +165,9 @@ def auto_tick(x_min, x_max, width):
             major_tick *= 2 + ((i + 2) % 3 == 0) * 0.5
         else:
             break
+
     # minor tick 10 times per major unless ending with 5 in which case 5 times
-    minor_tick = major_tick / 10.0 / (2 - ((i + 2) % 3 == 0))
+    minor_tick = major_tick / 10.0 * (2 - ((i + 2) % 3 == 0))
 
     return major_tick, minor_tick
 
@@ -1478,7 +1479,7 @@ class GMTPlot:
                 'norm' for normalised (0-1) coords,
                 'rel' for 2 char position (x, y) as with align
                 'rel_out' as above but default align is opposite to this
-                only 'plot' is available on GMT 5.1
+                only 'plot' is available on GMT <5.2
         align: justification: 'L'eft 'C'entre 'R'ight, 'B'ottom 'M'iddle 'T'op
         dx: offset x position by distance units
         dy: offset y position by distance units

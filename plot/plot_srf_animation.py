@@ -43,7 +43,6 @@ if not os.path.exists(gwd):
 ###
 ### STAGE 0: Metadata
 ###
-topo_file = '/home/nesi00213/PlottingData/Topo/srtm_all_filt_nz.grd'
 # dpi is very important for keeping zoomed aspect ratios within same pixel
 # 80 -> 720p, 120 -> 1080p
 dpi = 120

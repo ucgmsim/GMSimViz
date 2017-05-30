@@ -26,8 +26,6 @@ class TS:
     # map tick labels. examples include '1d', '0.5d', '30m'
     major_tick = None
     minor_tick = None
-    # timeslices should be relatively low DPI for video
-    dpi = 96
     # larger overlay grd limit improves speed, too large = bad results
     # default is about 0.2 * cpt increment
     convergence_limit = None
