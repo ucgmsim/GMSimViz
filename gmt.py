@@ -35,20 +35,6 @@ except ImportError:
 gmt_install_bin = ''
 GMT = os.path.join(gmt_install_bin, 'gmt')
 
-# retrieve version of GMT
-gmtp = Popen([GMT, '--version'], stdout = PIPE)
-GMT_VERSION = gmtp.communicate()[0].rstrip()
-gmtp.wait()
-GMT_MAJOR, GMT_MINOR = map(int, GMT_VERSION.split('.')[:2])
-if GMT_MAJOR != 5:
-    print('This library is only for GMT version 5. You have %s.' \
-            % (GMT_VERSION))
-# ps2raster becomes psconvert in GMT 5.2
-elif GMT_MINOR < 2:
-    psconvert = 'ps2raster'
-else:
-    psconvert = 'psconvert'
-
 # GMT 5.2+ argument mapping
 GMT52_POS = {'map':'g', 'plot':'x', 'norm':'n', 'rel':'j', 'rel_out':'J'}
 # LINZ DATA
@@ -77,6 +63,28 @@ CPTS = {
     'trise':os.path.join(CPT_DIR, 'trise.cpt')
 }
 
+def update_gmt_path(gmt_bin):
+    """
+    Allow changing GMT binary location.
+    """
+    global GMT, GMT_VERSION, GMT_MAJOR, GMT_MINOR, psconvert
+
+    GMT = gmt_bin
+    # retrieve version of GMT
+    gmtp = Popen([GMT, '--version'], stdout = PIPE)
+    GMT_VERSION = gmtp.communicate()[0].rstrip()
+    gmtp.wait()
+    GMT_MAJOR, GMT_MINOR = map(int, GMT_VERSION.split('.')[:2])
+
+    if GMT_MAJOR != 5:
+        print('This library is only for GMT version 5. You have %s.' \
+                % (GMT_VERSION))
+    # ps2raster becomes psconvert in GMT 5.2
+    elif GMT_MINOR < 2:
+        psconvert = 'ps2raster'
+    else:
+        psconvert = 'psconvert'
+update_gmt_path(GMT)
 
 ###
 ### COMMON RESOURCES
