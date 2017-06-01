@@ -62,13 +62,25 @@ def test_ticks(pf):
     p.finalise()
     p.png(dpi = 100, clip = True)
 
+def test_cpt(pf):
+    cptf = '%s.cpt' % (os.path.splitext(pf)[0])
+    gmt.makecpt('hot', cptf, 0, 120, inc = 0.1, invert = True, \
+            wd = os.path.dirname(pf))
+    p = gmt.GMTPlot(pf)
+    p.spacial('X', (0, 15, 0, 4), sizing = '15/4')
+    p.cpt_scale(6.1, 2.05, cptf, 20, 5, label = 'test_scale', \
+            length = 3.05, thickness = '0.3i')
+    p.finalise()
+    p.png(dpi = 320, clip = True)
+
 ###
 ### LIST OF FUNCTIONS AND EXPECTED HASH RESULT
 ###
 TESTS = ( \
     (test_coastlines, '61efdfbe4cd9bfd5a90ad86c67013c8d9494abc6'), \
     (test_land, '8c31ef6345aaad068cc4eb3e1d4b3f78cd6fc9a3'), \
-    (test_ticks, 'd625bfb10464664d38f60537686999945eafafe7')
+    (test_ticks, 'd625bfb10464664d38f60537686999945eafafe7'), \
+    (test_cpt, '960032a10ef5fef8f013aab8892082fc4a606c9c')
 )
 
 ###
@@ -84,12 +96,23 @@ def run_test(test, gmt_version):
     t0 = time()
     test[0](pf)
     t = time() - t0
-    ph = sha1(imread('%s.png' % (os.path.splitext(pf)[0]))).hexdigest()
+    try:
+        pp = '%s.png' % (os.path.splitext(pf)[0])
+        ph = sha1(imread(pp)).hexdigest()
+        os.symlink(pp, os.path.join(test_dir, os.path.basename(pp)))
+        os.symlink(pp, os.path.join(test_dir, \
+                test[0].__name__, os.path.basename(pp)))
+    except IOError:
+        print('%s [%s] FAIL (NO OUTPUT) %.2fs' \
+                % (gmt_version, test[0].__name__, t))
+        return False
 
     if ph == test[1]:
-        print('%s [%s] PASS %.2fs' % (gmt_version, test[0].__name__, t))
+        print('%s [%s] PASS %.2fs' \
+                % (gmt_version, test[0].__name__, t))
         return True
-    print('%s [%s] FAIL (%s) %.2fs' % (gmt_v, test[0].__name__, ph, t))
+    print('%s [%s] FAIL (%s) %.2fs' \
+            % (gmt_version, test[0].__name__, ph, t))
     return False
 
 ###
@@ -114,7 +137,7 @@ if rank == MASTER:
         if tag == tags.READY:
             if job < jobs:
                 workload = (TESTS[job % len(TESTS)], \
-                        gmt_versions[job % len(gmt_versions)])
+                        gmt_versions[job // len(TESTS)])
                 comm.send(workload, dest = source, tag = tags.START)
                 job += 1
             else:
@@ -128,6 +151,9 @@ if rank == MASTER:
     print('TESTS: %d' % (jobs))
     print('PASSED: %d' % (passed))
     print('FAILED: %d' % (jobs - passed))
+
+    if jobs == passed:
+        rmtree(test_dir)
 
 else:
     # ASK FOR WORK

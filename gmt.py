@@ -1492,6 +1492,7 @@ class GMTPlot:
         dx: offset x position by distance units
         dy: offset y position by distance units
         cross_tick: tick increment through the colour bar
+        #TODO: option for major and minor = 'auto' or None
         """
         # if the source is a file, make sure path isn't relative because cwd
         if os.path.exists(cpt):
@@ -1529,7 +1530,11 @@ class GMTPlot:
         if cross_tick != None:
             annotation = '%sg%s' % (annotation, cross_tick)
         if label != None:
-            annotation = '%s:%s:' % (annotation, label.replace(':', ''))
+            if GMT_MINOR < 2:
+                annotation = '%s:%s:' \
+                        % (annotation, label.replace(':', ''))
+            else:
+                annotation = '%s+l%s' % (annotation, label)
         cmd.append(annotation)
         if log:
             cmd.append('-Q')

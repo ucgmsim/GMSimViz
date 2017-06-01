@@ -37,7 +37,8 @@ obs_velbb = os.path.join(obs_dir, 'Data', 'velBB')
 if not os.path.exists(obs_velbb):
     print('vellBB folder does not exist: %s.' % (obs_velbb))
     exit(1)
-event_stats = os.path.join(obs_dir, '%s.ll' % (event_name))
+event_stats = os.path.join(base_dir, 'Stat', event_name, \
+        '%s.ll' % (event_name))
 if not os.path.exists(event_stats):
     print('Event stats not found: %s.' % (event_stats))
     exit(1)
@@ -190,11 +191,6 @@ if not os.path.exists(seisplot.wd):
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)
 
-# topography colour scale
-cpt_land = '%s/land.cpt' % (seisplot.wd)
-gmt.makecpt('%s/cpt/palm_springs_1.cpt' % (os.path.dirname(__file__)), \
-        cpt_land, -250, 9000, inc = 10, invert = True)
-
 b = gmt.GMTPlot('%s/%s.ps' % (seisplot.wd, seisplot.name))
 # background can be larger as whitespace is later cropped
 b.background(11, 11)
@@ -203,9 +199,7 @@ b.spacial('M', ll_region, sizing = seisplot.width, \
 # title, fault model and velocity model subtitles
 b.text(ll_avg[0], ll_region[3], seisplot.title, size = 20, dy = 0.2)
 # topo, water, overlay cpt scale
-b.land(fill = 'darkgreen')
-b.topo(plot.topo_file_high, cpt = cpt_land)
-b.water(colour = 'lightblue', res = 'f')
+b.basemap()
 # stations
 b.points(event_stats, shape = 't', size = 0.08, \
         fill = None, line = 'white', line_thickness = 0.8)
