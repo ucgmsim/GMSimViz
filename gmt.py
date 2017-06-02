@@ -1010,6 +1010,9 @@ class GMTPlot:
         fill: colour to fill area with
         """
         # work out projection format
+        if proj.lower() == 't' and lon0 == None:
+            # lon0 is not optional, use centre as default
+            lon0 = sum(map(float, rogion.split('/')[:2])) / 2.
         if lon0 == None:
             gmt_proj = '-J%s%s' % (proj, sizing)
         elif lat0 == None:

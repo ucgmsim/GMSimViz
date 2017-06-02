@@ -1,4 +1,8 @@
 #!/usr/bin/env python2
+"""
+MPI pattern based on
+github.com/jbornschein/mpi4py-examples/blob/master/09-task-pull.py
+"""
 
 from hashlib import sha1
 import os
@@ -62,6 +66,14 @@ def test_ticks(pf):
     p.finalise()
     p.png(dpi = 100, clip = True)
 
+def test_ticks2(pf):
+    p = gmt.GMTPlot(pf)
+    p.spacial('T', (160.992, 174.9122, -44, -34.01), sizing = 5, \
+            x_shift = 0.5, y_shift = 0.5, lon0 = 174.9122)
+    p.ticks(major = '1d', minor = '20m', sides = 'ew')
+    p.finalise()
+    p.png(dpi = 100, clip = True)
+
 def test_cpt(pf):
     cptf = '%s.cpt' % (os.path.splitext(pf)[0])
     gmt.makecpt('hot', cptf, 0, 120, inc = 0.1, invert = True, \
@@ -73,14 +85,38 @@ def test_cpt(pf):
     p.finalise()
     p.png(dpi = 320, clip = True)
 
+def test_cpt2(pf):
+    cptf = '%s.cpt' % (os.path.splitext(pf)[0])
+    gmt.makecpt('polar', cptf, -1.5, 1.5, inc = 0.25, invert = False, \
+            wd = os.path.dirname(pf), bg = '0/0/80', fg = '80/0/0')
+    p = gmt.GMTPlot(pf)
+    p.spacial('X', (0, 4, 0, 2), sizing = '4/2', x_shift = 1, y_shift = 1)
+    p.cpt_scale(0, 0, cptf, 0.5, 0.25, cross_tick = 0.5, align = 'LB', \
+            length = 3, thickness = '0.3i', arrow_f = True, arrow_b = True)
+    p.finalise()
+    p.png(dpi = 222, clip = True)
+
+def test_fill(pf):
+    p = gmt.GMTPlot(pf)
+    gmt.gmt_defaults(wd = os.path.dirname(pf), ps_media = 'A5')
+    p.background(1.5, 1)
+    p.background(3, 2, x_margin = 1.5, colour = 'blue')
+    p.background(1.5, 1, y_margin = 1, colour = 'red')
+    p.background(3, 2, x_margin = 4.5, colour = 'firebrick')
+    p.finalise()
+    p.png(dpi = 100, clip = False)
+
 ###
-### LIST OF FUNCTIONS AND EXPECTED HASH RESULT
+### LIST OF FUNCTIONS, EXPECTED HASH RESULT, MINIMUM VERSION
 ###
 TESTS = ( \
-    (test_coastlines, '61efdfbe4cd9bfd5a90ad86c67013c8d9494abc6'), \
-    (test_land, '8c31ef6345aaad068cc4eb3e1d4b3f78cd6fc9a3'), \
-    (test_ticks, 'd625bfb10464664d38f60537686999945eafafe7'), \
-    (test_cpt, '960032a10ef5fef8f013aab8892082fc4a606c9c')
+    (test_coastlines, '61efdfbe4cd9bfd5a90ad86c67013c8d9494abc6', 5.0), \
+    (test_land, '8c31ef6345aaad068cc4eb3e1d4b3f78cd6fc9a3', 5.0), \
+    (test_ticks, 'd625bfb10464664d38f60537686999945eafafe7', 5.0), \
+    (test_ticks2, '903830d2ba5d19a415a6d4e15fa62175bd7b7242', 5.0), \
+    (test_cpt, '960032a10ef5fef8f013aab8892082fc4a606c9c', 5.2), \
+    (test_cpt2, 'd83a3f811e8e514a6e88dacf38fe24bc4dea3280', 5.2), \
+    (test_fill, 'eaa069d015eefb20f9826061a6de09d17a420a91', 5.0)
 )
 
 ###
@@ -122,6 +158,7 @@ if rank == MASTER:
     # DISTRIBUTE WORK
     gmt_versions = list(GMT_PATHS)
     jobs = len(GMT_PATHS) * len(TESTS)
+    jobs_run = 0
     job = 0
     passed = 0
 
@@ -135,12 +172,22 @@ if rank == MASTER:
         tag = status.Get_tag()
 
         if tag == tags.READY:
-            if job < jobs:
+            found_job = False
+            while job < jobs:
                 workload = (TESTS[job % len(TESTS)], \
                         gmt_versions[job // len(TESTS)])
-                comm.send(workload, dest = source, tag = tags.START)
+                # check that this test is compatible with this version
+                major_v = float('.'.join(workload[1].split('.')[:2]))
+                if major_v >= workload[0][2]:
+                    found_job = True
+                    comm.send(workload, dest = source, tag = tags.START)
+                    jobs_run += 1
+                    job += 1
+                    break
+                # incompatible gmt version / test combination. try next one
                 job += 1
-            else:
+            if not found_job:
+                # no more valid combinations
                 comm.send(None, dest = source, tag = tags.EXIT)
         elif tag == tags.DONE:
             passed += data
@@ -148,9 +195,9 @@ if rank == MASTER:
             workers_closed += 1
 
     print('=============================')
-    print('TESTS: %d' % (jobs))
+    print('TESTS: %d' % (jobs_run))
     print('PASSED: %d' % (passed))
-    print('FAILED: %d' % (jobs - passed))
+    print('FAILED: %d' % (jobs_run - passed))
 
     if jobs == passed:
         rmtree(test_dir)
