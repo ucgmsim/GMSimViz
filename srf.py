@@ -230,7 +230,7 @@ def get_bounds(srf, seg = -1):
             bounds.append(plane_bounds)
     return bounds
 
-def get_hypo(srf, lonlat = True):
+def get_hypo(srf, lonlat = True, depth = False):
     """
     Return hypocentre.
     srf: srf source
@@ -238,22 +238,36 @@ def get_hypo(srf, lonlat = True):
     with open(srf, 'r') as sf:
         # metadata
         plane = read_header(sf)[0]
+        points = int(sf.readline().split()[1])
         lon, lat = plane[:2]
         strike, dip = plane[6:8]
         # plane 9 11?? dum dum dum....
         shyp, dhyp = plane[9:11]
 
-        if not lonlat:
+        # new version - try to find hypocentre subfault
+        if depth or lonlat:
+            nstk, ndip = plane[2:4]
+            ln, wid = plane[4:6]
+            hyp_stk = int(round(nstk / 2. + shyp / (ln / (float(nstk) - 1))))
+            hyp_dip = int(round(dhyp / (wid / (float(ndip) - 1))))
+            assert(0 <= hyp_stk < nstk)
+            assert(0 <= hyp_dip < ndip)
+            skip_points(sf, hyp_dip * nstk + hyp_stk)
+            hlon, hlat, depth = get_lonlat(sf, value = 'depth')
+        else:
             # along strike, along dip
             return shyp, dhyp
 
+        # old version, has error asociated with change in bearing
         # move along strike for shyp km
-        lat, lon = ll_shift(lat, lon, shyp, strike)
+        #lat, lon = ll_shift(lat, lon, shyp, strike)
         # move along dip for dhyp km
-        flat_dhyp = dhyp * cos(radians(dip))
-        lat, lon = ll_shift(lat, lon, flat_dhyp, strike + 90)
+        #flat_dhyp = dhyp * cos(radians(dip))
+        #lat, lon = ll_shift(lat, lon, flat_dhyp, strike + 90)
 
-        return lon, lat
+        if not depth:
+            return hlon, hlat
+        return hlon, hlat, depth
 
 def srf2corners(srf, cnrs = 'cnrs.txt'):
     """
