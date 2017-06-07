@@ -230,10 +230,11 @@ def auto_tick(x_min, x_max, width):
             # this gives a major_tick of 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1...
             major_tick *= 2 + ((i + 2) % 3 == 0) * 0.5
         else:
+            i -= 1
             break
 
     # minor tick 10 times per major unless ending with 5 in which case 5 times
-    minor_tick = major_tick / 10.0 * (2 - ((i + 2) % 3 == 0))
+    minor_tick = major_tick / 10.0 * (1 + ((i + 2) % 3 == 0))
 
     return major_tick, minor_tick
 

@@ -106,6 +106,24 @@ def test_fill(pf):
     p.finalise()
     p.png(dpi = 100, clip = False)
 
+def test_autotick(wd):
+    major, minor = gmt.auto_tick(170, 180, 10)
+    if major != 1 or minor != 0.1:
+        return False, '1 0.1 vs actual %s %s' % (major, minor)
+    return True, None
+
+def test_autotick2(wd):
+    major, minor = gmt.auto_tick(170, 170.04, 4)
+    if major != 0.01 or minor != 0.001:
+        return False, '0.01 0.001 vs actual %s %s' % (major, minor)
+    return True, None
+
+def test_autotick3(wd):
+    major, minor = gmt.auto_tick(-178, 178, 5)
+    if major != 100 or minor != 10:
+        return False, '1 0.1 vs actual %s %s' % (major, minor)
+    return True, None
+
 ###
 ### LIST OF FUNCTIONS, EXPECTED HASH RESULT, MINIMUM VERSION
 ###
@@ -116,7 +134,10 @@ TESTS = ( \
     (test_ticks2, '903830d2ba5d19a415a6d4e15fa62175bd7b7242', 5.0), \
     (test_cpt, '960032a10ef5fef8f013aab8892082fc4a606c9c', 5.2), \
     (test_cpt2, 'd83a3f811e8e514a6e88dacf38fe24bc4dea3280', 5.2), \
-    (test_fill, 'eaa069d015eefb20f9826061a6de09d17a420a91', 5.0)
+    (test_fill, 'eaa069d015eefb20f9826061a6de09d17a420a91', 5.0), \
+    (test_autotick, None, 5.0), \
+    (test_autotick2, None, 5.0), \
+    (test_autotick3, None, 5.0), \
 )
 
 ###
@@ -128,10 +149,23 @@ def run_test(test, gmt_version):
         os.makedirs(iwd)
     gmt.update_gmt_path(GMT_PATHS[gmt_version])
 
-    pf = '%s/%s-%s.ps' % (iwd, test[0].__name__, gmt_version)
     t0 = time()
-    test[0](pf)
+    if test[1] != None:
+        pf = '%s/%s-%s.ps' % (iwd, test[0].__name__, gmt_version)
+        test[0](pf)
+    else:
+        success, message = test[0](iwd)
     t = time() - t0
+
+    if test[1] == None:
+        if success:
+            print('%s [%s] PASS %.2fs' \
+                    % (gmt_version, test[0].__name__, t))
+        else:
+            print('%s [%s] FAIL (%s) %.2fs' \
+            % (gmt_version, test[0].__name__, message, t))
+        return success
+
     try:
         pp = '%s.png' % (os.path.splitext(pf)[0])
         ph = sha1(imread(pp)).hexdigest()
