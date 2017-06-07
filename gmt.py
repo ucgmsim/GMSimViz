@@ -37,23 +37,25 @@ GMT = os.path.join(gmt_install_bin, 'gmt')
 
 # GMT 5.2+ argument mapping
 GMT52_POS = {'map':'g', 'plot':'x', 'norm':'n', 'rel':'j', 'rel_out':'J'}
+
+GMT_DATA = '/home/nesi00213/PlottingData'
 # LINZ DATA
 LINZ_COAST = {
-        '150k':'/home/nesi00213/PlottingData/Paths/lds-nz-coastlines-and-islands/150k.gmt'
+        '150k':os.path.join(GMT_DATA, 'Paths/lds-nz-coastlines-and-islands/150k.gmt')
 }
 LINZ_LAKE = {
-        '150k':'/home/nesi00213/PlottingData/Paths/lds-nz-lake-polygons/150k.gmt',
-        '1500k':'/home/nesi00213/PlottingData/Paths/lds-nz-lake-polygons/1500k.gmt',
-        '1250k':'/home/nesi00213/PlottingData/Paths/lds-nz-lake-polygons/1250k.gmt'
+        '150k':os.path.join(GMT_DATA, 'Paths/lds-nz-lake-polygons/150k.gmt'),
+        '1500k':os.path.join(GMT_DATA, 'Paths/lds-nz-lake-polygons/1500k.gmt'),
+        '1250k':os.path.join(GMT_DATA, 'Paths/lds-nz-lake-polygons/1250k.gmt')
 }
 LINZ_RIVER = {
-    '150k':'/home/nesi00213/PlottingData/Paths/lds-nz-river-polygons/150k.gmt'
+    '150k':os.path.join(GMT_DATA, 'Paths/lds-nz-river-polygons/150k.gmt')
 }
-LINZ_ROAD = '/home/nesi00213/PlottingData/Paths/lds-nz-road-centre-line/wgs84.gmt'
-LINZ_HWY = '/home/nesi00213/PlottingData/Paths/shwy/wgs84.gmt'
+LINZ_ROAD = os.path.join(GMT_DATA, 'Paths/lds-nz-road-centre-line/wgs84.gmt')
+LINZ_HWY = os.path.join(GMT_DATA, 'Paths/shwy/wgs84.gmt')
 # OTHER GEO DATA
-TOPO_HIGH = '/nesi/projects/nesi00213/PlottingData/Topo/srtm_all_filt_nz.grd'
-CHCH_WATER = '/home/nesi00213/PlottingData/Paths/water_network/water.gmt'
+TOPO_HIGH = os.path.join(GMT_DATA, 'Topo/srtm_all_filt_nz.grd')
+CHCH_WATER = os.path.join(GMT_DATA, 'Paths/water_network/water.gmt')
 # CPT DATA
 CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plot', 'cpt')
 CPTS = {
@@ -147,6 +149,62 @@ def make_movie(input_pattern, output, fps = 20):
     with open('/dev/null', 'w') as sink:
         Popen(['ffmpeg', '-y', '-framerate', str(fps), '-i', input_pattern, \
                 '-c:v', 'qtrle', '-r', str(fps), output], stderr = sink).wait()
+
+def make_seismo(out_file, timeseries, x0, y0, xfac, yfac, \
+            pos = 'simple', fmt = 'inc', append = True, title = None):
+    """
+    Make seismogram files to plot with GMT.
+    out_file: file to store seismogram data
+    timeseries: series of values to plot
+    x0: origin x position
+    y0: origin y position
+    xfac: x increment per step in timeseries
+    yfac: y values are the product of yfac with timeseries values
+    pos: 'simple' x0, y0 are geo coords,
+            movement is linear but with geo coords
+            works OK with rectangular projections
+            OR: x0, y0 are in distance units, movement is linear
+            start pos (x0, y0) is calculated with mapproject prior
+            ideal method within GMT as works with paper position, not geo
+            must change spacial projection to equvalent 'X' before drawing
+    fmt: 'inc' points extend out from origin
+        'time' points grow out of origin
+    append: add to end of out_file (True) instead of overwriting (False)
+        fmt must remain the same within the same file
+    title: station title within the file headers
+    """
+    # make sure timeseries is a numpy array
+    # don't modify original data
+    if type(timeseries).__name__ == 'list':
+        tsy = np.array(timeseries)
+    else:
+        tsy = np.copy(timeseries)
+
+    if title == None:
+        title = 'station at x = %s, y = %s' % (x0, y0)
+
+    # output
+    if append:
+        mode = 'a'
+    else:
+        mode = 'w'
+    out = open(out_file, mode)
+
+    if fmt == 'inc':
+        # adjust amplitude, baseline
+        tsy = tsa * yfac + y0 - yfac * tsa[0]
+        # correspanding x value
+        tsx = np.arange(len(tsy)) * xfac + x0
+        # store
+        np.savetxt(out, np.dstack(tsx, tsy), fmt = '%s', \
+                header = '> %s' % (title), comments = '')
+
+    elif fmt == 'time':
+        for t in xrange(len(tsa)):
+            tsy = tsa
+            tsx = np.arange(len(tsy)) * xfac + x0
+
+    out.close()
 
 def auto_tick(x_min, x_max, width):
     """
