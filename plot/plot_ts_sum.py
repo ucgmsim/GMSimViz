@@ -230,7 +230,7 @@ if pgvplot.major_tick == None:
     except ValueError:
         # expecting a unit suffix even though formula only works for inches
         width = float(pgvplot.width[:-1])
-    pgvplot.tick_major, pgvplot.minor_tick = \
+    pgvplot.major_tick, pgvplot.minor_tick = \
             gmt.auto_tick(x_min, x_max, width)
 elif pgvplot.minor_tick == None:
     pgvplot.minor_tick = pgvplot.major_tick / 5.
