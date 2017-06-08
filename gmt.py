@@ -192,17 +192,19 @@ def make_seismo(out_file, timeseries, x0, y0, xfac, yfac, \
 
     if fmt == 'inc':
         # adjust amplitude, baseline
-        tsy = tsa * yfac + y0 - yfac * tsa[0]
-        # correspanding x value
+        tsy = tsy * yfac + y0 - yfac * tsy[0]
+        # corresponding x values
         tsx = np.arange(len(tsy)) * xfac + x0
         # store
-        np.savetxt(out, np.dstack(tsx, tsy), fmt = '%s', \
+        np.savetxt(out, np.dstack((tsx, tsy))[0], fmt = '%s', \
                 header = '> %s' % (title), comments = '')
 
     elif fmt == 'time':
-        for t in xrange(len(tsa)):
-            tsy = tsa
-            tsx = np.arange(len(tsy)) * xfac + x0
+        for t in xrange(len(tsy)):
+            tsyp = np.copy(tsy[t::-1]) * yfac + y0 - yfac * tsy[t]
+            tsx = np.arange(len(tsyp)) * xfac + x0
+            np.savetxt(out, np.dstack((tsx, tsyp))[0], fmt = '%s', \
+                    header = '>TS%d %s' % (t, title), comments = '')
 
     out.close()
 

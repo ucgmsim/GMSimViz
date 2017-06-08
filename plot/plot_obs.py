@@ -72,8 +72,16 @@ try:
 except IndexError:
     sfs_srf = None
 
+out_dir = '%s/GM/Obs/Figures' % (base_dir)
+if not os.path.exists(seisplot.wd):
+    os.makedirs(seisplot.wd)
+if not os.path.exists(out_dir):
+    os.makedirs(out_dir)
+# start GMT environment
+b = gmt.GMTPlot('%s/%s.ps' % (seisplot.wd, seisplot.name))
+
 # subset of event_stats to plot
-plot_stats = 'plot_stats.ll'
+plot_stats = os.path.join(seisplot.wd, 'plot_stats.ll')
 files = glob('%s/*.000' % (obs_velbb))
 stats = []
 for f in files:
@@ -106,10 +114,12 @@ ll_region = (x_min, x_max, y_min, y_max)
 ll_avg = sum(ll_region[:2]) / 2, sum(ll_region[2:]) / 2
 # distance and size is used to calculate ts_xlen, ts_ymax, min_dist
 lon_dist = ll_dist(x_min, ll_avg[1], x_max, ll_avg[1])
+lon_size, lat_size = gmt.mapproject(x_max, y_max, wd = seisplot.wd, \
+        projection = 'M%s' % (seisplot.width), region = ll_region)
 if seisplot.min_dist == None:
     seisplot.min_dist = lon_dist / 12.
 if seisplot.ts_xlen == None:
-    seisplot.ts_xlen = 0.25 * (ll_region[1] - ll_region[0])
+    seisplot.ts_xlen = 0.25 * lon_size
 if seisplot.ts_ymax == None:
     seisplot.ts_ymax = 0.25 * seisplot.ts_xlen
 
@@ -173,25 +183,13 @@ xfac = float(seisplot.ts_xlen) / len(obs_vts[0])
 if os.path.exists(seisplot.obs_src):
     os.remove(seisplot.obs_src)
 for s, stat in enumerate(stats):
-    lls_obs = []
-    for i, value in enumerate(obs_vts[s]):
-        dy = value * yfac
-        dx = i * xfac
-        lls_obs.append('%f %f\n' % (lons[s] + dx, lats[s] + dy))
-    with open(seisplot.obs_src, 'a') as sp:
-        sp.write('> %s at %f %f\n' % (stats[s], lons[s], lats[s]))
-        sp.write(''.join(lls_obs))
+    x0, y0 = gmt.mapproject(lons[s], lats[s], wd = seisplot.wd, \
+            projection = 'M%s' % (seisplot.width), region = ll_region)
+    gmt.make_seismo(seisplot.obs_src, obs_vts[s], x0, y0, xfac, yfac)
 
 ###
 ### STEP 3: PLOT SEISMOGRAMS
 ###
-out_dir = '%s/GM/Obs/Figures' % (base_dir)
-if not os.path.exists(seisplot.wd):
-    os.makedirs(seisplot.wd)
-if not os.path.exists(out_dir):
-    os.makedirs(out_dir)
-
-b = gmt.GMTPlot('%s/%s.ps' % (seisplot.wd, seisplot.name))
 # background can be larger as whitespace is later cropped
 b.background(11, 11)
 b.spacial('M', ll_region, sizing = seisplot.width, \
@@ -224,6 +222,15 @@ if SIM_DIR or sfs_srf != None:
         print('SRF file not found, not adding fault planes to plot.')
 b.coastlines()
 
+if SIM_DIR or sfs_modelparams != None:
+    # simulation domain
+    b.path(cnr_str, is_file = False, split = '-', \
+            close = True, width = '0.4p', colour = 'black')
+# ticks on top otherwise parts of map border may be drawn over
+b.ticks(major = '60m', minor = '30m', sides = 'ws')
+
+# seismograms are in xy format
+b.spacial('X', (0, lon_size, 0, lat_size), sizing = '%s/%s' % (lon_size, lat_size))
 # add seismograms - should be 'inc' format for static images
 if seisplot.obs_src != None:
     b.seismo(seisplot.obs_src, seisplot.max_ts, fmt = 'inc', \
@@ -231,13 +238,6 @@ if seisplot.obs_src != None:
 #if seisplot.sim_src != None:
 #    b.seismo(seisplot.sim_src, seisplot.max_ts, fmt = 'inc', \
 #            width = seisplot.seis_width, colour = seisplot.sim_colour)
-
-if SIM_DIR or sfs_modelparams != None:
-    # simulation domain
-    b.path(cnr_str, is_file = False, split = '-', \
-            close = True, width = '0.4p', colour = 'black')
-# ticks on top otherwise parts of map border may be drawn over
-b.ticks(major = '60m', minor = '30m', sides = 'ws')
 
 # render and do not continue
 b.finalise()
