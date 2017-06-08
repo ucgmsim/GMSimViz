@@ -7,7 +7,7 @@ import os
 event_title = 'Automatically Genenerated Event'
 fault_model = 'Automatically generated source model'
 # <HH> is converted automatically
-vel_model = 'SIVM v1.65 h=<HH>km'
+vel_model = 'NZVM v1.65 h=<HH>km'
 # pick a predefined region or model_params sim domain used ('')
 # 'CANTERBURY', 'WIDERCANT', 'MIDNZ', 'SOUTHISLAND'
 region = None
