@@ -54,27 +54,7 @@ if rank != 0:
     from gmt import *
     from srf import srf2corners
 
-script_dir = os.path.abspath(os.path.dirname(__file__))
-if not os.path.exists('params_plot.py'):
-    copyfile('%s/params_plot.template.py' % (script_dir), 'params_plot.py')
-import params_plot
-statplot = params_plot.STATION
 MASTER = 0
-
-try:
-    station_file = os.path.abspath(sys.argv[1])
-    assert(os.path.exists(station_file))
-except IndexError:
-    print('First parameter must be input file. Parameter not found.')
-    exit(1)
-except AssertionError:
-    print('Cannot find input file: %s' % (station_file))
-    exit(1)
-# all numerical values in input
-val_pool = np.atleast_2d( \
-        np.loadtxt(station_file, dtype = 'f', skiprows = 6)[:, 2:].T)
-cpt_max = np.percentile(val_pool, 99.5, axis = 1)
-ncol = val_pool.shape[0]
 
 # check for sim data
 try:
@@ -99,190 +79,194 @@ except IndexError:
 
 
 # process file header
-print('Processing input header...')
-with open(station_file) as statf:
-    head = [next(statf).strip() for _ in xrange(6)]
-    # 1st - title
-    title = head[0]
+def load_file(station_file):
+    # load values
+    val_pool = np.atleast_2d( \
+            np.loadtxt(station_file, dtype = 'f', skiprows = 6)[:, 2:].T)
+    ncol = val_pool.shape[0]
 
-    # 2nd line - legend title
-    legend = head[1]
+    with open(station_file) as statf:
+        head = [next(statf).strip() for _ in xrange(6)]
+        # 1st - title
+        title = head[0]
 
-    # 3rd line - cpt description 1
-    # src, point size, foreground colour, background colour
-    cpt_info = head[2].split()
-    cpt = cpt_info[0].split(':')[0]
-    # default properties
-    transparency = 0
-    cpt_fg = None
-    cpt_bg = None
-    if os.path.exists(cpt):
-        # assuming it is a built in cpt if not matching filename
-        cpt = os.path.abspath(cpt)
-    try:
-        # src:invert will add the 'invert' property to invert cpt
-        cpt_properties = cpt_info[0].split(':')[1].split(',')
-        for p in cpt_properties:
-            if p[:2] == 't-':
-                transparency = p[2:]
-            elif p[:3] == 'fg-':
-                cpt_fg = p[3:]
-            elif p[:3] == 'bg-':
-                cpt_bg = p[3:]
-    except IndexError:
-        cpt_properties = []
-    if len(cpt_info) > 1:
-        stat_size = cpt_info[1].split(':')[0]
-        # also default nearneighbor search distance
-        nn_search = stat_size
+        # 2nd line - legend title
+        legend = head[1]
+
+        # 3rd line - cpt description 1
+        # src, point size, foreground colour, background colour
+        cpt_info = head[2].split()
+        cpt = cpt_info[0].split(':')[0]
         # default properties
-        shape = 't'
-        grid = None
-        grd_mask_dist = None
+        transparency = 0
+        cpt_fg = None
+        cpt_bg = None
+        if os.path.exists(cpt):
+            # assuming it is a built in cpt if not matching filename
+            cpt = os.path.abspath(cpt)
         try:
-            stat_properties = cpt_info[1].split(':')[1].split(',')
-            for p in stat_properties:
-                if p[:6] == 'shape-':
-                    shape = p[6]
-                elif p[:2] == 'g-':
-                    grid = p[2:]
-                elif p[:3] == 'nns-':
-                    nn_search = p[3:]
-                elif p[:6] == 'gmask-':
-                    grd_mask_dist = p[6:]
+            # src:invert will add the 'invert' property to invert cpt
+            cpt_properties = cpt_info[0].split(':')[1].split(',')
+            for p in cpt_properties:
+                if p[:2] == 't-':
+                    transparency = p[2:]
+                elif p[:3] == 'fg-':
+                    cpt_fg = p[3:]
+                elif p[:3] == 'bg-':
+                    cpt_bg = p[3:]
         except IndexError:
-            stat_properties = []
+            cpt_properties = []
+        if len(cpt_info) > 1:
+            stat_size = cpt_info[1].split(':')[0]
+            # also default nearneighbor search distance
+            nn_search = stat_size
+            # default properties
+            shape = 't'
+            grid = None
+            grd_mask_dist = None
+            try:
+                stat_properties = cpt_info[1].split(':')[1].split(',')
+                for p in stat_properties:
+                    if p[:6] == 'shape-':
+                        shape = p[6]
+                    elif p[:2] == 'g-':
+                        grid = p[2:]
+                    elif p[:3] == 'nns-':
+                        nn_search = p[3:]
+                    elif p[:6] == 'gmask-':
+                        grd_mask_dist = p[6:]
+            except IndexError:
+                stat_properties = []
 
-    # 4th line - cpt description 2
-    # cpt_min, cpt_max, cpt_inc, cpt_tick
-    cpt_info2 = head[3].split()
-    if len(cpt_info2) > 1:
-        usr_min, usr_max = map(float, cpt_info2[:2])
-        cpt_min = [usr_min] * ncol
-        cpt_max = [usr_max] * ncol
-    else:
-        cpt_min = []
-        cpt_max = np.percentile(val_pool, 99.5, axis = 1)
-        cpt_inc = []
-        cpt_tick = []
-        for i in xrange(len(cpt_max)):
-            if cpt_max[i] > 115:
-                # 2 significant figures
-                cpt_max[i] = round(cpt_max[i], 1 - int(np.floor(np.log10(cpt_max[i]))))
-            else:
-                # 1 significant figures
-                cpt_max[i] = round(cpt_max[i], - int(np.floor(np.log10(cpt_max[i]))))
-            if val_pool[i].min() < 0:
-                cpt_min.append(-cpt_max)
-            else:
-                cpt_min.append(0)
-            cpt_inc.append(cpt_max[i] / 10.)
-            cpt_tick.append(cpt_inc[i] * 2.)
-    if len(cpt_info2) > 2:
-        cpt_inc = [float(cpt_info2[2])] * ncol
-    if len(cpt_info2) > 3:
-        cpt_tick = [float(cpt_info2[3])] * ncol
+        # 4th line - cpt description 2
+        # cpt_min, cpt_max, cpt_inc, cpt_tick
+        cpt_info2 = head[3].split()
+        if len(cpt_info2) > 1:
+            usr_min, usr_max = map(float, cpt_info2[:2])
+            cpt_min = [usr_min] * ncol
+            cpt_max = [usr_max] * ncol
+        else:
+            cpt_min = []
+            cpt_max = np.percentile(val_pool, 99.5, axis = 1)
+            cpt_inc = []
+            cpt_tick = []
+            for i in xrange(len(cpt_max)):
+                if cpt_max[i] > 115:
+                    # 2 significant figures
+                    cpt_max[i] = round(cpt_max[i], 1 - int(np.floor(np.log10(cpt_max[i]))))
+                else:
+                    # 1 significant figures
+                    cpt_max[i] = round(cpt_max[i], - int(np.floor(np.log10(cpt_max[i]))))
+                if val_pool[i].min() < 0:
+                    cpt_min.append(-cpt_max)
+                else:
+                    cpt_min.append(0)
+                cpt_inc.append(cpt_max[i] / 10.)
+                cpt_tick.append(cpt_inc[i] * 2.)
+        if len(cpt_info2) > 2:
+            cpt_inc = [float(cpt_info2[2])] * ncol
+        if len(cpt_info2) > 3:
+            cpt_tick = [float(cpt_info2[3])] * ncol
 
-    # 5th line ncols and optional column label prefix
-    col_info = head[4].split()
-    ncol = int(col_info[0])
-    if len(col_info) > 1:
-        label_colour = col_info[1]
-    else:
-        label_colour = 'black'
+        # 5th line ncols and optional column label prefix
+        col_info = head[4].split()
+        ncol = int(col_info[0])
+        if len(col_info) > 1:
+            label_colour = col_info[1]
+        else:
+            label_colour = 'black'
 
-    # 6th line - column labels
-    col_labels = map(str.strip, head[5].split(','))
-    if col_labels == ['']:
-        col_labels = []
-    if len(col_labels) != ncol and len(col_labels) != 0:
-        print('%d column labels found when there are %d columns.' \
-                % (len(col_labels), ncol))
-        exit(1)
+        # 6th line - column labels
+        col_labels = map(str.strip, head[5].split(','))
+        if col_labels == ['']:
+            col_labels = []
+        if len(col_labels) != ncol and len(col_labels) != 0:
+            print('%d column labels found when there are %d columns.' \
+                    % (len(col_labels), ncol))
+            exit(1)
 
-print('Header Processed.')
+    return {'title':title, 'legend':legend, 'stat_size':stat_size, \
+            'nn_search':nn_search, 'shape':shape, 'grid':grid, \
+            'grd_mask_dist':grd_mask_dist, 'cpt':cpt, \
+            'cpt_min':cpt_min, 'cpt_max':cpt_max, 'cpt_inc':cpt_inc, \
+            'cpt_tick':cpt_tick, 'ncol':ncol, 'label_colour':label_colour, \
+            'col_labels':col_labels}
 
 # temporary working directories for gmt are within here
 # prevent multiprocessing issues by isolating processes
 gmt_temp = os.path.join(os.path.abspath('.'), 'GMT_WD_STATIONS')
 ps_template = '%s/template.ps' % (gmt_temp)
 txt_cnrs = '%s/srf_cnrs.txt' % (gmt_temp)
-# allow overriding output directories more easily when scripting
-if len(sys.argv) > 2:
-    statplot.out_dir = os.path.abspath(sys.argv[2])
-# clear output dirs
-for out_dir in [statplot.out_dir, gmt_temp]:
-    if not os.path.isdir(out_dir):
-        os.makedirs(out_dir)
 
 ###
 ### boundaries
 ###
-if statplot.region == None and (SIM_DIR or sfs_modelparams != None):
-    try:
-        corners, cnr_str = get_corners(sim_params.MODELPARAMS, gmt_format = True)
-    except (NameError, IOError):
-        corners, cnr_str = get_corners(sfs_modelparams, gmt_format = True)
-    # path following sim domain curved on mercator like projections
-    fine_path = geo.path_from_corners(corners = corners, output = None)
-    # fit simulation region
-    x_min = min([xy[0] for xy in fine_path])
-    x_max = max([xy[0] for xy in fine_path])
-    y_min = min([xy[1] for xy in fine_path])
-    y_max = max([xy[1] for xy in fine_path])
-elif statplot.region == None:
-    # fit all values
-    xy = np.loadtxt(station_file, skiprows = 6, usecols = (0, 1), dtype = 'f')
-    x_min, y_min = np.min(xy, axis = 0) - 0.1
-    x_max, y_max = np.max(xy, axis = 0) + 0.1
-else:
-    x_min, x_max, y_min, y_max = statplot.region
-# combined region
-ll_region = (x_min, x_max, y_min, y_max)
-# avg lon/lat (midpoint of plotting region)
-ll_avg = sum(ll_region[:2]) / 2, sum(ll_region[2:]) / 2
-
-# create masking if using grid overlay
-if grid != None:
-    mask = '%s/mask.grd' % (gmt_temp)
-    try:
-        path_from_corners(corners = corners, min_edge_points = 100, \
-                output = '%s/sim.modelpath_hr' % (gmt_temp))
-    except NameError:
-        path_from_corners(corners = [ \
-                [x_min, y_min], [x_max, y_min], \
-                [x_max, y_max], [x_min, y_max]], \
-                min_edge_points = 100, \
-                output = '%s/sim.modelpath_hr' % (gmt_temp))
-    grd_mask('%s/sim.modelpath_hr' % (gmt_temp), mask, \
-            dx = stat_size, dy = stat_size, region = ll_region)
-
-# work out an ideal tick increment (ticks per inch)
-# x axis is more constrainig
-if statplot.tick_major == None:
-    try:
-        width = float(statplot.width)
-    except ValueError:
-        # expecting a unit suffix even though formula only works for inches
-        width = float(statplot.width[:-1])
-    statplot.tick_major, statplot.tick_minor = \
-            auto_tick(x_min, x_max, width)
-elif statplot.tick_minor == None:
-    statplot.tick_minor = statplot.tick_major / 5.
-
-if statplot.sites == None:
-    region_sites = []
-if statplot.sites == 'auto':
-    if x_max - x_min > 3:
-        region_sites = sites_major
+def determine_sizing(station_file):
+    if statplot.region == None and (SIM_DIR or sfs_modelparams != None):
+        try:
+            corners, cnr_str = get_corners(sim_params.MODELPARAMS, gmt_format = True)
+        except (NameError, IOError):
+            corners, cnr_str = get_corners(sfs_modelparams, gmt_format = True)
+        # path following sim domain curved on mercator like projections
+        fine_path = geo.path_from_corners(corners = corners, output = None)
+        # fit simulation region
+        x_min = min([xy[0] for xy in fine_path])
+        x_max = max([xy[0] for xy in fine_path])
+        y_min = min([xy[1] for xy in fine_path])
+        y_max = max([xy[1] for xy in fine_path])
+    elif statplot.region == None:
+        # fit all values
+        xy = np.loadtxt(station_file, skiprows = 6, usecols = (0, 1), dtype = 'f')
+        x_min, y_min = np.min(xy, axis = 0) - 0.1
+        x_max, y_max = np.max(xy, axis = 0) + 0.1
     else:
+        x_min, x_max, y_min, y_max = statplot.region
+    # combined region
+    ll_region = (x_min, x_max, y_min, y_max)
+    # avg lon/lat (midpoint of plotting region)
+    ll_avg = sum(ll_region[:2]) / 2, sum(ll_region[2:]) / 2
+
+    # create masking if using grid overlay
+    if grid != None:
+        mask = '%s/mask.grd' % (gmt_temp)
+        try:
+            path_from_corners(corners = corners, min_edge_points = 100, \
+                    output = '%s/sim.modelpath_hr' % (gmt_temp))
+        except NameError:
+            path_from_corners(corners = [ \
+                    [x_min, y_min], [x_max, y_min], \
+                    [x_max, y_max], [x_min, y_max]], \
+                    min_edge_points = 100, \
+                    output = '%s/sim.modelpath_hr' % (gmt_temp))
+        grd_mask('%s/sim.modelpath_hr' % (gmt_temp), mask, \
+                dx = stat_size, dy = stat_size, region = ll_region)
+
+    # work out an ideal tick increment (ticks per inch)
+    # x axis is more constrainig
+    if statplot.tick_major == None:
+        try:
+            width = float(statplot.width)
+        except ValueError:
+            # expecting a unit suffix even though formula only works for inches
+            width = float(statplot.width[:-1])
+        statplot.tick_major, statplot.tick_minor = \
+                auto_tick(x_min, x_max, width)
+    elif statplot.tick_minor == None:
+        statplot.tick_minor = statplot.tick_major / 5.
+    # work out ideal 
+    if statplot.sites == None:
+        region_sites = []
+    if statplot.sites == 'auto':
+        if x_max - x_min > 3:
+            region_sites = sites_major
+        else:
+            region_sites = sites.keys()
+    elif statplot.sites == 'major':
+        region_sites = sites_major
+    elif statplot.sites == 'all':
         region_sites = sites.keys()
-elif statplot.sites == 'major':
-    region_sites = sites_major
-elif statplot.sites == 'all':
-    region_sites = sites.keys()
-else:
-    region_sites = statplot.sites
+    else:
+        region_sites = statplot.sites
 
 def template(ll_region, width, cnr_str = None):
     """
@@ -409,8 +393,36 @@ if len(sys.argv) > 1:
     # TODO: allow override
     nproc_max = sysproc
 
+    ###
+    ### PREPARE
+    ###
+    script_dir = os.path.abspath(os.path.dirname(__file__))
+    if not os.path.exists('params_plot.py'):
+        copyfile('%s/params_plot.template.py' % (script_dir), 'params_plot.py')
+    import params_plot
+    statplot = params_plot.STATION
+    try:
+        station_file = os.path.abspath(sys.argv[1])
+        assert(os.path.exists(station_file))
+    except IndexError:
+        print('First parameter must be input file. Parameter not found.')
+        exit(1)
+    except AssertionError:
+        print('Cannot find input file: %s' % (station_file))
+        exit(1)
+    # allow overriding output directories more easily when scripting
+    if len(sys.argv) > 2:
+        statplot.out_dir = os.path.abspath(sys.argv[2])
+    # clear output dirs
+    for out_dir in [statplot.out_dir, gmt_temp]:
+        if not os.path.isdir(out_dir):
+            os.makedirs(out_dir)
+    # load station file
+    meta = load_file(station_file)
+    meta['out_dir'] = statplot.out_dir
+
     # tasks
-    task_list = [random.randint(1, 2) for task in range(n_tasks)]
+    task_list = [(meta, 1),2,3]
     nproc = min(len(task_list), nproc_max)
     # stop signals for each slave
     msg_list = task_list + ([StopIteration] * nproc)
@@ -427,11 +439,11 @@ if len(sys.argv) > 1:
     reports = comm.gather(None, root = MPI.ROOT)
 
     # statistics
-    print('\nFinished in %.2fs.' % (MPI.Wtime() - start))
+    print('\nFinished in %.2fs.' % (MPI.Wtime() - t_start))
     # clear all working files
     rmtree(gmt_temp)
     # stop mpi
-    comm.disconnect()
+    comm.Disconnect()
 
 ###
 ### SLAVE
@@ -445,6 +457,12 @@ else:
         print('First parameter must be input file. Parameter not found.')
         print('Alternatively MPI cannot connect to parent.')
         exit(1)
+
+    ###
+    ### PREPARE
+    ###
+    import params_plot
+    statplot = params_plot.STATION
 
     # ask for work until stop sentinel
     logbook = []
