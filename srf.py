@@ -253,7 +253,7 @@ def get_hypo(srf, lonlat = True, depth = False):
             assert(0 <= hyp_stk < nstk)
             assert(0 <= hyp_dip < ndip)
             skip_points(sf, hyp_dip * nstk + hyp_stk)
-            hlon, hlat, depth = get_lonlat(sf, value = 'depth')
+            hlon, hlat, depth_km = get_lonlat(sf, value = 'depth')
         else:
             # along strike, along dip
             return shyp, dhyp
@@ -267,7 +267,7 @@ def get_hypo(srf, lonlat = True, depth = False):
 
         if not depth:
             return hlon, hlat
-        return hlon, hlat, depth
+        return hlon, hlat, depth_km
 
 def srf2corners(srf, cnrs = 'cnrs.txt'):
     """
