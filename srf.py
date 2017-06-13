@@ -248,7 +248,7 @@ def get_hypo(srf, lonlat = True, depth = False):
         if depth or lonlat:
             nstk, ndip = plane[2:4]
             ln, wid = plane[4:6]
-            hyp_stk = int(round(nstk / 2. + shyp / (ln / (float(nstk) - 1))))
+            hyp_stk = int(round((nstk - 1) / 2. + shyp / (ln / (float(nstk) - 1))))
             hyp_dip = int(round(dhyp / (wid / (float(ndip) - 1))))
             assert(0 <= hyp_stk < nstk)
             assert(0 <= hyp_dip < ndip)
