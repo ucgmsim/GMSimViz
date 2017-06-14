@@ -41,7 +41,7 @@ from shutil import copy, rmtree
 import sys
 sys.path.append('.')
 from tempfile import mkdtemp
-from time import time
+from time import time, sleep
 
 from mpi4py import MPI
 import numpy as np
@@ -194,7 +194,7 @@ def load_file(station_file):
             'nn_search':nn_search, 'shape':shape, 'grid':grid, \
             'grd_mask_dist':grd_mask_dist, 'cpt':cpt, 'cpt_fg':cpt_fg, \
             'cpt_bg':cpt_bg, 'cpt_min':cpt_min, 'cpt_max':cpt_max, \
-            'cpt_inc':cpt_inc, 'cpt_tick':cpt_tick, \
+            'cpt_inc':cpt_inc, 'cpt_tick':cpt_tick, 'cpt_properties':cpt_properties, \
             'transparency':transparency, 'ncol':ncol, \
             'label_colour':label_colour, 'col_labels':col_labels}
 
@@ -296,12 +296,12 @@ def template_2(cnr_str = None):
     if not os.path.isdir(wd):
         os.makedirs(wd)
     # name of complete template postscript
-    ps = '%s%s%s' % (swd, os.sep, os.path.basename(ps_template))
+    ps = '%s%s%s' % (wd, os.sep, os.path.basename(ps_template))
     # copy GMT setup and basefile
     copy('%s/gmt.conf' % (gmt_temp), wd)
     copy('%s/gmt.history' % (gmt_temp), wd)
     copy(ps_template, ps)
-    t = GMTPlot(ps, append = True)
+    t = gmt.GMTPlot(ps, append = True)
 
     # topo, water, overlay cpt scale (slow)
     t.basemap()
@@ -329,7 +329,7 @@ def fault_prep(srf_file = None, cnrs_file = None):
     else:
         print('No fault will be plotted.')
 
-def column_overlay(n, meta, plot):
+def column_overlay(n, station_file, meta, plot):
     """
     Produces map for a column of data.
     """
@@ -406,17 +406,30 @@ def render(n):
     """
     Rendering postscript can be slow (by amount of details)
     """
-    ps = '%s/c%.3dwd/c%.3d.ps' % (gmt_temp, n, n)
-    p = gmt.GMTPlot(ps, append = True)
+    # same working directory as top layer
+    rwd = '%s%sc%.3dwd' % (gmt_temp, os.sep, n)
 
-    # reduces dependency on main creation function
-    # add srf to map
+    # have to combine multiple postscript layers
+    bottom = '%s%sbasemap%s%s' \
+            % (gmt_temp, os.sep, os.sep, os.path.basename(ps_template))
+    top = '%s%sc%.3d.ps' % (rwd, os.sep, n)
+    combined = '%s%s%s' % (rwd, os.sep, os.path.basename(ps_template))
+    copy(bottom, combined)
+    with open(combined, 'a') as cf:
+        with open(top, 'r') as tf:
+            cf.write(tf.read())
+
+    p = gmt.GMTPlot(combined, append = True)
+    # only add srf here to reduce dependencies on column_overlay function
     if os.path.exists(txt_cnrs):
         p.fault(txt_cnrs, is_srf = False, \
                 plane_width = 0.5, top_width = 1, hyp_width = 0.5)
 
+    # actual rendering (slow)
     p.finalise()
-    p.png(dpi = statplot.dpi, out_dir = statplot.out_dir, clip = True)
+    p.png(dpi = statplot.dpi, clip = True, out_name = \
+            os.path.join(statplot.out_dir, \
+            os.path.splitext(os.path.basename(top))[0]))
 
 ###
 ### MASTER
@@ -434,7 +447,7 @@ if len(sys.argv) > 1:
     ###
     script_dir = os.path.abspath(os.path.dirname(__file__))
     if not os.path.exists('params_plot.py'):
-        copyfile('%s/params_plot.template.py' % (script_dir), 'params_plot.py')
+        copy('%s/params_plot.template.py' % (script_dir), 'params_plot.py')
     import params_plot
     statplot = params_plot.STATION
     try:
@@ -461,19 +474,56 @@ if len(sys.argv) > 1:
     # template postscript
     template(plot)
 
-    # tasks
-    task_list = [(template_2), (column_overlay)]
-    nproc = min(len(task_list), nproc_max)
-    # stop signals for each slave
-    msg_list = task_list + ([StopIteration] * nproc)
+    # tasks that don't have dependencies
+    msg_list = [(template_2, None)]
+    for i in xrange(meta['ncol']):
+        msg_list.append((column_overlay, i, station_file, meta, plot))
+    nimage = meta['ncol']
+    # hold render tasks until ready to be released
+    render_tasks = []
+
+    nproc = min(len(msg_list), nproc_max)
+
     # spawn slaves
     comm = MPI.COMM_WORLD.Spawn(
         sys.executable, args = [sys.argv[0]], maxprocs = nproc)
+    # job tracking
+    in_progress = [None] * nproc
     # distribute work to slaves who ask
     status = MPI.Status()
-    for position, msg in enumerate(msg_list):
+    while nproc:
+        # previous job
         comm.recv(source = MPI.ANY_SOURCE, status = status)
-        comm.send(obj = msg, dest = status.Get_source())
+        slave_id = status.Get_source()
+        finished = in_progress[slave_id]
+
+        # dependency handling
+        if finished == None:
+            pass
+        elif template_2 is finished[0]:
+            msg_list.extend(render_tasks)
+            render_tasks = msg_list
+        elif column_overlay is finished[0]:
+            render_tasks.append((render, finished[1]))
+        elif render is finished[0]:
+            print 'render complete wtf'
+            nimage -= 1
+
+        if len(msg_list) == 0:
+            # all jobs complete, kill off slaves
+            if nimage == 0:
+                print 'kill signal'
+                msg_list.append(StopIteration)
+                nproc -= 1
+            # must wait for dependency to complete
+            else:
+                msg_list.append(None)
+
+        # next job
+        msg = msg_list[0]
+        del(msg_list[0])
+        comm.send(obj = msg, dest = slave_id)
+        in_progress[slave_id] = msg
 
     # gather reports from slaves
     reports = comm.gather(None, root = MPI.ROOT)
@@ -501,7 +551,6 @@ else:
     ###
     ### PREPARE
     ###
-    from gmt import *
     import params_plot
     statplot = params_plot.STATION
 
@@ -510,7 +559,17 @@ else:
     for task in iter(lambda: comm.sendrecv(None, dest = MASTER), StopIteration):
         logbook.append(task)
 
-        print(task)
+        # no jobs available yet
+        if task == None:
+            sleep(1)
+        elif task[0] is column_overlay:
+            column_overlay(task[1], task[2], task[3], task[4])
+        elif task[0] is render:
+            render(task[1])
+        elif task[0] is template_2:
+            template_2(task[1])
+        else:
+            print('Slave recieved unknown task to complete.')
 
     # reports to master
     comm.gather(sendobj = logbook, root = MASTER)

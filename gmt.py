@@ -1940,7 +1940,8 @@ class GMTPlot:
         """
         self.psf = open(self.pspath, 'a')
 
-    def png(self, out_dir = None, dpi = 96, clip = True, portrait = False):
+    def png(self, out_dir = None, dpi = 96, clip = True, portrait = False, \
+                out_name = None):
         """
         Renders a PNG from the PS.
         Unfortunately relatively slow.
@@ -1949,20 +1950,21 @@ class GMTPlot:
         dpi: pixels per inch
         clip: whether to crop all whitespace
         portrait: rotate page right way up
+        out_name: filename excluding prefix, default is same as input
         """
-        # default to output in same directory
-        if out_dir == None:
-            out_dir = os.path.dirname(self.pspath)
-
-        # A pspath only containing a filename would result in ''
-        if out_dir == '':
-            out_dir = '.'
-
-        cmd = [GMT, psconvert, self.pspath, '-TG', \
-                '-E%s' % (dpi), '-D%s' % (out_dir)]
+        cmd = [GMT, psconvert, self.pspath, '-TG', '-E%s' % (dpi)]
         if clip:
             cmd.append('-A')
         if portrait:
             cmd.append('-P')
+        if out_name != None:
+            cmd.append('-F%s' % (out_name))
+        else:
+            # default to output in same directory
+            if out_dir == None:
+                out_dir = os.path.dirname(self.pspath)
+            if out_dir == '':
+                out_dir = '.'
+            cmd.append('-D%s' % (out_dir))
         call(cmd)
 
