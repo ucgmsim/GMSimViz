@@ -1268,7 +1268,7 @@ class GMTPlot:
 
     def basemap(self, land = 'darkgreen', water = 'lightblue', \
                 topo = TOPO_HIGH, topo_cpt = 'green-brown', \
-                coastlines = 'auto', \
+                coastlines = 'auto', res = None, \
                 highway = 'auto', highway_colour = 'yellow', \
                 road = 'auto', road_colour = 'white', \
                 waternet = None, waternet_colour = 'darkblue'):
@@ -1287,13 +1287,19 @@ class GMTPlot:
         refs = inch / (km * 0.618)
 
         if land != None:
-            self.land(fill = land)
+            if res == None:
+                self.land(fill = land)
+            else:
+                self.land(fill = land, res = res)
         if topo != None:
             if topo_cpt == 'green-brown':
                 topo_cpt = CPTS['nztopo-green-brown']
             self.topo(topo, cpt = topo_cpt)
         if water != None:
-            self.water(colour = water)
+            if res == None:
+                self.water(colour = water)
+            else:
+                self.water(colour = water, res = res)
         if road != None:
             if road == 'auto':
                 road = '%sp' % (refs * 2)
@@ -1309,7 +1315,10 @@ class GMTPlot:
         if coastlines != None:
             if coastlines == 'auto':
                 coastlines = '%sp' % (refs * 3)
-            self.coastlines(width = coastlines)
+            if res == None:
+                self.coastlines(width = coastlines)
+            else:
+                self.coastlines(width = coastlines, res = res)
 
     def coastlines(self, width = 0.3, colour = 'black', res = '150k'):
         """
