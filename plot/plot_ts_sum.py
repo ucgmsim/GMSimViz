@@ -142,28 +142,39 @@ origin_time = '2017-04-25T13:02:33.631Z'
 for s in xrange(len(suffixes)):
     if scenarios == 1:
         grid_out = '%s/grid.xml' % (png_dir)
+        pgv_in = '%s/PGV.bin' % (gmt_temp)
         mmi_in = '%s/MMI.bin' % (gmt_temp)
     else:
         grid_out = '%s/grid_%s.xml' % (png_dir, suffixes[s])
+        pgv_in = '%s/PGV_%s.bin' % (gmt_temp, suffixes[s])
         mmi_in = '%s/MMI_%s.bin' % (gmt_temp, suffixes[s])
 
     # use GMT to resample data on square grid
-    # create cropped grid with minimum MMI = 1 (roman numeral minimum)
+    gmt.table2grd(pgv_in, '%s/PAGER_PGV.grd' % (gmt_temp), \
+            region = plot_region, dx = dx, dy = dy, climit = 0.1)
     gmt.table2grd(mmi_in, '%s/PAGER_MMI.grd' % (gmt_temp), \
             region = plot_region, dx = dx, dy = dy, climit = 0.1)
+    # mask outside simulation domain
     # AND returns B if A == NaN, else A
+    gmt.grdmath(['%s/PAGER_PGV.grd' % (gmt_temp), mask, 'MUL', \
+            0, 'AND', 0, 'MAX', '=', '%s/PAGER_PGV.grd' % (gmt_temp)], \
+            dx = dx, dy = dy, region = plot_region)
+    # create cropped grid with minimum MMI = 1 (roman numeral minimum)
     gmt.grdmath(['%s/PAGER_MMI.grd' % (gmt_temp), mask, 'MUL', \
             1, 'AND', 1, 'MAX', '=', '%s/PAGER_MMI.grd' % (gmt_temp)], \
             dx = dx, dy = dy, region = plot_region)
 
     # retrieve grid data
-    grd = h5.File('%s/PAGER_MMI.grd' % (gmt_temp))
+    grd_pgv = h5.File('%s/PAGER_PGV.grd' % (gmt_temp))
+    grd_mmi = h5.File('%s/PAGER_MMI.grd' % (gmt_temp))
     # lat stored min -> max but pager requires top -> bottom
-    lons = grd['lon'][...]
-    lats = grd['lat'][...]
-    mmis = grd['z'][...]
+    lons = grd_mmi['lon'][...]
+    lats = grd_mmi['lat'][...]
+    pgvs = grd_pgv['z'][...]
+    mmis = grd_mmi['z'][...]
     grd_ny, grd_nx = mmis.shape
-    grd.close()
+    grd_pgv.close()
+    grd_mmi.close()
 
     try:
         with open(srf_cnrs[s], 'r') as scnrs:
@@ -199,15 +210,19 @@ lon_max="%s" lat_max="%s" nominal_lon_spacing="%s" \
 nominal_lat_spacing="%s" nlon="%d" nlat="%d" />\n' % (x_min, y_min, \
             x_max, y_max, abs(x_max - x_min) / grd_nx, \
             abs(y_max - y_min) / grd_ny, grd_nx, grd_ny))
+    pager_grid.write('<event_specific_uncertainty name="pgv" \
+value="-1" numsta="0" />\n')
     pager_grid.write('<event_specific_uncertainty name="mi" \
 value="-1" numsta="0" />\n')
     pager_grid.write('<grid_field index="1" name="LON" units="dd" />\n')
     pager_grid.write('<grid_field index="2" name="LAT" units="dd" />\n')
-    pager_grid.write('<grid_field index="3" name="MMI" units="intensity" />\n')
+    pager_grid.write('<grid_field index="3" name="PGV" units="cms" />\n')
+    pager_grid.write('<grid_field index="4" name="MMI" units="intensity" />\n')
     pager_grid.write('<grid_data>\n')
     for a in xrange(len(lats) - 1, - 1, - 1):
         for b in xrange(len(lons)):
-            pager_grid.write('%s %s %s\n' % (lons[b], lats[a], mmis[a, b]))
+            pager_grid.write('%s %s %s %s\n' \
+                    % (lons[b], lats[a], pgvs[a, b], mmis[a, b]))
     pager_grid.write('</grid_data>\n</shakemap_grid>\n')
     pager_grid.close()
 
