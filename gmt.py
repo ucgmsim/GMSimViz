@@ -1028,7 +1028,7 @@ class GMTPlot:
         # wanted item has not been set yet
         return None
 
-    def background(self, length, height, \
+    def background(self, length, height, spacial = True, \
             x_margin = 0, y_margin = 0, colour = 'white'):
         """
         Draws background on GMT plot.
@@ -1040,15 +1040,22 @@ class GMTPlot:
         colour: the colour of the background
         """
         # draw background and place origin up, right as wanted
-        cmd = [GMT, 'psxy', '-K', '-G%s' % (colour), \
-                '-JX%s/%s' % (length, height), '-R0/%s/0/%s' % (length, height), \
-                '-Xa%s' % (x_margin), '-Ya%s' % (y_margin)]
+        cmd = [GMT, 'psxy', '-K', '-G%s' % (colour)]
         # one of the functions that can be run on a blank file
         # as such, '-O' flag needs to be taken care of
         if self.new:
             self.new = False
         else:
             cmd.append('-O')
+        if x_margin != 0:
+            cmd.append('-Xa%s' % (x_margin))
+        if y_margin != 0:
+            cmd.append('-Ya%s' % (y_margin))
+        if spacial:
+            cmd.extend(['-JX%s/%s' % (length, height), \
+                    '-R0/%s/0/%s' % (length, height)])
+        else:
+            cmd.extend(['-J', '-R'])
         proc = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
         proc.communicate('%s 0\n%s %s\n0 %s\n0 0' \
                 % (length, length, height, height))
@@ -1101,6 +1108,24 @@ class GMTPlot:
         else:
             cmd.append('-T')
             Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+
+    def clip(self, path = None, is_file = False, invert = False):
+        if path != None:
+            # start crop by path
+            cmd = [GMT, 'psclip', '-J', '-R', '-K', '-O']
+            if invert:
+                cmd.append('-N')
+            if is_file:
+                cmd.append(os.path.abspath(path))
+                Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+            else:
+                p = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
+                p.communicate(path)
+                p.wait()
+        else:
+            # finish crop (-C)
+            Popen([GMT, 'psclip', '-C', '-K', '-O', '-J', '-R'], \
+                    stdout = self.psf, cwd = self.wd).wait()
 
     def text(self, x, y, text, dx = 0, dy = 0, align = 'CB', \
             size = '10p', font = 'Helvetica', colour = 'black', \
