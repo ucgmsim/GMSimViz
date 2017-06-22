@@ -766,7 +766,8 @@ def map_width(projection, height, region, wd = '.', abs_diff = False, \
     return width, new_height
 
 def adjust_latitude(projection, width, height, region, wd = '.', \
-        abs_diff = False, accuracy = 0.01, reference = 'left'):
+        abs_diff = False, accuracy = 0.01, reference = 'left', \
+        top = True, bottom = True):
     """
     Usually you create a region and adjust the size keeping aspect ratio.
     This adjusts latitude range such that both X and Y dimentions fit.
@@ -775,6 +776,8 @@ def adjust_latitude(projection, width, height, region, wd = '.', \
     width: this will be the width of the result scaling
     height: this will be the height of the result scaling +- accuracy
     region: initial region which may have its latitude adjusted
+    top: able to adjust latitude maximum
+    bottom: able to adjust latitude minimum (top or bottom == True)
     """
     # TODO: merge this and map_width function as 90% is the same
     # some map projections will be higher/lower in the middle of the map
@@ -790,7 +793,14 @@ def adjust_latitude(projection, width, height, region, wd = '.', \
          window_max = height * (1 + accuracy)
          window_min = height * (1 - accuracy)
 
-    mid_lat = sum(region[2:]) / 2.
+    mirror = 1
+    if top and bottom:
+        mid_lat = sum(region[2:]) / 2.
+        mirror = 0.5
+    elif top:
+        mid_lat = region[2]
+    elif bottom:
+        mid_lat = region[3]
 
     while True:
         new_height = mapproject(x_ref, region[3], wd = wd, \
@@ -798,10 +808,10 @@ def adjust_latitude(projection, width, height, region, wd = '.', \
         if new_height > window_max or new_height < window_min:
             # this would work first time with constant latitude distance
             scale_factor = height / float(new_height)
-            # how much latitude will now be on either side of the centre
-            diff_lat = (region[3] - region[2]) * scale_factor * 0.5
+            # how much latitude will be from mid_lat
+            diff_lat = (region[3] - region[2]) * scale_factor * mirror
             region = (region[0], region[1], \
-                    mid_lat - diff_lat, mid_lat + diff_lat)
+                    mid_lat - diff_lat * bottom, mid_lat + diff_lat * top)
         else:
             break
 
@@ -839,6 +849,39 @@ def fill_space(space_x, space_y, region, dpi, proj = 'M', wd = '.'):
                 abs_diff = True, accuracy = 0.4 / float(dpi))
 
     return space_x, space_y, region
+
+def fill_margins(region, width, dpi, proj = 'M', wd = '.', \
+            left = 0, right = 0, top = 0, bottom = 0):
+    """
+    Like fill_space but space can be different on top/bottom and/or left/right.
+    Position of original region will remain the same.
+    """
+    map_width, map_height = mapproject(region[1], region[3], wd = wd, \
+            projection = '%s%s' % (proj, width), region = region)
+    total_width = left + map_width + right
+    total_height = top + map_height + bottom
+
+    # adjust longitude assuming scaling remains consistent in projection
+    lon_extra = total_width * (region[1] - region[0]) / map_width \
+            - (region[1] - region[0])
+    region = (region[0] - lon_extra * left / float(left + right), \
+            region[1] + lon_extra * right / float(right + right), \
+            region[2], region[3])
+
+    if bottom:
+        height, region = adjust_latitude(proj, \
+                total_width, total_height - top, region, \
+                abs_diff = True, accuracy = 0.4 / float(dpi), top = False)
+    if top:
+        height, region = adjust_latitude(proj, \
+                total_width, total_height, region, \
+                abs_diff = True, accuracy = 0.4 / float(dpi), bottom = False)
+
+    # total height is approached so will not be exact
+    total_width, total_height = mapproject(region[1], region[3], wd = wd, \
+            projection = '%s%s' % (proj, total_width), region = region)
+
+    return total_width, total_height, region
 
 def region_transition(projection, region_start, region_end, \
         space_x, space_y, dpi_target, frame, frame_total, \
@@ -1028,17 +1071,31 @@ class GMTPlot:
         # wanted item has not been set yet
         return None
 
-    def background(self, length, height, spacial = True, \
+    def background(self, length, height, spacial = True, window = None, \
             x_margin = 0, y_margin = 0, colour = 'white'):
         """
         Draws background on GMT plot.
         This should be the first action.
         length: how wide the background should be (x margin included)
         height: how high the background should be (y margin included)
+        spacial: set projection to fit length and height in length units
+        window: leave window with margins (left, right, top, bottom)
         x_margin: start with shifted origin, this much space is on left
         y_margin: start with shifted origin, this much space is on bottom
         colour: the colour of the background
         """
+        if spacial:
+            self.spacial('X%s/%s' % (length, height), (0, length, 0, height))
+
+        # leave window on inside
+        # TODO: allow margins and window
+        if window != None:
+            self.clip('%s %s\n%s %s\n%s %s\n%s %s' % (window[0], window[3], \
+                    window[0], height - window[2], \
+                    length - window[1], height - window[2], \
+                    length - window[1], window[3]), \
+                    is_file = False, invert = True)
+
         # draw background and place origin up, right as wanted
         cmd = [GMT, 'psxy', '-K', '-G%s' % (colour)]
         # one of the functions that can be run on a blank file
@@ -1060,6 +1117,9 @@ class GMTPlot:
         proc.communicate('%s 0\n%s %s\n0 %s\n0 0' \
                 % (length, length, height, height))
         proc.wait()
+
+        if window != None:
+            self.clip(n = 1)
 
     def spacial(self, proj, region, \
             lon0 = None, lat0 = None, sizing = 1, \
@@ -1109,7 +1169,14 @@ class GMTPlot:
             cmd.append('-T')
             Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
-    def clip(self, path = None, is_file = False, invert = False):
+    def clip(self, path = None, is_file = False, invert = False, n = None):
+        """
+        Set clipping path or clip existing paths.
+        path: clipping path as string or filename. unset to clip instead.
+        is_file: whether path is filename (True) or string (False)
+        invert: invert path
+        n: number of paths to clip (default: all)
+        """
         if path != None:
             # start crop by path
             cmd = [GMT, 'psclip', '-J', '-R', '-K', '-O']
@@ -1124,8 +1191,12 @@ class GMTPlot:
                 p.wait()
         else:
             # finish crop (-C)
-            Popen([GMT, 'psclip', '-C', '-K', '-O', '-J', '-R'], \
-                    stdout = self.psf, cwd = self.wd).wait()
+            cmd = [GMT, 'psclip', '-K', '-O', '-J', '-R']
+            if n == None:
+                cmd.append('-C')
+            else:
+                cmd.append('-C%d' % (n))
+            Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def text(self, x, y, text, dx = 0, dy = 0, align = 'CB', \
             size = '10p', font = 'Helvetica', colour = 'black', \
