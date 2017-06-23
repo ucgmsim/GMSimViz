@@ -130,6 +130,14 @@ map_width, map_height, ll_region = \
 x_min, x_max, y_min, y_max = ll_region
 # avg lon/lat (midpoint of plotting region)
 ll_avg = (x_min + x_max) / 2.0, (y_min + y_max) / 2.0
+# extend map to cover margins
+if tsplot.border != None:
+    borderless = True
+    map_width_a, map_height_a, borderless_region = gmt.fill_margins( \
+            ll_region, map_width, dpi, left = margin_left, \
+            right = margin_right, top = margin_top, bottom = margin_bottom)
+else:
+    borderless = False
 
 ###
 ### PLOTTING STARTS HERE - TEMPLATE
@@ -202,17 +210,27 @@ print('Created resources (%.2fs)' % (time() - t0))
 ###
 t1 = time()
 b = gmt.GMTPlot(template_bottom)
-# background can be larger as whitespace is later cropped
-b.background(page_width, page_height, colour = 'seashell')
+if borderless:
+    b.spacial('M', borderless_region, sizing = map_width_a)
+    # topo, water, overlay cpt scale
+    b.basemap()
+    # map margins are semi-transparent
+    b.background(map_width_a, map_height_a, \
+            colour = tsplot.border, spacial = True, \
+            window = (margin_left, margin_right, margin_top, margin_bottom))
+else:
+    # background can be larger as whitespace is later cropped
+    b.background(page_width, page_height, colour = 'seashell')
 # leave space for left tickmarks and bottom colour scale
 b.spacial('M', ll_region, sizing = map_width, \
         x_shift = margin_left, y_shift = margin_bottom)
-# title, fault model and velocity model subtitlefs
+if not borderless:
+    # topo, water, overlay cpt scale
+    b.basemap()
+# title, fault model and velocity model subtitles
 b.text(ll_avg[0], y_max, plot.event_title, size = 20, dy = 0.6)
 b.text(x_min, y_max, plot.fault_model, size = 14, align = 'LB', dy = 0.3)
 b.text(x_min, y_max, plot.vel_model, size = 14, align = 'LB', dy = 0.1)
-# topo, water, overlay cpt scale
-b.basemap()
 b.cpt_scale('R', 'B', cpt_overlay, tsplot.cpt_inc, tsplot.cpt_inc, \
         label = tsplot.cpt_legend, length = map_height, horiz = False, \
         pos = 'rel_out', align = 'LB', thickness = 0.3, dx = 0.3, \

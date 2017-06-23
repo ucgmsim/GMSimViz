@@ -23,6 +23,9 @@ class TS:
     component = -1
     # width of map area
     width = '6i'
+    # borderless maps have the map continuing under semi-transparent borders
+    # set border to None to disable borderless, borderless eg: 'white@25'
+    border = 'white@25'
     # map tick labels. examples include '1d', '0.5d', '30m'
     major_tick = None
     minor_tick = None

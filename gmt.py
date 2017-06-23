@@ -865,7 +865,7 @@ def fill_margins(region, width, dpi, proj = 'M', wd = '.', \
     lon_extra = total_width * (region[1] - region[0]) / map_width \
             - (region[1] - region[0])
     region = (region[0] - lon_extra * left / float(left + right), \
-            region[1] + lon_extra * right / float(right + right), \
+            region[1] + lon_extra * right / float(left + right), \
             region[2], region[3])
 
     if bottom:
@@ -2045,8 +2045,8 @@ class GMTPlot:
         """
         self.psf = open(self.pspath, 'a')
 
-    def png(self, out_dir = None, dpi = 96, clip = True, portrait = False, \
-                out_name = None):
+    def png(self, out_dir = None, dpi = 96, clip = True, background = None, \
+                margin = [0], size = None, portrait = False, out_name = None):
         """
         Renders a PNG from the PS.
         Unfortunately relatively slow.
@@ -2054,12 +2054,20 @@ class GMTPlot:
         out_dir: folder to put output in (name as input, different extention)
         dpi: pixels per inch
         clip: whether to crop all whitespace
+        background: colour to fill clipped area background
+        margin: leave additional margins around clipped area
+            1 value for all sides, 2 for x / y or 4 values for each side
+        size: size of cropped area, width or width/height
         portrait: rotate page right way up
         out_name: filename excluding prefix, default is same as input
         """
         cmd = [GMT, psconvert, self.pspath, '-TG', '-E%s' % (dpi)]
         if clip:
-            cmd.append('-A')
+            cmd.append('-A%s%s%s%s%s' % ('/'.join(map(str, margin)), \
+                    '+g' * (background != None), \
+                    str(background) * (background != None), \
+                    '+s' * (size != None),
+                    str(size) * (size != None)))
         if portrait:
             cmd.append('-P')
         if out_name != None:
