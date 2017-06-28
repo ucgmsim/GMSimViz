@@ -103,7 +103,6 @@ def kminch_scale():
         x_space = media[0] - plot_x_total
     return km_inch, x_space
 km_inch, x_space = kminch_scale()
-print [seg / km_inch for seg in seg_wid]
 
 # font scaling
 # XXX: using km_inch not best metric.
