@@ -4,7 +4,7 @@ Template should be copied to sim_dir as params_plot.py
 """
 import os
 
-event_title = 'Automatically Genenerated Event'
+event_title = 'Automatically Generated Event'
 fault_model = 'Automatically generated source model'
 # <HH> is converted automatically
 vel_model = 'NZVM v1.65 h=<HH>km'
