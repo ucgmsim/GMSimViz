@@ -170,6 +170,16 @@ def ll_dist(lon1, lat1, lon2, lat2):
     a = sin(dlat / 2.0) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2.0) ** 2
     return R_EARTH * 2.0 * atan2(sqrt(a), sqrt(1 - a))
 
+def ll_bearing(lon1, lat1, lon2, lat2):
+    """
+    Initial bearing when traveling from 1 -> 2.
+    Direction facing from point 1 when looking at point 2.
+    """
+    lat1, lat2, lon_diff = map(radians, [lat1, lat2, (lon2 - lon1)])
+    return degrees(atan2(cos(lat2) * sin(lon_diff), \
+            cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon_diff))) \
+            % 360
+
 def path_from_corners(corners = None, output = 'sim.modelpath_hr', min_edge_points = 100):
     """
     corners: python list (4 by 2) containing (lon, lat) in order
