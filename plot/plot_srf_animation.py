@@ -150,8 +150,8 @@ def zoom_sequence(frame):
 
 #for i in xrange(zoom_frames):
 #    zoom_sequence(i)
-pool = mp.Pool(40)
-pool.map(zoom_sequence, xrange(zoom_frames))
+#pool = mp.Pool(40)
+#pool.map(zoom_sequence, xrange(zoom_frames))
 
 ###
 ### STAGE 3: Slip Animation
@@ -229,7 +229,7 @@ def slip_sequence(frame):
 
 #for i in xrange(srf_frames):
 #    slip_sequence(i)
-pool = mp.Pool(40)
+pool = mp.Pool(26)
 pool.map(slip_sequence, xrange(srf_frames))
 #pool.map(slip_sequence, xrange(240))
 
