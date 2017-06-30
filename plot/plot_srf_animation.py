@@ -192,7 +192,7 @@ def slip_sequence(frame):
     pwd = '%s/ss%.4d' % (gwd, frame)
     if not os.path.exists(pwd):
         os.makedirs(pwd)
-    ps_file = '%s/seq_%.4d.ps' % (pwd, zoom_frames + frame)
+    ps_file = '%s/seq_%.4d.ps' % (pwd, zoom_frames - zoom_frames + frame)
     copyfile('%s/basemap.ps' % (gwd), ps_file)
     copyfile('%s/gmt.conf' % (gwd), '%s/gmt.conf' % (pwd))
     copyfile('%s/gmt.history' % (gwd), '%s/gmt.history' % (pwd))
@@ -244,4 +244,4 @@ pool.map(slip_sequence, xrange(srf_frames))
 gmt.make_movie(os.path.join(out, 'seq_%04d.png'), \
         '%s_animation.mov' % os.path.splitext(srf_file)[0], fps = 20)
 rmtree(gwd)
-rmtree(out)
+#rmtree(out)
