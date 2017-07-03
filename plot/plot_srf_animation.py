@@ -31,6 +31,17 @@ except AssertionError:
     exit(1)
 srf_file = os.path.abspath(srf_file)
 
+if len(sys.argv) > 2:
+    if sys.argv[2] == 'publish':
+        draft = False
+    elif sys.argv[2] == 'draft':
+        draft = True
+    else:
+        print('Second parameter invalid. \'publish\' or \'draft\'')
+        exit()
+else:
+    draft = True
+
 # frame output directory
 out = os.path.abspath('png_srf_animation')
 if not os.path.exists(out):
@@ -148,10 +159,11 @@ def zoom_sequence(frame):
     print('Opening zoom sequence %.3d/%.3d complete.' \
             % (frame + 1, zoom_frames))
 
-#for i in xrange(zoom_frames):
-#    zoom_sequence(i)
-#pool = mp.Pool(40)
-#pool.map(zoom_sequence, xrange(zoom_frames))
+if not draft:
+    for i in xrange(zoom_frames):
+        zoom_sequence(i)
+    pool = mp.Pool(40)
+    pool.map(zoom_sequence, xrange(zoom_frames))
 
 ###
 ### STAGE 3: Slip Animation
@@ -179,7 +191,10 @@ b.cpt_scale('R', 'B', cpt_sliprate, cpt_max / 10., cpt_max / 50., \
         length = map_height - 0.2, thickness = 0.2, \
         dx = 0.2, pos = 'rel_out', align = 'LB', label = 'Slip Rate (cm/s)')
 b.spacial('M', region_srf, sizing = map_width)
-b.basemap()
+if draft:
+    b.basemap(topo = None, highway = None, road = None, res = 'f')
+else:
+    b.basemap()
 # fault thickness must be related to zfactor used during zoom
 b.fault(srf_corners, is_srf = False, \
         plane_width = '1', hyp_width = '1', top_width = '2')
@@ -192,7 +207,8 @@ def slip_sequence(frame):
     pwd = '%s/ss%.4d' % (gwd, frame)
     if not os.path.exists(pwd):
         os.makedirs(pwd)
-    ps_file = '%s/seq_%.4d.ps' % (pwd, zoom_frames - zoom_frames + frame)
+    ps_file = '%s/seq_%.4d.ps' \
+            % (pwd, zoom_frames - zoom_frames * draft + frame)
     copyfile('%s/basemap.ps' % (gwd), ps_file)
     copyfile('%s/gmt.conf' % (gwd), '%s/gmt.conf' % (pwd))
     copyfile('%s/gmt.history' % (gwd), '%s/gmt.history' % (pwd))
