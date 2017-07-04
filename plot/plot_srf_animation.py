@@ -237,7 +237,10 @@ def slip_sequence(frame):
                 climit = 0.5, crop_grd = '%s/plane_%d.mask' % (gwd, plane), \
                 land_crop = False, custom_region = plane_regions[plane], \
                 transparency = 0)
-    s.coastlines(width = 0.2)
+    if draft:
+        s.coastlines(width = 0.2, res = 'f')
+    else:
+        s.coastlines(width = 0.2)
     s.ticks(major = tick_major, minor = tick_minor)
     s.finalise()
     s.png(dpi = dpi, out_dir = out)
@@ -260,4 +263,4 @@ pool.map(slip_sequence, xrange(srf_frames))
 gmt.make_movie(os.path.join(out, 'seq_%04d.png'), \
         '%s_animation.mov' % os.path.splitext(srf_file)[0], fps = 20)
 rmtree(gwd)
-#rmtree(out)
+rmtree(out)
