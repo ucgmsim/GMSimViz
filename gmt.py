@@ -870,11 +870,11 @@ def fill_margins(region, width, dpi, proj = 'M', wd = '.', \
 
     if bottom:
         height, region = adjust_latitude(proj, \
-                total_width, total_height - top, region, \
+                total_width, total_height - top, region, wd = wd, \
                 abs_diff = True, accuracy = 0.4 / float(dpi), top = False)
     if top:
         height, region = adjust_latitude(proj, \
-                total_width, total_height, region, \
+                total_width, total_height, region, wd = wd, \
                 abs_diff = True, accuracy = 0.4 / float(dpi), bottom = False)
 
     # total height is approached so will not be exact
@@ -1912,7 +1912,7 @@ class GMTPlot:
             header = None):
         """
         """
-        cmd = [GMT, 'grdview', '-K', '-O', '-J', '-R', '-p', xyv_file, '-JZ0.2i']
+        cmd = [GMT, 'grdview', '-K', '-O', '-J', '-R', '-p', xyv_file, '-JZ1i', '-Qmdarkgreen@0']
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def fault(self, in_path, is_srf = False, \

@@ -116,52 +116,57 @@ map_width, map_height, region_srf = \
 ###
 ### STAGE 2: Zoom from NZ Region
 ###
-gmt.gmt_defaults(wd = gwd, ps_media = 'A2')
-# create a base map (not a lot is common because region changes)
-b = gmt.GMTPlot('%s/basemap.ps' % (gwd), reset = False)
-b.background(page_width, page_height, colour = 'seashell1')
-# match map region but in non-geographic units
-b.spacial('X', (0, map_width, 0, map_height), \
-        sizing = '%s/%s' % (map_width, map_height), \
-        x_shift = margin_left, y_shift = margin_bottom)
-# title is SRF name
-b.text(map_width / 2., map_height, os.path.basename(srf_file), \
-        dy = 0.2, align = 'CB', size = '20p')
-b.leave()
-
+gmt.gmt_defaults(wd = gwd, ps_media = 'Custom_%dix%dix' % (page_width, page_height))
 def zoom_sequence(frame):
     # working directory for this process
     pwd = '%s/zs%.4d' % (gwd, frame)
     if not os.path.exists(pwd):
         os.makedirs(pwd)
     ps_file = '%s/seq_%.4d.ps' % (pwd, frame)
-    copyfile('%s/basemap.ps' % (gwd), ps_file)
     copyfile('%s/gmt.conf' % (gwd), '%s/gmt.conf' % (pwd))
+    z = gmt.GMTPlot(ps_file, reset = False)
     plot_region, plot_width, x_margin, y_margin = gmt.region_transition( \
             'M', region_nz, region_srf, map_width, map_height, \
             dpi, frame, zoom_frames, wd = pwd)
+
+    # extend map to cover margins
+    map_width_a, map_height_a, borderless_region = gmt.fill_margins( \
+            plot_region, plot_width, dpi, left = margin_left + x_margin, \
+            right = margin_right + x_margin, top = margin_top + y_margin, \
+            bottom = margin_bottom + y_margin, wd = pwd)
+    z.spacial('M', borderless_region, sizing = map_width_a)
+    # topo, water, overlay cpt scale
+    z.basemap()
+    # map margins are semi-transparent
+    z.background(map_width_a, map_height_a, \
+            colour = 'white@25', spacial = True, \
+            window = (margin_left + x_margin, margin_right + x_margin, \
+                    margin_top + y_margin, margin_bottom + y_margin))
+    # leave space for left tickmarks and bottom colour scale
+    z.spacial('M', plot_region, sizing = plot_width, \
+            x_shift = margin_left + x_margin, \
+            y_shift = margin_bottom + y_margin)
+    # title is SRF name
+    z.text(sum(plot_region[:2]) / 2., plot_region[3], \
+            os.path.basename(srf_file), dy = 0.2, align = 'CB', size = '20p')
 
     # for scaling fault line thickness
     zfactor = (region_srf[1] - region_srf[0]) \
             / (plot_region[1] - plot_region[0])
 
-    z = gmt.GMTPlot(ps_file, append = True, reset = False)
-    z.spacial('M', plot_region, sizing = plot_width, \
-            x_shift = x_margin, y_shift = y_margin)
-    z.basemap()
     z.fault(srf_corners, is_srf = False, top_width = zfactor * 2.4, \
             plane_width = zfactor * 1.2, hyp_width = zfactor * 1.2)
     tick_major, tick_minor = \
             gmt.auto_tick(plot_region[0], plot_region[1], plot_width)
     z.ticks(major = tick_major, minor = tick_minor)
     z.finalise()
-    z.png(dpi = dpi, out_dir = out)
+    z.png(dpi = dpi, out_dir = out, clip = False)
     print('Opening zoom sequence %.3d/%.3d complete.' \
             % (frame + 1, zoom_frames))
 
 if not draft:
-    for i in xrange(zoom_frames):
-        zoom_sequence(i)
+    #for i in xrange(zoom_frames):
+    #    zoom_sequence(i)
     pool = mp.Pool(40)
     pool.map(zoom_sequence, xrange(zoom_frames))
 
@@ -184,20 +189,37 @@ print('Time series processed.')
 cpt_sliprate = '%s/sliprate.cpt' % (gwd)
 gmt.makecpt('%s/cpt/slip.cpt' % (script_dir), cpt_sliprate, 0, cpt_max, \
         inc = 2, invert = False)
-# add more common things to basemap
-b.enter()
+
+# create basemap
+b = gmt.GMTPlot('%s/basemap.ps' % (gwd), reset = False)
+if not draft:
+    # extend map to cover margins
+    map_width_a, map_height_a, borderless_region = gmt.fill_margins( \
+            region_srf, map_width, dpi, left = margin_left, \
+            right = margin_right, top = margin_top, bottom = margin_bottom)
+    b.spacial('M', borderless_region, sizing = map_width_a)
+    # topo, water, overlay cpt scale
+    b.basemap()
+    # map margins are semi-transparent
+    b.background(map_width_a, map_height_a, \
+            colour = 'white@25', spacial = True, \
+            window = (margin_left, margin_right, margin_top, margin_bottom))
+else:
+    # background can be larger as whitespace is later cropped
+    b.background(page_width, page_height)
+# leave space for left tickmarks and bottom colour scale
+b.spacial('M', region_srf, sizing = map_width, \
+        x_shift = margin_left, y_shift = margin_bottom)
+if draft:
+    # topo, water, overlay cpt scale
+    b.basemap(topo = None, highway = None, road = None, res = 'f')
+# title is SRF name
+b.text(sum(region_srf[:2]) / 2., region_srf[3], os.path.basename(srf_file), \
+        dy = 0.2, align = 'CB', size = '20p')
 b.cpt_scale('R', 'B', cpt_sliprate, cpt_max / 10., cpt_max / 50., \
         cross_tick = cpt_max / 10., arrow_f = True, horiz = False, \
         length = map_height - 0.2, thickness = 0.2, \
         dx = 0.2, pos = 'rel_out', align = 'LB', label = 'Slip Rate (cm/s)')
-b.spacial('M', region_srf, sizing = map_width)
-if draft:
-    b.basemap(topo = None, highway = None, road = None, res = 'f')
-else:
-    b.basemap()
-# fault thickness must be related to zfactor used during zoom
-b.fault(srf_corners, is_srf = False, \
-        plane_width = '1', hyp_width = '1', top_width = '2')
 b.leave()
 tick_major, tick_minor = \
         gmt.auto_tick(region_srf[0], region_srf[1], map_width)
@@ -241,9 +263,12 @@ def slip_sequence(frame):
         s.coastlines(width = 0.2, res = 'f')
     else:
         s.coastlines(width = 0.2)
+    # TODO: fault thickness must be related to zfactor used during zoom
+    s.fault(srf_corners, is_srf = False, \
+            plane_width = '1', hyp_width = '1', top_width = '2')
     s.ticks(major = tick_major, minor = tick_minor)
     s.finalise()
-    s.png(dpi = dpi, out_dir = out)
+    s.png(dpi = dpi, out_dir = out, clip = False)
     print('Slip sequence %.3d/%.3d complete.' % (frame + 1, srf_frames))
 
 #for i in xrange(srf_frames):
