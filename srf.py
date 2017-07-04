@@ -10,7 +10,7 @@ from subprocess import Popen, PIPE
 
 import numpy as np
 
-from geo import *
+import geo
 
 # binary paths
 srf2xyz = '/nesi/projects/nesi00213/tools/srf2xyz'
@@ -233,37 +233,79 @@ def get_bounds(srf, seg = -1):
 def get_hypo(srf, lonlat = True, depth = False):
     """
     Return hypocentre.
-    srf: srf source
+    srf: srf source file path
+    lonlat: in tearms of longitude and latitude (True), raw km offsets (False)
+    depth: return longitude, latitude and depth. False to only return 2 values
     """
+    # complexity increased by:
+    # segments may be shared, shyp relative to centre of shared segments
+    # have to be able to travel horizontally between shared segments
     with open(srf, 'r') as sf:
-        # metadata
-        plane = read_header(sf)[0]
-        points = int(sf.readline().split()[1])
-        lon, lat = plane[:2]
-        strike, dip = plane[6:8]
-        # plane 9 11?? dum dum dum....
-        shyp, dhyp = plane[9:11]
+        planes = read_header(sf)
+        # keep only main segment set (containing hypocentre)
+        if len(planes) > 1:
+            for i in xrange(1, len(planes)):
+                # negative dhyp if same segment set
+                if planes[i][10] >= 0:
+                    del planes[i:]
+                    break
 
-        # new version - try to find hypocentre subfault
-        if depth or lonlat:
-            nstk, ndip = plane[2:4]
-            ln, wid = plane[4:6]
-            hyp_stk = int(round((nstk - 1) / 2. + shyp / (ln / (float(nstk) - 1))))
-            hyp_dip = int(round(dhyp / (wid / (float(ndip) - 1))))
-            assert(0 <= hyp_stk < nstk)
+        # dip will be constant along shared segments
+        ndip = planes[0][3]
+        wid = planes[0][5]
+        shyp, dhyp = planes[0][9:11]
+        hyp_dip = int(round(dhyp / (wid / (float(ndip) - 1))))
+        try:
             assert(0 <= hyp_dip < ndip)
-            skip_points(sf, hyp_dip * nstk + hyp_stk)
-            hlon, hlat, depth_km = get_lonlat(sf, value = 'depth')
-        else:
-            # along strike, along dip
-            return shyp, dhyp
+        except AssertionError:
+            # describe scenario for debugging
+            print('Hypocentre determined to be outside fault width.')
+            print('Width is %skm with %skm subfault spacing.' \
+                    % (wid, (wid / (float(ndip) - 1))))
+            print('Hypocentre dip subfault number %d, total subfaults: %d.' \
+                    % (hyp_dip, ndip))
+            raise
 
-        # old version, has error asociated with change in bearing
-        # move along strike for shyp km
-        #lat, lon = ll_shift(lat, lon, shyp, strike)
-        # move along dip for dhyp km
-        #flat_dhyp = dhyp * cos(radians(dip))
-        #lat, lon = ll_shift(lat, lon, flat_dhyp, strike + 90)
+        # XXX: there are gaps between segments, ignored
+        # total segment set length (along strike)
+        ln_tot = sum(planes[p][4] for p in xrange(len(planes)))
+        # distance from group start edge to hypocentre
+        ln_shyp = ln_tot / 2. + planes[0][9]
+        ln_shyp_rel = ln_shyp
+        # give flat projection location
+        if not lonlat:
+            return ln_shyp, dhyp
+        # calculate shyp within correct sub segment
+        ln_segs = 0
+        for p in xrange(len(planes)):
+            ln_segs += planes[p][4]
+            if ln_segs >= ln_shyp:
+                break
+            ln_shyp_rel -= planes[p][4]
+        # determine strike in correct sub segment
+        nstk = planes[p][2]
+        ln = planes[p][4]
+        hyp_stk = int(round(ln_shyp_rel \
+                / (ln / (float(nstk) - 1))))
+        try:
+            assert(0 <= hyp_stk < nstk)
+        except AssertionError:
+            print('Hypocentre determined to be outside fault length.')
+            print('Length of sub-segment %d of %d is %skm with %skm subfault spacing.' \
+                    % (p, len(planes), ln, ln / float(nstk) - 1))
+            print('Hypocentre strike subfault number %d, total subfaults: %d.' \
+                    % (hyp_stk, nstk))
+            raise
+
+        # retrieve value
+        points = int(sf.readline().split()[1])
+        for skip in xrange(p):
+            nstk, ndip = planes[skip][2:4]
+            skip_points(sf, nstk * ndip)
+        nstk, ndip = planes[p][2:4]
+        ln, wid = planes[p][4:6]
+        skip_points(sf, hyp_dip * nstk + hyp_stk)
+        hlon, hlat, depth_km = get_lonlat(sf, value = 'depth')
 
         if not depth:
             return hlon, hlat
