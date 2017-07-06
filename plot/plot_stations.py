@@ -318,13 +318,17 @@ def column_overlay(n, station_file, meta, plot):
     copy('%s/gmt.history' % (gmt_temp), swd)
     p = gmt.GMTPlot(ps, append = True)
 
-    # prepare cpt
-    cpt_stations = '%s/stations.cpt' % (swd)
-    # overlay colour scale
-    gmt.makecpt(meta['cpt'], cpt_stations, meta['cpt_min'][n], meta['cpt_max'][n], \
-            inc = meta['cpt_inc'][n], invert = 'invert' in meta['cpt_properties'], \
-            fg = meta['cpt_fg'], bg = meta['cpt_bg'], \
-            transparency = meta['transparency'])
+    if 'fixed' in cpt_properties:
+        cpt_stations = meta['cpt']
+    else:
+        # prepare cpt
+        cpt_stations = '%s/stations.cpt' % (swd)
+        # overlay colour scale
+        gmt.makecpt(meta['cpt'], cpt_stations, meta['cpt_min'][n], \
+                meta['cpt_max'][n], inc = meta['cpt_inc'][n], \
+                invert = 'invert' in meta['cpt_properties'], \
+                fg = meta['cpt_fg'], bg = meta['cpt_bg'], \
+                transparency = meta['transparency'])
 
     # common title
     if len(meta['title']):
