@@ -272,9 +272,6 @@ def get_hypo(srf, lonlat = True, depth = False):
         # distance from group start edge to hypocentre
         ln_shyp = ln_tot / 2. + planes[0][9]
         ln_shyp_rel = ln_shyp
-        # give flat projection location
-        if not lonlat:
-            return ln_shyp, dhyp
         # calculate shyp within correct sub segment
         ln_segs = 0
         for p in xrange(len(planes)):
@@ -282,6 +279,9 @@ def get_hypo(srf, lonlat = True, depth = False):
             if ln_segs >= ln_shyp:
                 break
             ln_shyp_rel -= planes[p][4]
+        # give flat projection location
+        if not lonlat:
+            return p, ln_shyp_rel, dhyp
         # determine strike in correct sub segment
         nstk = planes[p][2]
         ln = planes[p][4]
