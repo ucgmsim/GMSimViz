@@ -1675,12 +1675,15 @@ class GMTPlot:
 
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
-    def cpt_scale(self, x, y, cpt, major, minor, label = None, \
+    def cpt_scale(self, x, y, cpt, major = None, minor = None, label = None, \
             length = 5.0, thickness = 0.15, horiz = True, \
             arrow_f = True, arrow_b = False, log = False, \
-            pos = 'plot', align = None, dx = 0, dy = 0, cross_tick = None):
+            pos = 'plot', align = None, dx = 0, dy = 0, cross_tick = None, \
+            categorical = False, intervals = False, gap = ''):
         """
         Draws a colour palette legend.
+        NOTE: major, minor should remain in current position for compatibility.
+        NOTE: major, minor weren't optional before so position remains for now.
         x: x position to place scale
         y: y position to place scale
         cpt: cpt to make scale for
@@ -1702,7 +1705,10 @@ class GMTPlot:
         dx: offset x position by distance units
         dy: offset y position by distance units
         cross_tick: tick increment through the colour bar
-        #TODO: option for major and minor = 'auto' or None
+        categorical: split bar equally into all z slices
+        intervals: if no text labels, categories have intervals, not edge values
+        gap: between categories. any value (0+) will centre align labels
+        #TODO: option for major and minor = 'auto' or (None - done)
         """
         # if the source is a file, make sure path isn't relative because cwd
         if os.path.exists(cpt):
@@ -1735,17 +1741,23 @@ class GMTPlot:
                 pos_spec = '%s+j%s' % (pos_spec, align)
         cmd.append(pos_spec)
 
-        # TODO: fix annotation on log scales (if even possible)
-        annotation = '-Ba%sf%s' % (major, minor)
-        if cross_tick != None:
-            annotation = '%sg%s' % (annotation, cross_tick)
-        if label != None:
-            if GMT_MINOR < 2:
-                annotation = '%s:%s:' \
-                        % (annotation, label.replace(':', ''))
-            else:
-                annotation = '%s+l%s' % (annotation, label)
-        cmd.append(annotation)
+        # annotation option: explicit
+        if major != None or minor != None:
+            # TODO: allow only setting major or minor or cross_tick?
+            annotation = '-Ba%sf%s' % (major, minor)
+            if cross_tick != None:
+                annotation = '%sg%s' % (annotation, cross_tick)
+            if label != None:
+                if GMT_MINOR < 2:
+                    annotation = '%s:%s:' \
+                            % (annotation, label.replace(':', ''))
+                else:
+                    annotation = '%s+l%s' % (annotation, label)
+            cmd.append(annotation)
+        # annotation option: categorical
+        elif categorical:
+            cmd.append('-L%s%s' % ('i' * intervals, gap))
+        # annotation default: labeled at z slices
         if log:
             cmd.append('-Q')
 

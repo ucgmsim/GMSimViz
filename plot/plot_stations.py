@@ -82,6 +82,7 @@ def load_file(station_file):
         transparency = 0
         cpt_fg = None
         cpt_bg = None
+        cpt_gap = ''
         if os.path.exists(cpt):
             # assuming it is a built in cpt if not matching filename
             cpt = os.path.abspath(cpt)
@@ -95,6 +96,8 @@ def load_file(station_file):
                     cpt_fg = p[3:]
                 elif p[:3] == 'bg-':
                     cpt_bg = p[3:]
+                elif p[:4] == 'gap-':
+                    cpt_gap = p[4:]
         except IndexError:
             cpt_properties = []
         if len(cpt_info) > 1:
@@ -134,10 +137,12 @@ def load_file(station_file):
             for i in xrange(len(cpt_max)):
                 if cpt_max[i] > 115:
                     # 2 significant figures
-                    cpt_max[i] = round(cpt_max[i], 1 - int(np.floor(np.log10(cpt_max[i]))))
+                    cpt_max[i] = round(cpt_max[i], \
+                            1 - int(np.floor(np.log10(abs(cpt_max[i])))))
                 else:
                     # 1 significant figures
-                    cpt_max[i] = round(cpt_max[i], - int(np.floor(np.log10(cpt_max[i]))))
+                    cpt_max[i] = round(cpt_max[i], \
+                            - int(np.floor(np.log10(abs(cpt_max[i])))))
                 if val_pool[i].min() < 0:
                     cpt_min.append(-cpt_max)
                 else:
@@ -171,7 +176,7 @@ def load_file(station_file):
             'grd_mask_dist':grd_mask_dist, 'cpt':cpt, 'cpt_fg':cpt_fg, \
             'cpt_bg':cpt_bg, 'cpt_min':cpt_min, 'cpt_max':cpt_max, \
             'cpt_inc':cpt_inc, 'cpt_tick':cpt_tick, 'cpt_properties':cpt_properties, \
-            'transparency':transparency, 'ncol':ncol, \
+            'transparency':transparency, 'ncol':ncol, 'cpt_gap':cpt_gap, \
             'label_colour':label_colour, 'col_labels':col_labels}
 
 ###
@@ -318,8 +323,12 @@ def column_overlay(n, station_file, meta, plot):
     copy('%s/gmt.history' % (gmt_temp), swd)
     p = gmt.GMTPlot(ps, append = True)
 
-    if 'fixed' in cpt_properties:
-        cpt_stations = meta['cpt']
+    if 'fixed' in meta['cpt_properties']:
+        if meta['cpt'].split('/')[0] == '<REPO>':
+            script_dir = os.path.abspath(os.path.dirname(__file__))
+            cpt_stations = '%s/cpt/%s' % (script_dir, meta['cpt'][7:])
+        else:
+            cpt_stations = meta['cpt']
     else:
         # prepare cpt
         cpt_stations = '%s/stations.cpt' % (swd)
@@ -370,9 +379,15 @@ def column_overlay(n, station_file, meta, plot):
     p.ticks(major = plot['major_tick'], minor = plot['minor_tick'], sides = 'ws')
 
     # colour scale
-    p.cpt_scale(3, -0.5, cpt_stations, meta['cpt_tick'][n], \
-        meta['cpt_inc'][n], label = meta['legend'], \
-        arrow_f = meta['cpt_max'][n] > 0, arrow_b = meta['cpt_min'][n] < 0)
+    if 'categorical' in meta['cpt_properties']:
+        p.cpt_scale(3, -0.5, cpt_stations, label = meta['legend'], \
+                arrow_f = False, arrow_b = False, gap = meta['cpt_gap'], \
+                intervals = 'intervals' in meta['cpt_properties'], \
+                categorical = True)
+    else:
+        p.cpt_scale(3, -0.5, cpt_stations, meta['cpt_tick'][n], \
+                meta['cpt_inc'][n], label = meta['legend'], \
+                arrow_f = meta['cpt_max'][n] > 0, arrow_b = meta['cpt_min'][n] < 0)
 
 def render(n):
     """
