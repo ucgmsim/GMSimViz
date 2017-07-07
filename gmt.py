@@ -1757,7 +1757,11 @@ class GMTPlot:
         # annotation option: categorical
         elif categorical:
             cmd.append('-L%s%s' % ('i' * intervals, gap))
+            if label != None:
+                cmd.append('-B+l%s' % (label))
         # annotation default: labeled at z slices
+        elif label != None:
+            cmd.append('-B+l%s' % (label))
         if log:
             cmd.append('-Q')
 
