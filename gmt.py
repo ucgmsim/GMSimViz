@@ -10,7 +10,7 @@ add support for different interpolation methods
 avg_ll calculated elsewhere should be local function that works over equator
 """
 
-from math import ceil, log10, sqrt
+from math import ceil, floor, log10, sqrt
 import os
 from shutil import copyfile, move
 from subprocess import call, PIPE, Popen
@@ -371,10 +371,10 @@ def xyv_cpt_range(xyv_file, max_step = 12, percentile = 99.5, \
     cpt_mx = np.percentile(lonlatvalue[:, 2], percentile)
     if cpt_mx < 100:
         # 1 sf
-        cpt_mx = round(cpt_mx, -int(log10(abs(cpt_mx))))
+        cpt_mx = round(cpt_mx, - int(floor(log10(abs(cpt_mx)))))
     else:
         # 2 sf
-        cpt_mx = round(cpt_mx, -int(log10(abs(cpt_mx)) - 1))
+        cpt_mx = round(cpt_mx, 1 - int(floor(log10(abs(cpt_mx)))))
     if my_max != None:
         cpt_mx = my_max
 

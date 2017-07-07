@@ -19,7 +19,7 @@ plot_srf.py <srf_file> <dpi_override> <'active_faults' to plot faults>
 plot_srf.py mysrf.srf 300 active_faults
 """
 
-from math import log10
+from math import floor, log10
 import os
 from shutil import rmtree
 import sys
@@ -130,10 +130,10 @@ subfaults = len(values)
 # round percentile significant digits for colour pallete
 if percentile < 1000:
     # 1 sf
-    cpt_max = round(percentile, -int(log10(abs(percentile))))
+    cpt_max = round(percentile, - int(floor(log10(abs(percentile)))))
 else:
     # 2 sf
-    cpt_max = round(percentile, -int(log10(abs(percentile))) + 1)
+    cpt_max = round(percentile, 1 - int(floor(log10(abs(percentile)))))
 print('Loading complete.')
 
 
