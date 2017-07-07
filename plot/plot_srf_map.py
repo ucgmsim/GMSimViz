@@ -130,10 +130,10 @@ subfaults = len(values)
 # round percentile significant digits for colour pallete
 if percentile < 1000:
     # 1 sf
-    cpt_max = round(percentile, -int(log10(percentile)))
+    cpt_max = round(percentile, -int(log10(abs(percentile))))
 else:
     # 2 sf
-    cpt_max = round(percentile, -int(log10(percentile)) + 1)
+    cpt_max = round(percentile, -int(log10(abs(percentile))) + 1)
 print('Loading complete.')
 
 

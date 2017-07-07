@@ -371,10 +371,10 @@ def xyv_cpt_range(xyv_file, max_step = 12, percentile = 99.5, \
     cpt_mx = np.percentile(lonlatvalue[:, 2], percentile)
     if cpt_mx < 100:
         # 1 sf
-        cpt_mx = round(cpt_mx, -int(log10(cpt_mx)))
+        cpt_mx = round(cpt_mx, -int(log10(abs(cpt_mx))))
     else:
         # 2 sf
-        cpt_mx = round(cpt_mx, -int(log10(cpt_mx) - 1))
+        cpt_mx = round(cpt_mx, -int(log10(abs(cpt_mx)) - 1))
     if my_max != None:
         cpt_mx = my_max
 

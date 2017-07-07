@@ -186,7 +186,7 @@ cpt_max = []
 for i, values in enumerate([slip_values, trise_values]):
     cpt_max.append(np.percentile(values, 99))
     # 2 sf
-    cpt_max[i] = round(cpt_max[i], -int(log10(cpt_max[i])) + 1)
+    cpt_max[i] = round(cpt_max[i], -int(log10(abs(cpt_max[i]))) + 1)
     gmt.makecpt(plot_cpt[i], cpt_out[i], 0, cpt_max[i], cpt_max[i] / 1000, \
             continuous = True)
 

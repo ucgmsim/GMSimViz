@@ -183,7 +183,7 @@ for plane in xrange(len(slip_rate)):
             np.nanmax(slip_rate[plane], axis = 1))
 # maximum range to 2 sf
 cpt_max = np.nanpercentile(sliprate_max, 50)
-cpt_max = round(cpt_max, -int(log10(cpt_max)) + 1)
+cpt_max = round(cpt_max, -int(log10(abs(cpt_max))) + 1)
 print('Time series processed.')
 # colour palette for slip
 cpt_sliprate = '%s/sliprate.cpt' % (gwd)
