@@ -394,7 +394,8 @@ def xyv_cpt_range(xyv_file, max_step = 12, percentile = 99.5, \
 
     return mn, cpt_inc, cpt_mx, mx
 
-def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', cpt_percentile = 95):
+def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', \
+        cpt_percentile = 95, wd = '.'):
     """
     Creates geographic overlay data from SRF files.
     out_dir: where to place outputs
@@ -413,9 +414,7 @@ def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', cpt_percentile = 95)
     all_vs = np.concatenate((seg_llvs))[:, 2]
     percentile = np.percentile(all_vs, cpt_percentile)
     # TODO: fix mess
-    cpt = os.path.join(os.path.dirname(os.path.abspath(__file__)), \
-            'cpt', 'slip.cpt')
-    makecpt(cpt, '%s/%s.cpt' % (out_dir, prefix), 0, percentile, 1)
+    makecpt(CPTS['slip'], '%s/%s.cpt' % (out_dir, prefix), 0, percentile, 1)
     # each plane will use a region which just fits
     # these are needed for plotting
     regions = []
@@ -433,7 +432,7 @@ def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', cpt_percentile = 95)
         # GMT grd mask
         grd_mask('%s/%s_%d_bounds.ll' % (out_dir, prefix, s), \
                 '%s/%s_%d_mask.grd' % (out_dir, prefix, s), \
-                dx = plot_dx, dy = plot_dy, region = regions[s])
+                dx = plot_dx, dy = plot_dy, region = regions[s], wd = wd)
 
     return (plot_dx, plot_dy), regions
 
@@ -603,7 +602,8 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
         wd = None, outside = 'NaN', geo = True, mask_dist = None):
     """
     Creates a mask file from a path or surrounding point area with mask_dist.
-    xy_file: file containing a path
+    xy_file: file containing a path, alternatively use 'f', 'h', 'i', 'l'
+            or 'c' for respective land area resolution of GMT GSHHG
     out_file: name of output GMT grd file
     region: tuple region of grd file (must be set if gmt.history doesn't exist)
     dx: x grid spacing size
@@ -617,10 +617,18 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
         wd = os.path.dirname(out_file)
         if wd == '':
             wd = '.'
-    cmd = ([GMT, 'grdmask', os.path.abspath(xy_file), \
-            '-G%s' % (os.path.abspath(out_file)), \
-            '-N%s/1/1' % (outside), '-I%s/%s' % (dx, dy)])
-    if geo:
+    if xy_file in ['f', 'h', 'i', 'l', 'c']:
+        land = True
+        # -N wet/dry or ocean/land/lake/island/pond only ocean is outside
+        # by default because GSHHG is too low res / wrong anyway
+        cmd = [GMT, 'grdlandmask', '-D%s' % (xy_file), \
+                '-N%s/1/1/1/1' % (outside)]
+    else:
+        land = False
+        cmd = [GMT, 'grdmask', os.path.abspath(xy_file), '-N%s/1/1' % (outside)]
+    cmd.extend(['-G%s' % (os.path.abspath(out_file)), '-I%s/%s' % (dx, dy)])
+
+    if geo and not land:
         cmd.append('-fg')
     if mask_dist != None:
         cmd.append('-S%s' % (mask_dist))
@@ -1846,6 +1854,8 @@ class GMTPlot:
             if not os.path.exists(temp_grd):
                 print('failed to create grd from %s. no overlay produced.' \
                         % (os.path.basename(xyv_file)))
+                if custom_region != None:
+                    write_history(True, wd = self.wd)
                 return
         else:
             copyfile(xyv_file, temp_grd)
@@ -1997,12 +2007,13 @@ class GMTPlot:
         topp.communicate(top_edges)
         topp.wait()
         # hypocentre
-        hypp = Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', \
-                '-W%s,%s' % (hyp_width, hyp_colour), \
-                '-S%s%s' % (hyp_shape, hyp_size)], \
-                stdin = PIPE, stdout = self.psf, cwd = self.wd)
-        hypp.communicate(hypocentre)
-        hypp.wait()
+        if hyp_size > 0:
+            hypp = Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', \
+                    '-W%s,%s' % (hyp_width, hyp_colour), \
+                    '-S%s%s' % (hyp_shape, hyp_size)], \
+                    stdin = PIPE, stdout = self.psf, cwd = self.wd)
+            hypp.communicate(hypocentre)
+            hypp.wait()
 
     def beachballs(self, data, fmt = 'c', is_file = False, scale = 0.5, \
             colour = 'black', extensive = 'white', text_under = False, \

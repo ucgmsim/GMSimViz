@@ -116,7 +116,7 @@ map_width, map_height, region_srf = \
 ###
 ### STAGE 2: Zoom from NZ Region
 ###
-gmt.gmt_defaults(wd = gwd, ps_media = 'Custom_%dix%dix' % (page_width, page_height))
+gmt.gmt_defaults(wd = gwd, ps_media = 'Custom_%dix%di' % (page_width, page_height))
 def zoom_sequence(frame):
     # working directory for this process
     pwd = '%s/zs%.4d' % (gwd, frame)
