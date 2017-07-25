@@ -83,6 +83,7 @@ def load_file(station_file):
         cpt_fg = None
         cpt_bg = None
         cpt_gap = ''
+        cpt_topo = None
         if os.path.exists(cpt):
             # assuming it is a built in cpt if not matching filename
             cpt = os.path.abspath(cpt)
@@ -98,6 +99,8 @@ def load_file(station_file):
                     cpt_bg = p[3:]
                 elif p[:4] == 'gap-':
                     cpt_gap = p[4:]
+                elif p[:5] == 'topo-':
+                    cpt_topo = p[5:]
         except IndexError:
             cpt_properties = []
         if len(cpt_info) > 1:
@@ -177,7 +180,8 @@ def load_file(station_file):
             'cpt_bg':cpt_bg, 'cpt_min':cpt_min, 'cpt_max':cpt_max, \
             'cpt_inc':cpt_inc, 'cpt_tick':cpt_tick, 'cpt_properties':cpt_properties, \
             'transparency':transparency, 'ncol':ncol, 'cpt_gap':cpt_gap, \
-            'label_colour':label_colour, 'col_labels':col_labels}
+            'label_colour':label_colour, 'col_labels':col_labels, \
+            'cpt_topo':cpt_topo}
 
 ###
 ### boundaries
@@ -283,7 +287,10 @@ def template_2(meta):
     if meta['title'] == 'DRAFT':
         t.basemap(road = None, highway = None, topo = None, res = 'f')
     else:
-        t.basemap()
+        if meta['cpt_topo'] == None:
+            t.basemap()
+        else:
+            t.basemap(topo_cpt = meta['cpt_topo'])
     # simulation domain - optional
     try:
         t.path(meta['cnr_str'], is_file = False, split = '-', \

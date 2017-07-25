@@ -60,6 +60,7 @@ CHCH_WATER = os.path.join(GMT_DATA, 'Paths/water_network/water.gmt')
 CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plot', 'cpt')
 CPTS = {
     'nztopo-green-brown':os.path.join(CPT_DIR, 'palm_springs_nz_topo.cpt'),
+    'nztopo-grey1':os.path.join(CPT_DIR, 'nz_topo_grey1.cpt'),
     'mmi':os.path.join(CPT_DIR, 'mmi.cpt'),
     'slip':os.path.join(CPT_DIR, 'slip.cpt'),
     'trise':os.path.join(CPT_DIR, 'trise.cpt')
@@ -1431,6 +1432,8 @@ class GMTPlot:
         if topo != None:
             if topo_cpt == 'green-brown':
                 topo_cpt = CPTS['nztopo-green-brown']
+            elif topo_cpt == 'grey1':
+                topo_cpt = CPTS['nztopo-grey1']
             self.topo(topo, cpt = topo_cpt)
         if water != None:
             if res == None:
@@ -1755,7 +1758,7 @@ class GMTPlot:
             annotation = '-Ba%sf%s' % (major, minor)
             if cross_tick != None:
                 annotation = '%sg%s' % (annotation, cross_tick)
-            if label != None:
+            if label != None and label != '':
                 if GMT_MINOR < 2:
                     annotation = '%s:%s:' \
                             % (annotation, label.replace(':', ''))
