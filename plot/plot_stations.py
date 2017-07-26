@@ -111,6 +111,7 @@ def load_file(station_file):
             shape = 't'
             grid = None
             grd_mask_dist = None
+            landmask = False
             try:
                 stat_properties = cpt_info[1].split(':')[1].split(',')
                 for p in stat_properties:
@@ -122,6 +123,8 @@ def load_file(station_file):
                         nn_search = p[3:]
                     elif p[:6] == 'gmask-':
                         grd_mask_dist = p[6:]
+                    elif p[:8] == 'landmask':
+                        landmask = True
             except IndexError:
                 stat_properties = []
 
@@ -181,7 +184,7 @@ def load_file(station_file):
             'cpt_inc':cpt_inc, 'cpt_tick':cpt_tick, 'cpt_properties':cpt_properties, \
             'transparency':transparency, 'ncol':ncol, 'cpt_gap':cpt_gap, \
             'label_colour':label_colour, 'col_labels':col_labels, \
-            'cpt_topo':cpt_topo}
+            'cpt_topo':cpt_topo, 'landmask':landmask}
 
 ###
 ### boundaries
@@ -353,9 +356,15 @@ def column_overlay(n, station_file, meta, plot):
 
     # add ratios to map
     if meta['grid'] == None:
+        if meta['landmask']:
+            # start clip - TODO: allow different resolutions including GSHHG
+            p.clip(path = gmt.LINZ_COAST['150k'], is_file = True)
         p.points(station_file, shape = meta['shape'], \
                 size = meta['stat_size'], fill = None, line = None, \
                 cpt = cpt_stations, cols = '0,1,%d' % (n + 2), header = 6)
+        if meta['landmask']:
+            # apply clip to intermediate items
+            p.clip()
     else:
         grd_file = '%s/overlay.grd' % (swd)
         if meta['grd_mask_dist'] != None:
@@ -370,9 +379,15 @@ def column_overlay(n, station_file, meta, plot):
                 search = meta['nn_search'], cols = '0,1,%d' % (n + 2), \
                 header = 6, automask = col_mask, \
                 mask_dist = meta['grd_mask_dist'])
+        if meta['landmask']:
+            # start clip - TODO: allow different resolutions including GSHHG
+            p.clip(path = gmt.LINZ_COAST['150k'], is_file = True)
         p.overlay(grd_file, cpt_stations, dx = meta['stat_size'], \
                 dy = meta['stat_size'], crop_grd = mask, land_crop = False, \
                 transparency = meta['transparency'])
+        if meta['landmask']:
+            # apply clip to intermediate items
+            p.clip()
     # add locations to map
     p.sites(plot['sites'])
 
