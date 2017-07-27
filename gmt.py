@@ -1043,6 +1043,36 @@ def backup_history(restore = False, wd = '.'):
         copyfile(original, backup)
 
 ###
+### RELATING TO GMT SPATIAL
+###
+def intersections(inputs, external = True, internal = False, \
+        duplicates = False, wd = '.'):
+    """
+    Return intersecting points.
+    inputs: list of file paths or single file path
+    external: inter-polygon intersections
+    internal: intra-polygon intersections
+    duplicates: keep duplicate points (True), unique points (False)
+    """
+    cmd = [GMT, 'spatial', '-I%s%s' % ('e' * external, 'i' * internal)]
+    if not duplicates:
+        cmd.append('-D')
+    if type(inputs).__name__ == 'list':
+        cmd.extend(inputs)
+    else:
+        cmd.append(inputs)
+
+    # run
+    sp = Popen(cmd, cwd = wd, stdout = PIPE)
+    so = sp.communicate()[0]
+    sp.wait()
+    # process
+    points = []
+    for line in so.rstrip().split('\n'):
+        points.append(map(float, line.split()[:2]))
+    return points
+
+###
 ### MAIN PLOTTING CLASS
 ###
 class GMTPlot:
