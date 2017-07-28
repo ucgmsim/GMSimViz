@@ -180,7 +180,8 @@ def ll_bearing(lon1, lat1, lon2, lat2):
             cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon_diff))) \
             % 360
 
-def path_from_corners(corners = None, output = 'sim.modelpath_hr', min_edge_points = 100):
+def path_from_corners(corners = None, output = 'sim.modelpath_hr', \
+        min_edge_points = 100, close = True):
     """
     corners: python list (4 by 2) containing (lon, lat) in order
         otherwise take from velocity model
@@ -201,7 +202,8 @@ def path_from_corners(corners = None, output = 'sim.modelpath_hr', min_edge_poin
                     corners.append(map(float, line.split()[1:3]))
 
     # close the box by going back to origin
-    corners.append(corners[0])
+    if close:
+        corners.append(corners[0])
     # until each side has at least wanted number of points
     while len(corners) < 4 * min_edge_points:
         # work backwards, insertions don't change later indexes
