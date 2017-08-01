@@ -600,7 +600,7 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
     write_history(True, wd = wd)
 
 def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
-        wd = None, outside = 'NaN', geo = True, mask_dist = None):
+        wd = None, inside = '1', outside = 'NaN', geo = True, mask_dist = None):
     """
     Creates a mask file from a path or surrounding point area with mask_dist.
     xy_file: file containing a path, alternatively use 'f', 'h', 'i', 'l'
@@ -623,10 +623,12 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
         # -N wet/dry or ocean/land/lake/island/pond only ocean is outside
         # by default because GSHHG is too low res / wrong anyway
         cmd = [GMT, 'grdlandmask', '-D%s' % (xy_file), \
-                '-N%s/1/1/1/1' % (outside)]
+                '-N%s/%s/%s/%s/%s' % (outside, inside, inside, inside, inside)]
     else:
         land = False
-        cmd = [GMT, 'grdmask', os.path.abspath(xy_file), '-N%s/1/1' % (outside)]
+        # outside, on perimiter, inside
+        cmd = [GMT, 'grdmask', os.path.abspath(xy_file), \
+                '-N%s/%s/%s' % (outside, inside, inside)]
     cmd.extend(['-G%s' % (os.path.abspath(out_file)), '-I%s/%s' % (dx, dy)])
 
     if geo and not land:
@@ -1046,13 +1048,14 @@ def backup_history(restore = False, wd = '.'):
 ### RELATING TO GMT SPATIAL
 ###
 def intersections(inputs, external = True, internal = False, \
-        duplicates = False, wd = '.'):
+        duplicates = False, wd = '.', containing = None):
     """
     Return intersecting points.
     inputs: list of file paths or single file path
     external: inter-polygon intersections
     internal: intra-polygon intersections
     duplicates: keep duplicate points (True), unique points (False)
+    containing: useful with 3+ inputs. only where this input is involved
     """
     cmd = [GMT, 'spatial', '-I%s%s' % ('e' * external, 'i' * internal)]
     if not duplicates:
@@ -1069,7 +1072,8 @@ def intersections(inputs, external = True, internal = False, \
     # process
     points = []
     for line in so.rstrip().split('\n'):
-        points.append(map(float, line.split()[:2]))
+        if containing == None or containing in line.split()[4:6]:
+            points.append(map(float, line.split()[:2]))
     return points
 
 ###
