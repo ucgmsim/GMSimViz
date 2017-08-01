@@ -179,7 +179,7 @@ elif sys.argv[1] == 'auto':
     ###
 
     # local working directory
-    wd = '%s/%s' % (bd, os.path.basename(sys.argv[2]))
+    wd = '%s/%s' % (bd, os.path.basename(sys.argv[2].rstrip('/')))
     # if params_plot.py doesn't exist, copy default
     if not os.path.exists('%s/params_plot.py' % (wd)):
         copyfile('%s/params_plot.template.py' % (lbase), \
