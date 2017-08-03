@@ -119,8 +119,8 @@ def load_file(station_file):
                         shape = p[6]
                     elif p[:2] == 'g-':
                         grid = p[2:]
-                    elif p[:3] == 'nns-':
-                        nn_search = p[3:]
+                    elif p[:4] == 'nns-':
+                        nn_search = p[4:]
                     elif p[:6] == 'gmask-':
                         grd_mask_dist = p[6:]
                     elif p[:8] == 'landmask':
