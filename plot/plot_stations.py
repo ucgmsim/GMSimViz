@@ -333,12 +333,11 @@ def column_overlay(n, station_file, meta, plot):
     copy('%s/gmt.history' % (gmt_temp), swd)
     p = gmt.GMTPlot(ps, append = True)
 
+    if meta['cpt'].split('/')[0] == '<REPO>':
+        script_dir = os.path.abspath(os.path.dirname(__file__))
+        meta['cpt'] = '%s/cpt/%s' % (script_dir, meta['cpt'][7:])
     if 'fixed' in meta['cpt_properties']:
-        if meta['cpt'].split('/')[0] == '<REPO>':
-            script_dir = os.path.abspath(os.path.dirname(__file__))
-            cpt_stations = '%s/cpt/%s' % (script_dir, meta['cpt'][7:])
-        else:
-            cpt_stations = meta['cpt']
+        cpt_stations = meta['cpt']
     else:
         # prepare cpt
         cpt_stations = '%s/stations.cpt' % (swd)
