@@ -1,4 +1,8 @@
 """
+
+GENERAL SRF NOTES:
+SHYP: hypocentre position along strike from centre
+DHYP: hypocentre position along dip from top
 Common SRF functions.
 
 SRF format:
@@ -27,11 +31,19 @@ def get_nseg(srf):
         nseg = int(sf.readline().split()[1])
     return nseg
 
-def read_header(sf):
+def read_header(sf, idx = False):
     """
     Parse header information.
-    sf: open srf file at position 0
+    sf: open srf file at position 0 or filename
     """
+    # detect if file already open
+    try:
+        sf.name
+        close_me = False
+    except AttributeError:
+        sf = open(sf, 'r')
+        close_me = True
+
     version = float(sf.readline())
     nseg = int(sf.readline().split()[1])
     planes = []
@@ -40,9 +52,19 @@ def read_header(sf):
         elon, elat, nstk, ndip, ln, wid = sf.readline().split()
         stk, dip, dtop, shyp, dhyp = sf.readline().split()
         # store as correct format
-        planes.append((float(elon), float(elat), int(nstk), int(ndip), \
-                float(ln), float(wid), float(stk), float(dip), \
-                float(dtop), float(shyp), float(dhyp)))
+        if idx:
+            planes.append({'centre':[float(elon), float(elat)], \
+                    'nstrike':int(nstk), 'ndip':int(ndip), \
+                    'length':float(ln), 'width':float(wid), \
+                    'strike':float(stk), 'dip':float(dip), \
+                    'shyp':float(shyp), 'dhyp':float(dhyp), \
+                    'dtop':float(dtop)})
+        else:
+            planes.append((float(elon), float(elat), int(nstk), int(ndip), \
+                    float(ln), float(wid), float(stk), float(dip), \
+                    float(dtop), float(shyp), float(dhyp)))
+    if close_me:
+        sf.close()
     return planes
 
 def check_type(srf):

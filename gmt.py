@@ -1588,7 +1588,7 @@ class GMTPlot:
 
     def path(self, in_data, is_file = True, close = False, \
             width = '0.4p', colour = 'black', split = None, \
-            straight = False, fill = None, cols = None):
+            straight = False, fill = None, cols = None, z = False):
         """
         Draws a path between points.
         in_data: either a filepath to file containing x, y points
@@ -1603,7 +1603,10 @@ class GMTPlot:
         cols: override columns to be used as specified by GMT '-i'
         """
         # build command based on parameters
-        cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O']
+        if z:
+            cmd = [GMT, 'psxyz', '-J', '-R', '-K', '-O']
+        else:
+            cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O']
         if width != None and colour != None:
             pen = '-W%s,%s' % (width, colour)
             if split != None:
