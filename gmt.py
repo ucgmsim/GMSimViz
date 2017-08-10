@@ -1048,7 +1048,7 @@ def backup_history(restore = False, wd = '.'):
 ### RELATING TO GMT SPATIAL
 ###
 def intersections(inputs, external = True, internal = False, \
-        duplicates = False, wd = '.', containing = None):
+        duplicates = False, wd = '.', containing = None, items = False):
     """
     Return intersecting points.
     inputs: list of file paths or single file path
@@ -1071,10 +1071,16 @@ def intersections(inputs, external = True, internal = False, \
     sp.wait()
     # process
     points = []
+    comps = []
     for line in so.rstrip().split('\n'):
         if containing == None or containing in line.split()[4:6]:
             points.append(map(float, line.split()[:2]))
-    return points
+            if items:
+                comps.append(line.split()[-2:])
+    if not items:
+        return points
+    else:
+        return points, comps
 
 ###
 ### MAIN PLOTTING CLASS
