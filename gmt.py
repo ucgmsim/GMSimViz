@@ -1241,7 +1241,10 @@ class GMTPlot:
             if invert:
                 cmd.append('-N')
             if is_file:
-                cmd.append(os.path.abspath(path))
+                if type(path).__name__ == 'list':
+                    cmd.extend(map(os.path.abspath, path))
+                else:
+                    cmd.append(os.path.abspath(path))
                 Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
             else:
                 p = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
