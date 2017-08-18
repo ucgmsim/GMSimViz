@@ -18,6 +18,7 @@ def main(outdir = '.', debug = False):
 
     # load params for velocity model
     sys.path.insert(0, outdir)
+    sys.path.append('.')
     try:
         import params_vel as vm
     except ImportError:
