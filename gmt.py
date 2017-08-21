@@ -1290,7 +1290,8 @@ class GMTPlot:
     def sites(self, site_names, shape = 'c', size = 0.1, \
             width = 0.8, colour = 'black', \
             fill = 'gainsboro', transparency = 50, spacing = 0.08, \
-            font = 'Helvetica', font_size = '10p', font_colour = 'black'):
+            font = 'Helvetica', font_size = '10p', font_colour = 'black', \
+            box_fill = None):
         """
         Add sites to map.
         site_names: list of sites to add from defined dictionary
@@ -1319,10 +1320,12 @@ class GMTPlot:
                 align = sites[name][2]
             xyan.append('%s %s %s' % (xy, align, name))
 
-        tproc = Popen([GMT, 'pstext', '-J', '-R', '-K', '-O', \
+        cmd = [GMT, 'pstext', '-J', '-R', '-K', '-O', \
                 '-Dj%s/%s' % (spacing, spacing), \
-                '-F+j+f%s,%s,%s+a0' % (font_size, font, font_colour)], \
-                stdin = PIPE, stdout = self.psf, cwd = self.wd)
+                '-F+j+f%s,%s,%s+a0' % (font_size, font, font_colour)]
+        if box_fill != None:
+            cmd.append('-G%s' % (box_fill))
+        tproc = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
         tproc.communicate('\n'.join(xyan))
         tproc.wait()
 
@@ -1994,7 +1997,7 @@ class GMTPlot:
             hyp_shape = 'a', hyp_size = 0.35, \
             plane_width = '1p', plane_colour = 'black', \
             top_width = '2p', top_colour = 'black', \
-            hyp_width = '1p', hyp_colour = 'black'):
+            hyp_width = '1p', hyp_colour = 'black', plane_fill = None):
         """
         Plot SRF fault plane onto map.
         Requires shared_srf.py, replaces addStandardFaultPlane.sh
@@ -2044,9 +2047,11 @@ class GMTPlot:
             all_edges = '>\n'.join([''.join(c) for c in bounds[1:]])
 
         # plot planes
-        planep = Popen([GMT, 'psxy', '-J', '-R', '-L', '-K', '-O', \
-                '-W%s,%s,-' % (plane_width, plane_colour)], \
-                stdin = PIPE, stdout = self.psf, cwd = self.wd)
+        cmd = [GMT, 'psxy', '-J', '-R', '-L', '-K', '-O', \
+                '-W%s,%s,-' % (plane_width, plane_colour)]
+        if plane_fill != None:
+            cmd.append('-G%s' % (plane_fill))
+        planep = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
         planep.communicate(all_edges)
         planep.wait()
         # plot top edges
