@@ -13,7 +13,7 @@ avg_ll calculated elsewhere should be local function that works over equator
 from math import ceil, floor, log10, sqrt
 import os
 from shutil import copyfile, move
-from subprocess import call, PIPE, Popen
+from subprocess import PIPE, Popen
 from sys import byteorder
 from time import time
 
@@ -2213,4 +2213,4 @@ class GMTPlot:
             if out_dir == '':
                 out_dir = '.'
             cmd.append('-D%s' % (out_dir))
-        call(cmd)
+        Popen(cmd, cwd = self.wd).wait()
