@@ -498,7 +498,9 @@ if len(sys.argv) > 1:
     event_name = os.path.basename(base_dir.rstrip(os.sep))
     event_name = '_'.join(event_name.split('_')[:3])
     try:
-        sfs_modelparams = glob('%s/VM/Model/%s/*/model_params_*' % (base_dir, event_name))[0]
+        sfs_modelparams = glob('%s/VM/Model/%s/*/model_params_*' % (base_dir, event_name))
+        sfs_modelparams.extend(glob('%s/model_params_*' % (base_dir)))
+        sfs_modelparams = sfs_modelparams[0]
     except IndexError:
         sfs_modelparams = None
     try:
