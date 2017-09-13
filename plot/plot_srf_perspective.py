@@ -39,7 +39,7 @@ avg_dip = planes[0]['dip']
 s_azimuth = avg_strike + 90
 map_tilt = max(90 - avg_dip, 10)
 s_azimuth = 170
-map_tilt = 90
+map_tilt = 45
 # plane domains
 bounds = srf.get_bounds(srf_file, depth = True)
 top_left = bounds[0][0]
@@ -52,33 +52,37 @@ gmt_top = '\n>\n'.join(['\n'.join([' '.join(map(str, b)) \
 map_region = (top_mid[0] - 0.6, top_mid[0] + 0.6, top_mid[1] - 0.5, top_mid[1] + 0.4, 0, 1)
 
 bs = (page_width - 6) / math.sin(math.radians(90)) * math.sin(math.radians(s_azimuth))
-bl = math.sqrt((page_width - 6) ** 2 - bs ** 2)
-#print bs, bl
-#bsx = bs / math.sin(math.radians(90)) * abs(math.cos(math.radians(s_azimuth)))
-#blx = (page_width - 6) - bsx
-#print bsx, blx
-## adjusted for tilt and re-calculate bs
-#by = math.sqrt(abs(bs ** 2 - bsx ** 2)) * math.sin(math.radians(map_tilt))
-#bs = math.sqrt(bsx ** 2 + by ** 2)
-#bl = math.sqrt(blx ** 2 + by ** 2)
-#print bs, bl
+bsx = bs / math.sin(math.radians(90)) * abs(math.sin(math.radians(s_azimuth)))
+blx = (page_width - 6) - bsx
+# adjusted for tilt and re-calculate bs
+by = math.sqrt(abs(bs ** 2 - bsx ** 2)) * math.sin(math.radians(map_tilt))
+bs = math.sqrt(bsx ** 2 + by ** 2)
+bl = math.sqrt(blx ** 2 + by ** 2)
 ss = (page_height - 6) / math.sin(math.radians(90)) * math.sin(math.radians(s_azimuth))
 sl = math.sqrt((page_height - 6) ** 2 - ss ** 2)
+ssy = ss / math.sin(math.radians(90)) * abs(math.sin(math.radians(s_azimuth)))
+sx = math.sqrt(abs(ss ** 2 - ssy ** 2))
+ssy *= math.sin(math.radians(map_tilt))
+sly = (page_height - 6) - ssy
+ss = math.sqrt(ssy ** 2 + sx ** 2)
+sl = math.sqrt(sly ** 2 + sx ** 2)
+
 x_size = abs(bl) + abs(ss)
 y_size = abs(bs) + abs(sl)
 y = abs(bs * math.cos(math.radians(s_azimuth)))
 yx = bs * math.sin(math.radians(s_azimuth))
 x = abs(ss * math.cos(math.radians(s_azimuth)))
 xy = ss * math.sin(math.radians(s_azimuth))
-
+print x_size, y_size
 sdiff = 1. / math.sin(math.radians(map_tilt)) - 1
-#x_size += x_size * sdiff * math.sin(math.radians(s_azimuth % 180))
-#y_size += y_size * sdiff * math.cos(math.radians(s_azimuth % 180))
+x_size += x_size * sdiff * math.sin(math.radians(s_azimuth % 180))
+y_size += y_size * sdiff * math.cos(math.radians(s_azimuth % 180))
 
 new_y_size, map_region = gmt.adjust_latitude('M', x_size, y_size, map_region, \
         wd = '.', abs_diff = True, accuracy = 0.4 * 1. / dpi, reference = 'left', \
         top = True, bottom = True)
 print x_size, y_size, new_y_size
+exit()
 
 # plotting resources
 gmt_temp = mkdtemp(prefix = 'GMT_WD_PERSPECTIVE_', \
@@ -118,7 +122,7 @@ print gmt.mapproject(map_region[1], map_region[2], wd = gmt_temp, projection = N
 
 p.spacial('X', (0, page_width, 0, page_height), sizing = '%s/%s' % (page_width, page_height), \
         x_shift = x - 3, y_shift = y - 3)
-p.path('%s %s\n3 3\n%s %s\n%s %s' % (3 - x, 3 + (9 - 6) - xy, 3 + yx, 3 - y, 3 + 16 - 6, 3), is_file = False, close = False)
+#p.path('%s %s\n3 3\n%s %s\n%s %s' % (3 - x, 3 + (9 - 6) - xy, 3 + yx, 3 - y, 3 + 16 - 6, 3), is_file = False, close = False)
 
 # finish, clean up
 p.finalise()
