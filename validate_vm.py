@@ -40,8 +40,8 @@ def validate_vm(vm_dir, verbose = False, errors = True):
     vprint('Validating VM \'%s\'...' % (vm_dir))
 
     # 1: has to exist
-    if not os.path.exists(vm_dir):
-        eprint('VM does not exist.')
+    if not os.path.isdir(vm_dir):
+        eprint('VM dir %s is not a directory.' % (vm_dir))
         return False
 
     # 2: fixed file names exist
