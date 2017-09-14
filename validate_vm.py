@@ -50,7 +50,7 @@ def validate_vm(vm_dir, verbose = False, errors = True):
             'd':'%s' % (vmfile('rho3dfile.d'))}
     for fixed_name in vm.values():
         if not os.path.exists(fixed_name):
-            eprint('VM file not found: %s' % (fixed_file))
+            eprint('VM file not found: %s' % (fixed_name))
             return False
     if not os.path.exists(vmfile('params_vel.py')):
         eprint('VM configuration params_vel.py missing.')
