@@ -135,7 +135,11 @@ def validate_vm(vm_dir, verbose = False, errors = True):
     return True
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        if validate_vm(sys.argv[1]):
-            sys.exit(0)
-    sys.exit(1)
+    rc = 1
+    try:
+        if len(sys.argv) > 1 and validate_vm(sys.argv[1]):
+            rc = 0
+    except Exception as e:
+        print(e, file = sys.stderr)
+    finally:
+        sys.exit(rc)
