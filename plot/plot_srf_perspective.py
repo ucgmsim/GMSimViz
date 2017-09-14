@@ -38,8 +38,8 @@ avg_strike = geo.avg_wbearing([(p['strike'], p['length']) for p in planes])
 avg_dip = planes[0]['dip']
 s_azimuth = avg_strike + 90
 map_tilt = max(90 - avg_dip, 10)
-s_azimuth = 170
-map_tilt = 45
+s_azimuth = 190
+map_tilt = 50
 # plane domains
 bounds = srf.get_bounds(srf_file, depth = True)
 top_left = bounds[0][0]
@@ -50,6 +50,20 @@ gmt_bottom = '\n>\n'.join(['\n'.join([' '.join(map(str, b)) \
 gmt_top = '\n>\n'.join(['\n'.join([' '.join(map(str, b)) \
         for b in p[:2]]) for p in bounds])
 map_region = (top_mid[0] - 0.6, top_mid[0] + 0.6, top_mid[1] - 0.5, top_mid[1] + 0.4, 0, 1)
+
+
+# part of the map view (outside) edge is bs, bl, ss, sl
+#        /\
+#    bl /  \ bs        s|\
+#  ___ /____\____      l| \             /|\
+#  ss /|GMT |\ sl      y|  \ sl        / | \
+# ___/ |PAGE| \___      |___\      bl /  |b \ bs
+# sl \ |AREA| / ss      |sx /        /   |y  \
+#  ___\|____|/___      s|  / ss     /____|____\
+#      \    /          s| /          blx   bly
+#    bs \  / bl        y|/
+#        \/
+
 
 bs = (page_width - 6) / math.sin(math.radians(90)) * math.sin(math.radians(s_azimuth))
 bsx = bs / math.sin(math.radians(90)) * abs(math.sin(math.radians(s_azimuth)))
@@ -75,14 +89,17 @@ x = abs(ss * math.cos(math.radians(s_azimuth)))
 xy = ss * math.sin(math.radians(s_azimuth))
 print x_size, y_size
 sdiff = 1. / math.sin(math.radians(map_tilt)) - 1
-x_size += x_size * sdiff * math.sin(math.radians(s_azimuth % 180))
-y_size += y_size * sdiff * math.cos(math.radians(s_azimuth % 180))
+print sdiff
+x_size += x_size * sdiff * abs(math.sin(math.radians(s_azimuth % 180))) * - math.cos(math.radians(map_tilt))
+y_size += y_size * sdiff * abs(math.cos(math.radians(s_azimuth % 180))) * math.sin(math.radians(map_tilt))
+# GMT lifts map upwards slightly when map is tilted back
+y += (ssy + sly) * math.cos(math.radians(map_tilt)) * math.sin(math.radians(20)) * 0.1
 
 new_y_size, map_region = gmt.adjust_latitude('M', x_size, y_size, map_region, \
         wd = '.', abs_diff = True, accuracy = 0.4 * 1. / dpi, reference = 'left', \
         top = True, bottom = True)
 print x_size, y_size, new_y_size
-exit()
+#exit()
 
 # plotting resources
 gmt_temp = mkdtemp(prefix = 'GMT_WD_PERSPECTIVE_', \
@@ -100,13 +117,13 @@ p.path('0 0\n0 1\n1 1\n1 0', is_file = False, close = True, \
 
 p.spacial('X', (0, 1, 0, 1), sizing = '%s/%s' % (page_width - 6, page_height - 6), \
         x_shift = 3, y_shift = 3)
-p.path('0 0\n0 1\n1 1\n1 0', is_file = False, close = True)
+p.path('0 0\n0 1\n1 1\n1 0', is_file = False, close = True, colour = 'red')
 
 p.spacial('M', map_region, z = 'z-0.1i', sizing = x_size, \
         p = '%s/%s/0' % (s_azimuth, map_tilt), x_shift = - x, y_shift = - y)
 #p.basemap(topo = None)
-p.land(fill = 'darkgreen@50')
-p.water(colour = 'lightblue@50')
+p.land(fill = 'darkgreen@80')
+p.water(colour = 'lightblue@80')
 p.ticks(major = 0.1, minor = 0.01)
 p.path(gmt_bottom, is_file = False, colour = 'blue', width = '1p', split = '-', close = True, z = True)
 p.path(gmt_top, is_file = False, colour = 'blue', width = '2p', z = True)
