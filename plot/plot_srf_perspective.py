@@ -13,7 +13,7 @@ import srf
 page_width = 16
 page_height = 9
 # 120 for 1920x1080, 16ix9i
-dpi = 120
+dpi = 600
 
 # retrieve srf file parameter
 if len(sys.argv) > 1:
@@ -38,8 +38,6 @@ avg_strike = geo.avg_wbearing([(p['strike'], p['length']) for p in planes])
 avg_dip = planes[0]['dip']
 s_azimuth = avg_strike + 90
 map_tilt = max(90 - avg_dip, 10)
-s_azimuth = 190
-map_tilt = 50
 # plane domains
 bounds = srf.get_bounds(srf_file, depth = True)
 top_left = bounds[0][0]
@@ -51,55 +49,62 @@ gmt_top = '\n>\n'.join(['\n'.join([' '.join(map(str, b)) \
         for b in p[:2]]) for p in bounds])
 map_region = (top_mid[0] - 0.6, top_mid[0] + 0.6, top_mid[1] - 0.5, top_mid[1] + 0.4, 0, 1)
 
-
+# will be function parameters
+width = page_width
+height = page_height
+tilt = map_tilt
+view = s_azimuth
 # part of the map view (outside) edge is bs, bl, ss, sl
 #        /\
 #    bl /  \ bs        s|\
 #  ___ /____\____      l| \             /|\
 #  ss /|GMT |\ sl      y|  \ sl        / | \
 # ___/ |PAGE| \___      |___\      bl /  |b \ bs
-# sl \ |AREA| / ss      |sx /        /   |y  \
+# sl \ |AREA| / ss      |sx\/sxss    /   |y  \
 #  ___\|____|/___      s|  / ss     /____|____\
-#      \    /          s| /          blx   bly
+#      \    /          s| /          blx   bsx
 #    bs \  / bl        y|/
 #        \/
-
-
-bs = (page_width - 6) / math.sin(math.radians(90)) * math.sin(math.radians(s_azimuth))
-bsx = bs / math.sin(math.radians(90)) * abs(math.sin(math.radians(s_azimuth)))
-blx = (page_width - 6) - bsx
-# adjusted for tilt and re-calculate bs
-by = math.sqrt(abs(bs ** 2 - bsx ** 2)) * math.sin(math.radians(map_tilt))
+# repeated values
+s_tilt = math.sin(math.radians(map_tilt))
+c_tilt = math.cos(math.radians(map_tilt))
+s_view = abs(math.sin(math.radians(view)))
+c_view = abs(math.cos(math.radians(view)))
+gmt_x_angle = math.atan2(s_view * s_tilt, c_view)
+gmt_y_angle = math.atan2(s_view, c_view * s_tilt)
+# bottom and top edge segments
+bs = width * s_view
+bsx = bs * s_view
+by = math.sqrt(bs ** 2 - bsx ** 2) * s_tilt
 bs = math.sqrt(bsx ** 2 + by ** 2)
-bl = math.sqrt(blx ** 2 + by ** 2)
-ss = (page_height - 6) / math.sin(math.radians(90)) * math.sin(math.radians(s_azimuth))
-sl = math.sqrt((page_height - 6) ** 2 - ss ** 2)
-ssy = ss / math.sin(math.radians(90)) * abs(math.sin(math.radians(s_azimuth)))
-sx = math.sqrt(abs(ss ** 2 - ssy ** 2))
-ssy *= math.sin(math.radians(map_tilt))
-sly = (page_height - 6) - ssy
+bl = math.sqrt((width - bsx) ** 2 + by ** 2)
+# side segments
+ss = height * s_view
+sx = ss * c_view
+ssy = math.sqrt(ss ** 2 - sx ** 2)
+try:
+    sx = ssy / math.tan(math.atan((ssy * s_tilt) / sx))
+except ZeroDivisionError:
+    sx = 0
 ss = math.sqrt(ssy ** 2 + sx ** 2)
-sl = math.sqrt(sly ** 2 + sx ** 2)
-
-x_size = abs(bl) + abs(ss)
-y_size = abs(bs) + abs(sl)
-y = abs(bs * math.cos(math.radians(s_azimuth)))
-yx = bs * math.sin(math.radians(s_azimuth))
-x = abs(ss * math.cos(math.radians(s_azimuth)))
-xy = ss * math.sin(math.radians(s_azimuth))
-print x_size, y_size
-sdiff = 1. / math.sin(math.radians(map_tilt)) - 1
-print sdiff
-x_size += x_size * sdiff * abs(math.sin(math.radians(s_azimuth % 180))) * - math.cos(math.radians(map_tilt))
-y_size += y_size * sdiff * abs(math.cos(math.radians(s_azimuth % 180))) * math.sin(math.radians(map_tilt))
+sl = math.sqrt((height - ssy) ** 2 + sx ** 2)
+# result sizes
+page_x_size = abs(bl) + abs(ss)
+page_y_size = abs(bs) + abs(sl)
 # GMT lifts map upwards slightly when map is tilted back
-y += (ssy + sly) * math.cos(math.radians(map_tilt)) * math.sin(math.radians(20)) * 0.1
+# 'by' is still as before, can only be used for offsets from now
+by += c_tilt / 10.
+# gmt_x_size and gmt_y_size are pre-tilt dimensions
+# with tilt applied, they will be equivalent to page_x_size and page_y_size
+gmt_x_size = math.sqrt((page_x_size * math.cos(gmt_x_angle)) ** 2 \
+        + (page_x_size * math.sin(gmt_x_angle) / s_tilt) ** 2)
+gmt_y_size = math.sqrt((page_y_size * math.sin(gmt_y_angle)) ** 2 \
+        + (page_y_size * math.cos(gmt_y_angle) / s_tilt) ** 2)
 
-new_y_size, map_region = gmt.adjust_latitude('M', x_size, y_size, map_region, \
+
+new_y_size, map_region = gmt.adjust_latitude('M', gmt_x_size, gmt_y_size, map_region, \
         wd = '.', abs_diff = True, accuracy = 0.4 * 1. / dpi, reference = 'left', \
         top = True, bottom = True)
-print x_size, y_size, new_y_size
-#exit()
 
 # plotting resources
 gmt_temp = mkdtemp(prefix = 'GMT_WD_PERSPECTIVE_', \
@@ -115,31 +120,15 @@ p.spacial('X', (0, 1, 0, 1), sizing = '%s/%s' % (page_width, page_height))
 p.path('0 0\n0 1\n1 1\n1 0', is_file = False, close = True, \
         fill = 'white', width = None)
 
-p.spacial('X', (0, 1, 0, 1), sizing = '%s/%s' % (page_width - 6, page_height - 6), \
-        x_shift = 3, y_shift = 3)
-p.path('0 0\n0 1\n1 1\n1 0', is_file = False, close = True, colour = 'red')
-
-p.spacial('M', map_region, z = 'z-0.1i', sizing = x_size, \
-        p = '%s/%s/0' % (s_azimuth, map_tilt), x_shift = - x, y_shift = - y)
+p.spacial('M', map_region, z = 'z-0.1i', sizing = gmt_x_size, \
+        p = '%s/%s/0' % (s_azimuth, map_tilt), x_shift = - sx, y_shift = - by)
 #p.basemap(topo = None)
 p.land(fill = 'darkgreen@80')
-p.water(colour = 'lightblue@80')
+p.water(colour = 'black@80')
 p.ticks(major = 0.1, minor = 0.01)
 p.path(gmt_bottom, is_file = False, colour = 'blue', width = '1p', split = '-', close = True, z = True)
 p.path(gmt_top, is_file = False, colour = 'blue', width = '2p', z = True)
 #p.sites(gmt.sites_major)
-print gmt.mapproject(map_region[1], map_region[3], wd = gmt_temp, projection = None, region = None, \
-    inverse = False, unit = None, z = '-Jz1', p = True)
-print gmt.mapproject(map_region[0], map_region[2], wd = gmt_temp, projection = None, region = None, \
-    inverse = False, unit = None, z = '-Jz1', p = True)
-print gmt.mapproject(map_region[0], map_region[3], wd = gmt_temp, projection = None, region = None, \
-    inverse = False, unit = None, z = '-Jz1', p = True)
-print gmt.mapproject(map_region[1], map_region[2], wd = gmt_temp, projection = None, region = None, \
-    inverse = False, unit = None, z = '-Jz1', p = True)
-
-p.spacial('X', (0, page_width, 0, page_height), sizing = '%s/%s' % (page_width, page_height), \
-        x_shift = x - 3, y_shift = y - 3)
-#p.path('%s %s\n3 3\n%s %s\n%s %s' % (3 - x, 3 + (9 - 6) - xy, 3 + yx, 3 - y, 3 + 16 - 6, 3), is_file = False, close = False)
 
 # finish, clean up
 p.finalise()
