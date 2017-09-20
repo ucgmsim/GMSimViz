@@ -10,7 +10,7 @@ add support for different interpolation methods
 avg_ll calculated elsewhere should be local function that works over equator
 """
 
-from math import ceil, floor, log10, sqrt
+import math
 import os
 from shutil import copyfile, move
 from subprocess import PIPE, Popen
@@ -150,6 +150,63 @@ def make_movie(input_pattern, output, fps = 20):
     with open('/dev/null', 'w') as sink:
         Popen(['ffmpeg', '-y', '-framerate', str(fps), '-i', input_pattern, \
                 '-c:v', 'qtrle', '-r', str(fps), output], stderr = sink).wait()
+
+def perspective_fill(width, height, view = 180, tilt = 90):
+    """
+    Fills page (width x height) area with minimum size given perspective.
+    width: width of the page
+    height: height of the page
+    view: source (rotation), 180 = south facing down
+    tilt: backwards tilt angle, 90 = straight on
+    """
+    # part of the map view (outside) edge is bs, bl, ss, sl
+    #        /\
+    #    bl /  \ bs        s|\
+    #  ___ /____\____      l| \             /|\
+    #  ss /|GMT |\ sl      y|  \ sl        / | \
+    # ___/ |PAGE| \___      |___\      bl /  |b \ bs
+    # sl \ |AREA| / ss      |sx\/sxss    /   |y  \
+    #  ___\|____|/___      s|  / ss     /____|____\
+    #      \    /          s| /          blx   bsx
+    #    bs \  / bl        y|/
+    #        \/
+    # repeated values
+    s_tilt = math.sin(math.radians(tilt))
+    c_tilt = math.cos(math.radians(tilt))
+    s_view = abs(math.sin(math.radians(view)))
+    c_view = abs(math.cos(math.radians(view)))
+    gmt_x_angle = math.atan2(s_view * s_tilt, c_view)
+    gmt_y_angle = math.atan2(s_view, c_view * s_tilt)
+    # bottom and top edge segments
+    bs = width * s_view
+    bsx = bs * s_view
+    by = math.sqrt(bs ** 2 - bsx ** 2) * s_tilt
+    bs = math.sqrt(bsx ** 2 + by ** 2)
+    bl = math.sqrt((width - bsx) ** 2 + by ** 2)
+    # side segments
+    ss = height * s_view
+    sx = ss * c_view
+    ssy = math.sqrt(ss ** 2 - sx ** 2)
+    try:
+        sx = ssy / math.tan(math.atan((ssy * s_tilt) / sx))
+    except ZeroDivisionError:
+        sx = 0
+    ss = math.sqrt(ssy ** 2 + sx ** 2)
+    sl = math.sqrt((height - ssy) ** 2 + sx ** 2)
+    # result sizes
+    page_x_size = abs(bl) + abs(ss)
+    page_y_size = abs(bs) + abs(sl)
+    # GMT lifts map upwards slightly when map is tilted back
+    # 'by' is still as before, can only be used for offsets from now
+    by += c_tilt / 10.
+    # gmt_x_size and gmt_y_size are pre-tilt dimensions
+    # with tilt applied, they will be equivalent to page_x_size and page_y_size
+    gmt_x_size = math.sqrt((page_x_size * math.cos(gmt_x_angle)) ** 2 \
+            + (page_x_size * math.sin(gmt_x_angle) / s_tilt) ** 2)
+    gmt_y_size = math.sqrt((page_y_size * math.sin(gmt_y_angle)) ** 2 \
+            + (page_y_size * math.cos(gmt_y_angle) / s_tilt) ** 2)
+
+    return gmt_x_size, gmt_y_size, sx, by
 
 def make_seismo(out_file, timeseries, x0, y0, xfac, yfac, \
             pos = 'simple', fmt = 'inc', append = True, title = None):
@@ -372,17 +429,17 @@ def xyv_cpt_range(xyv_file, max_step = 12, percentile = 99.5, \
     cpt_mx = np.percentile(lonlatvalue[:, 2], percentile)
     if cpt_mx < 100:
         # 1 sf
-        cpt_mx = round(cpt_mx, - int(floor(log10(abs(cpt_mx)))))
+        cpt_mx = round(cpt_mx, - int(math.floor(math.log10(abs(cpt_mx)))))
     else:
         # 2 sf
-        cpt_mx = round(cpt_mx, 1 - int(floor(log10(abs(cpt_mx)))))
+        cpt_mx = round(cpt_mx, 1 - int(math.floor(math.log10(abs(cpt_mx)))))
     if my_max != None:
         cpt_mx = my_max
 
     # un-rounded smallest increment for cpt
     min_inc = cpt_mx / max_step
     # rounded up to nearest power of 10
-    inc_10 = 10 ** ceil(log10(min_inc))
+    inc_10 = 10 ** math.ceil(math.log10(min_inc))
     # will be ok 1x10**x
     cpt_inc = inc_10
     # 5x10**x and 2x10**x are also a round numbers
@@ -936,9 +993,9 @@ def region_transition(projection, region_start, region_end, \
     if movement == 'linear':
         position = frame / (float(frame_total) - 1)
     elif movement == 'log':
-        position = log10(frame + 1) / log10(frame_total)
+        position = math.log10(frame + 1) / math.log10(frame_total)
     elif movement == 'sqrt':
-        position = sqrt(frame) / sqrt(frame_total - 1)
+        position = math.sqrt(frame) / math.sqrt(frame_total - 1)
     else:
         # TODO: this should really be throwing an exception
         print('Not a supported camera movement style. Exiting.')
@@ -1486,7 +1543,7 @@ class GMTPlot:
         km = geo.ll_dist(region[0], region[2], region[1], region[3])
         size = mapproject(region[1], region[3], wd = self.wd, \
                 unit = 'inch', z = self.z)
-        inch = sqrt(sum(np.power(size, 2)))
+        inch = math.sqrt(sum(np.power(size, 2)))
         refs = inch / (km * 0.618)
 
         if land != None:
