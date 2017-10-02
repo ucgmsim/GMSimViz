@@ -1056,6 +1056,7 @@ def intersections(inputs, external = True, internal = False, \
     internal: intra-polygon intersections
     duplicates: keep duplicate points (True), unique points (False)
     containing: useful with 3+ inputs. only where this input is involved
+    items: also return which inputs are involved in the intersection
     """
     cmd = [GMT, 'spatial', '-I%s%s' % ('e' * external, 'i' * internal)]
     if not duplicates:
@@ -1081,6 +1082,37 @@ def intersections(inputs, external = True, internal = False, \
         return points
     else:
         return points, comps
+
+def truncate(inputs, clip = None, region = None, wd = '.'):
+    """
+    Return inputs with points outside clip removed.
+    inputs: list of file paths or single file path
+    clip: clip path or None to use region
+    region: when clip is None, specify region or None to use history
+    """
+    cmd = [GMT, 'spatial', '-T%s' % (str(clip) * (clip != None))]
+    if type(inputs).__name__ == 'list':
+        cmd.extend(inputs)
+    else:
+        cmd.append(inputs)
+
+    if clip == None:
+        if region == None:
+            cmd.append('-R')
+        else:
+            cmd.append('-R%s' % ('/'.join(region)))
+
+    # run
+    sp = Popen(cmd, cwd = wd, stdout = PIPE)
+    so = sp.communicate()[0]
+    sp.wait()
+    # process
+    points = []
+    for line in so.rstrip().split('\n'):
+        if line == '':
+            continue
+        points.append(map(float, line.split()[:2]))
+    return points
 
 ###
 ### MAIN PLOTTING CLASS
