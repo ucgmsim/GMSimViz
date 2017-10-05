@@ -311,7 +311,9 @@ def fault_prep(srf_file = None, cnrs_file = None):
     Prevents re-loading the SRF file.
     """
     # fault path - boundaries already available
-    if cnrs_file != None:
+    if len(sys.argv) > 3:
+        copyfile(sys.argv[3], txt_cnrs)
+    elif cnrs_file != None:
         copyfile(cnrs_file, txt_cnrs)
     # fault path - determine boundaries (slow)
     elif srf_file != None:
