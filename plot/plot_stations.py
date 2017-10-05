@@ -84,6 +84,7 @@ def load_file(station_file):
         cpt_bg = None
         cpt_gap = ''
         cpt_topo = None
+        cpt_overlays = 'black'
         if os.path.exists(cpt):
             # assuming it is a built in cpt if not matching filename
             cpt = os.path.abspath(cpt)
@@ -101,6 +102,8 @@ def load_file(station_file):
                     cpt_gap = p[4:]
                 elif p[:5] == 'topo-':
                     cpt_topo = p[5:]
+                elif p[:9] == 'overlays-':
+                    cpt_overlays = p[9:]
         except IndexError:
             cpt_properties = []
         if len(cpt_info) > 1:
@@ -410,7 +413,7 @@ def column_overlay(n, station_file, meta, plot):
                 meta['cpt_inc'][n], label = meta['legend'], \
                 arrow_f = meta['cpt_max'][n] > 0, arrow_b = meta['cpt_min'][n] < 0)
 
-def render(n):
+def render(meta, n):
     """
     Rendering postscript can be slow (by amount of details)
     """
@@ -431,7 +434,9 @@ def render(n):
     # only add srf here to reduce dependencies on column_overlay function
     if os.path.exists(txt_cnrs):
         p.fault(txt_cnrs, is_srf = False, \
-                plane_width = 0.5, top_width = 1, hyp_width = 0.5)
+                plane_width = 0.5, top_width = 1, hyp_width = 0.5, \
+                top_colour = meta['overlays'], \
+                plane_colour = meta['overlays'], hyp_colour = meta['overlays'])
 
     # actual rendering (slow)
     p.finalise()
@@ -591,7 +596,7 @@ if len(sys.argv) > 1:
                 msg_list.extend(render_tasks)
                 render_tasks = msg_list
         elif column_overlay is finished[0]:
-            render_tasks.append((render, finished[1]))
+            render_tasks.append((render, meta, finished[1]))
         elif render is finished[0]:
             nimage -= 1
 
@@ -650,7 +655,7 @@ else:
             column_overlay(task[1], task[2], task[3], task[4])
             logbook.append(('column overlay', task[1], time() - t0))
         elif task[0] is render:
-            render(task[1])
+            render(task[1], task[2])
             logbook.append(('ps2png', task[1], time() - t0))
         elif task[0] is template_2:
             template_2(task[1])
