@@ -103,7 +103,7 @@ def check_type(sf):
             return 4
         else:
             elon, elat, nstk, ndip, ln, wid = sf.readline().split()
-            if nstk * ndip == 1:
+            if int(nstk) * int(ndip) == 1:
                 return 1
             if ln == wid:
                 return 2
