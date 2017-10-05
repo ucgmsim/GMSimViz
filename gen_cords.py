@@ -54,11 +54,11 @@ def main(outdir = '.', debug = False):
 
     # generate model_params
     cmd = ("{GEN_CORD_BIN} "
-            "geoproj={GEOPROJ} gridfile={GRIDFILE} gridout={GRIDOUT} "
+            "geoproj={GEOPROJ} gridfile='{GRIDFILE}' gridout='{GRIDOUT}' "
             "center_origin={CENTER_ORIGIN} do_coords={DOCOORDS} "
-            "nzout=1 name={MODEL_COORDS} gzip=0 latfirst=0 "
+            "nzout=1 name='{MODEL_COORDS}' gzip=0 latfirst=0 "
             "modellon={vm.MODEL_LON} modellat={vm.MODEL_LAT} "
-            "modelrot={vm.MODEL_ROT} 1> {MODELPARAMS}") \
+            "modelrot={vm.MODEL_ROT} 1> '{MODELPARAMS}'") \
             .format(**dict(locals(), **globals()))
     if not debug:
         cmd += ' 2>/dev/null'
