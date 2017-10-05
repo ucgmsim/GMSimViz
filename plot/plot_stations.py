@@ -187,7 +187,7 @@ def load_file(station_file):
             'cpt_inc':cpt_inc, 'cpt_tick':cpt_tick, 'cpt_properties':cpt_properties, \
             'transparency':transparency, 'ncol':ncol, 'cpt_gap':cpt_gap, \
             'label_colour':label_colour, 'col_labels':col_labels, \
-            'cpt_topo':cpt_topo, 'landmask':landmask, 'overlays':overlays}
+            'cpt_topo':cpt_topo, 'landmask':landmask, 'overlays':cpt_overlays}
 
 ###
 ### boundaries
