@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="c312771f-e3dd-488a-916a-c23aa5552f9a" name="Default" comment="">
-      <change type="DELETED" beforePath="$PROJECT_DIR$/plot/quakecore-logo.png" afterPath="" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/gmt.py" afterPath="$PROJECT_DIR$/gmt.py" />
-    </list>
+    <list default="true" id="c312771f-e3dd-488a-916a-c23aa5552f9a" name="Default" comment="" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -18,24 +15,14 @@
   <component name="ExecutionTargetManager" SELECTED_TARGET="default_target" />
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="600">
-      <file leaf-file-name="gmt.py" pinned="false" current-in-tab="false">
+      <file leaf-file-name="gmt.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/gmt.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="23152">
-              <caret line="1454" column="12" lean-forward="false" selection-start-line="1454" selection-start-column="4" selection-end-line="1454" selection-end-column="12" />
+            <state relative-caret-position="16">
+              <caret line="1486" column="12" lean-forward="false" selection-start-line="1486" selection-start-column="4" selection-end-line="1486" selection-end-column="12" />
               <folding>
                 <element signature="e#396#437#0" expanded="true" />
               </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="test2.py" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/melodying/pys/test2.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-1968">
-              <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-              <folding />
             </state>
           </provider>
         </entry>
@@ -94,9 +81,9 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/gmt.py" />
         <option value="$PROJECT_DIR$/test2.py" />
         <option value="$PROJECT_DIR$/melody.py" />
+        <option value="$PROJECT_DIR$/gmt.py" />
       </list>
     </option>
   </component>
@@ -539,16 +526,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/gmt.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="23152">
-          <caret line="1454" column="12" lean-forward="false" selection-start-line="1454" selection-start-column="4" selection-end-line="1454" selection-end-column="12" />
-          <folding>
-            <element signature="e#396#437#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/test2.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="16">
@@ -570,6 +547,16 @@
         <state relative-caret-position="-1968">
           <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/gmt.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="16">
+          <caret line="1486" column="12" lean-forward="false" selection-start-line="1486" selection-start-column="4" selection-end-line="1486" selection-end-column="12" />
+          <folding>
+            <element signature="e#396#437#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
