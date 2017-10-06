@@ -55,6 +55,7 @@ LINZ_ROAD = os.path.join(GMT_DATA, 'Paths/lds-nz-road-centre-line/wgs84.gmt')
 LINZ_HWY = os.path.join(GMT_DATA, 'Paths/shwy/wgs84.gmt')
 # OTHER GEO DATA
 TOPO_HIGH = os.path.join(GMT_DATA, 'Topo/srtm_all_filt_nz.grd')
+TOPO_LOW = os.path.join(GMT_DATA, 'Topo/nztopo.grd')
 CHCH_WATER = os.path.join(GMT_DATA, 'Paths/water_network/water.gmt')
 # CPT DATA
 CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plot', 'cpt')

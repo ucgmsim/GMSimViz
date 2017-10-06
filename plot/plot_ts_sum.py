@@ -29,7 +29,7 @@ from geo import path_from_corners, wgs_nztm2000x
 import gmt
 from xyts import XYTSFile
 # to import local parameters add them to path
-sys.path.append(os.path.abspath(os.path.curdir))
+sys.path.insert(0, os.path.abspath(os.path.curdir))
 from params_base import *
 srf_cnr = srf_cnrs[0]
 xyts_file = xyts_files[0]

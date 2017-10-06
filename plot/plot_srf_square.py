@@ -5,7 +5,7 @@ import os
 from shutil import copyfile, rmtree
 from subprocess import call, Popen, PIPE
 import sys
-sys.path.append('.')
+sys.path.insert(0, '.')
 
 import numpy as np
 
