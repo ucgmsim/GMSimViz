@@ -219,8 +219,7 @@ else:
     p.beachballs('%s %s %s %s %s %s %s %s %s\n' \
             % (hypocentre[0], hypocentre[1], hypocentre[2], \
             strike, dip, rake, mw, hypocentre[0], hypocentre[1]), \
-            is_file = False, fmt = 'a', scale = 0.4, \
-            colour = 'black@30', extensive = 'white@30')
+            is_file = False, fmt = 'a', scale = 0.4)
 
 p.sites(gmt.sites.keys())
 major_tick, minor_tick = gmt.auto_tick(plot_region[0], plot_region[1], \
@@ -245,6 +244,11 @@ if finite_fault:
     # also draw fault planes / hypocentre
     p.fault(srf_file, is_srf = True, plane_width = '0.4p', top_width = '0.6p', \
             hyp_colour = 'red')
+else:
+    p.beachballs('%s %s %s %s %s %s %s %s %s\n' \
+            % (hypocentre[0], hypocentre[1], hypocentre[2], \
+            strike, dip, rake, mw, hypocentre[0], hypocentre[1]), \
+            is_file = False, fmt = 'a', scale = 0.05)
 p.ticks(major = '2d', minor = '30m', sides = 'ws')
 
 ### PART C: zoom lines
