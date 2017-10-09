@@ -152,6 +152,8 @@ def make_movie(input_pattern, output, fps = 20):
         Popen(['ffmpeg', '-y', '-framerate', str(fps), '-i', input_pattern, \
                 '-c:v', 'qtrle', '-r', str(fps), output], stderr = sink).wait()
 
+
+
 def make_seismo(out_file, timeseries, x0, y0, xfac, yfac, \
             pos = 'simple', fmt = 'inc', append = True, title = None):
     """
@@ -1676,6 +1678,7 @@ class GMTPlot:
             p.communicate(in_data)
             p.wait()
 
+
     def seismo(self, src, time, fmt = 'time', \
             width = '1p', colour = 'red', straight = True):
         """
@@ -2173,6 +2176,7 @@ class GMTPlot:
             else:
                 pos_spec = '-C%s/%s' % (x, y)
             cmd.extend(['-W%s' % (width), pos_spec])
+
         else:
             # new style positioning
             if pos != 'plot':
