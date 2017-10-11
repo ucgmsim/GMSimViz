@@ -256,11 +256,12 @@ def read_latlondepth(srf):
 
     return points
 
-def get_bounds(srf, seg = -1):
+def get_bounds(srf, seg = -1, depth = False):
     """
     Return corners of segments.
     srf: srf source
     nseg: which segment (-1 for all)
+    depth: also include depth if True
     """
     bounds = []
     with open(srf, 'r') as sf:
@@ -268,21 +269,26 @@ def get_bounds(srf, seg = -1):
         planes = read_header(sf)
         points = int(sf.readline().split()[1])
 
+        # third value to retrieve after longitude, latitude
+        if depth:
+            value = 'depth'
+        else:
+            value = None
         # each plane has a separate set of corners
         for n, plane in enumerate(planes):
             plane_bounds = []
             nstk, ndip = plane[2:4]
             # set of points starts at corner
-            plane_bounds.append(get_lonlat(sf))
+            plane_bounds.append(get_lonlat(sf, value = value))
             # travel along strike, read last value
             skip_points(sf, nstk - 2)
-            plane_bounds.append(get_lonlat(sf))
+            plane_bounds.append(get_lonlat(sf, value = value))
             # go to start of strike at bottom of dip
             skip_points(sf, (ndip - 2) * nstk)
-            plane_bounds.append(get_lonlat(sf))
+            plane_bounds.append(get_lonlat(sf, value = value))
             # travel along strike at bottom of dip
             skip_points(sf, nstk - 2)
-            plane_bounds.insert(2, get_lonlat(sf))
+            plane_bounds.insert(2, get_lonlat(sf, value = value))
             # store plane bounds or return if only 1 wanted
             if n == seg:
                 return plane_bounds
