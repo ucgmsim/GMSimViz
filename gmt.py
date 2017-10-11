@@ -1690,7 +1690,11 @@ class GMTPlot:
         cols: override columns to be used as specified by GMT '-i'
         """
         # build command based on parameters
-        cmd = [GMT, 'psxy%s' % ('z' * z), '-J', '-R', '-K', '-O', self.z]
+        if z:
+            module = 'psxyz'
+        else:
+            module = 'psxy'
+        cmd = [GMT, module, '-J', '-R', '-K', '-O', self.z]
         if width != None and colour != None:
             pen = '-W%s,%s' % (width, colour)
             if split != None:
