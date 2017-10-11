@@ -67,27 +67,47 @@ def read_header(sf, idx = False):
         sf.close()
     return planes
 
-def check_type(srf):
+def is_ff(srf):
+    """
+    Returns True if srf is a finite fault, False if srf is a point source.
+    srf: path to srf file
+    """
+    with open(srf, 'r') as sf:
+        return check_type(sf) > 1
+
+def check_type(sf):
     """
     Returns the type of the srf.
-    srf: file pointer(already opened)
+    1: point source
+    2: finite fault, most likely converted from point source params
+    3: finite fault, most likely created from finite fault params
+    4: multi-segment finite fault
+    NOTE: type 2 and 3 depend on input during creation and
+    # can only be distinguished using heuristics,
+    # as such the true result may be the other one.
+    sf: file pointer (already opened)
     """
-    version = float(srf.readline())
-    line = srf.readline()
+    version = float(sf.readline())
+    # either starts with POINTS or PLANE (optional but expected)
+    line = sf.readline()
+    n = int(line.split()[1])
     if 'POINTS' in line:
-        #type one: point source srf. not planes in file.
-        return 1
+        # PLANE header is ommited
+        if n == 1:
+            return 1
+        # more complex logic required to procede in this case
+        # give an invalid result to show this, we don't create such SRFs anyway
+        return 0
     elif 'PLANE' in line:
-        nseg = line.split()[1]
-        if nseg > 1:
-            #multi-segment, type 4
+        if n > 1:
             return 4
         else:
-            elon, elat, nstk, ndip, ln, wid = srf.readline().split()
+            elon, elat, nstk, ndip, ln, wid = sf.readline().split()
+            if int(nstk) * int(ndip) == 1:
+                return 1
             if ln == wid:
                 return 2
-            else:
-                return 3
+            return 3
 
 def skip_points(sf, np):
     """
