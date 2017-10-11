@@ -38,7 +38,7 @@ ISSUES:
 import os
 from shutil import copy, rmtree
 import sys
-sys.path.append('.')
+sys.path.insert(0, '.')
 from time import time, sleep
 
 from mpi4py import MPI

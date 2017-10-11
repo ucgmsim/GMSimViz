@@ -45,7 +45,10 @@ def read_header(sf, idx = False):
         close_me = True
 
     version = float(sf.readline())
-    nseg = int(sf.readline().split()[1])
+    line2 = sf.readline().split()
+    # this function requires the optional PLANE header
+    assert(line2[0] == 'PLANE')
+    nseg = int(line2[1])
     planes = []
     for _ in xrange(nseg):
         # works for version 1.0 and 2.0
@@ -108,6 +111,20 @@ def check_type(sf):
             if ln == wid:
                 return 2
             return 3
+
+def ps_params(srf):
+    """
+    Returns point source (subfault) params (strike, dip, rake).
+    srf: srf file path
+    """
+    with open(srf, 'r') as sf:
+        read_header(sf)
+        n_subfault = int(sf.readline().split()[1])
+        assert(n_subfault == 1)
+        strike, dip = map(float, sf.readline().split()[3:5])
+        rake = float(sf.readline().split()[0])
+
+    return strike, dip, rake
 
 def skip_points(sf, np):
     """
@@ -291,6 +308,17 @@ def get_hypo(srf, lonlat = True, depth = False):
                 if planes[i][10] >= 0:
                     del planes[i:]
                     break
+        # check for point source
+        elif sum(planes[0][2:4]) == 2:
+            # returning offsets doesn't make sense
+            # should have already checked for point source before calling this
+            assert(lonlat)
+            points = int(sf.readline().split()[1])
+            assert(points == 1)
+            hlon, hlat, depth_km = get_lonlat(sf, value = 'depth')
+            if not depth:
+                return hlon, hlat
+            return hlon, hlat, depth_km
 
         # dip will be constant along shared segments
         ndip = planes[0][3]
