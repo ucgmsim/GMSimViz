@@ -1751,7 +1751,6 @@ class GMTPlot:
             p.communicate(in_data)
             p.wait()
 
-
     def seismo(self, src, time, fmt = 'time', \
             width = '1p', colour = 'red', straight = True):
         """
@@ -2250,7 +2249,6 @@ class GMTPlot:
             else:
                 pos_spec = '-C%s/%s' % (x, y)
             cmd.extend(['-W%s' % (width), pos_spec])
-
         else:
             # new style positioning
             if pos != 'plot':
