@@ -2325,6 +2325,15 @@ class GMTPlot:
         """
         self.psf = open(self.pspath, 'a')
 
+    def pause(self):
+        """
+        Close the plot temporarily, allows external modifications before continuing.
+        To make automated changes, call leave and enter functions instead.
+        """
+        self.leave()
+        input('GMT plotting paused. Press return to return... ')
+        self.enter()
+
     def png(self, out_dir = None, dpi = 96, clip = True, background = None, \
                 margin = [0], size = None, portrait = False, out_name = None):
         """
