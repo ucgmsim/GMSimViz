@@ -21,7 +21,7 @@ import numpy as np
 
 # only needed if plotting fault planes direct from SRF
 try:
-    from srf import *
+    import srf
 except ImportError:
     print('srf.py not found. will not be able to plot faults from SRF.')
 # only needed for some functions
@@ -453,8 +453,8 @@ def xyv_cpt_range(xyv_file, max_step = 12, percentile = 99.5, \
 
     return mn, cpt_inc, cpt_mx, mx
 
-def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', \
-        cpt_percentile = 95, wd = '.'):
+def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
+        cpt_percentile = 95, z = False, wd = '.'):
     """
     Creates geographic overlay data from SRF files.
     out_dir: where to place outputs
@@ -463,25 +463,28 @@ def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', \
             TODO: None to only create masks - don't re-create them
     cpt_percentile: also create CPT to fit SRF data range
             covers this percentile of data
+    z: prepare for 3d plotting
     """
-    dx, dy = srf_dxy(srf)
+    dx, dy = srf.srf_dxy(srf_file)
     plot_dx = '%sk' % (dx * 0.6)
     plot_dy = '%sk' % (dy * 0.6)
-    bounds = get_bounds(srf)
+    bounds = srf.get_bounds(srf_file)
     np_bounds = np.array(bounds)
-    seg_llvs = srf2llv_py(srf, value = value)
-    all_vs = np.concatenate((seg_llvs))[:, 2]
+    seg_llvs = srf.srf2llv_py(srf_file, value = value, depth = z)
+    all_vs = np.concatenate((seg_llvs))[:, -1]
     percentile = np.percentile(all_vs, cpt_percentile)
     # TODO: fix mess
     makecpt(CPTS['slip'], '%s/%s.cpt' % (out_dir, prefix), 0, percentile, 1)
     # each plane will use a region which just fits
     # these are needed for plotting
     regions = []
+    # repeating sections
+    def bin2grd(in_file, out_file):
+        table2grd(in_file, out_file, file_input = True, grd_type = 'surface', \
+                region = regions[s], dx = plot_dx, dy = plot_dy, \
+                climit = 1, wd = wd, geo = True, tension = '0.0')
     # create resources for each plane
     for s in xrange(len(bounds)):
-        # data in binary files
-        seg_llvs[s].astype(np.float32).tofile('%s/%s_%d_slip.bin' \
-                % (out_dir, prefix, s))
         # mask path
         geo.path_from_corners(corners = bounds[s], min_edge_points = 100, \
                 output = '%s/%s_%d_bounds.ll' % (out_dir, prefix, s))
@@ -492,6 +495,24 @@ def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', \
         grd_mask('%s/%s_%d_bounds.ll' % (out_dir, prefix, s), \
                 '%s/%s_%d_mask.grd' % (out_dir, prefix, s), \
                 dx = plot_dx, dy = plot_dy, region = regions[s], wd = wd)
+        # data in binary files
+        if z:
+            # X Y Z relief_file grd
+            seg_llvs[s][:, :3].astype(np.float32) \
+                    .tofile('%s/%s_%d_z.bin' % (out_dir, prefix, s))
+            bin2grd('%s/%s_%d_z.bin' % (out_dir, prefix, s), \
+                    '%s/%s_%d_z.grd' % (out_dir, prefix, s))
+            # X Y V drapefile grd
+            seg_llvs[s][:, (0, 1, 3)].astype(np.float32) \
+                    .tofile('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value))
+            bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
+                    '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
+        else:
+            # X Y V files only
+            seg_llvs[s].astype(np.float32).tofile('%s/%s_%d_%s.bin' \
+                    % (out_dir, prefix, s, value))
+            bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
+                    '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
 
     return (plot_dx, plot_dy), regions
 
@@ -2090,17 +2111,32 @@ class GMTPlot:
         # grd file not needed anymore, prevent clutter
         os.remove(temp_grd)
 
-    def overlay3d(self, xyv_file, \
-            min_v = None, max_v = None, crop_grd = None, \
-            transparency = 40, \
-            limit_low = None, limit_high = None, contours = None, \
-            cols = None, \
-            binary = True, \
-            header = None):
+    def overlay3d(self, xyz_file, drapefile = None, cpt = None, \
+            crop_grd = None, transparency = 40, contours = None, dpi = None):
         """
+        Plot 3d datasets.
+        xyz_file: 3d positioning. x, y, z values
+        drapefile: x, y, v values for colour at x, y position (may be higher res)
+        cpt: cpt to colourise z in xyz_file or v in drapefile if given
+        crop_grd: crop values where crop_grd is NaN
+        transparency: transparency of entire layer
+        contours: not implemented
+        dpi: dpi of raster image generation. should match desired output dpi
         """
-        cmd = [GMT, 'grdview', '-K', '-O', '-J', '-R', '-p', self.z, \
-                xyv_file, '-Qmdarkgreen@0']
+        if crop_grd != None:
+            temp_grd = '%s/overlay3d_tmp.grd' % (self.wd)
+            Popen([GMT, 'grdmath', xyz_file, crop_grd, 'MUL', '=', temp_grd], \
+                    cwd = self.wd).wait()
+            xyz_file = temp_grd
+        cmd = [GMT, 'grdview', '-K', '-O', '-J', '-R', '-p', self.z, xyz_file, \
+                '-t%s' % (transparency)]
+        if drapefile != None:
+            cmd.append('-G%s' % (drapefile))
+        if cpt != None:
+            cmd.append('-C%s' % (cpt))
+            cmd.append('-Qi%s@%s' % (dpi, transparency))
+        else:
+            cmd.append('-Qm%s@%s' % ('darkgreen', '50'))
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def fault(self, in_path, is_srf = False, \

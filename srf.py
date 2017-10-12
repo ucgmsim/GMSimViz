@@ -140,11 +140,12 @@ def skip_points(sf, np):
         for _ in xrange(int(ceil(values / VPL))):
             sf.readline()
 
-def get_lonlat(sf, value = None):
+def get_lonlat(sf, value = None, depth = False):
     """
     Returns only the longitude, latitude of a point.
     sf: open file at start of point
     value: also retrieve value
+    depth: return value in 3d space (return lon, lat, depth, value)
     end: sf at start of next point
     """
     # header 1 contains:
@@ -155,7 +156,7 @@ def get_lonlat(sf, value = None):
     h2 = sf.readline().split()
 
     # always returning lon, lat
-    lon, lat = map(float, h1[:2])
+    lon, lat, depth_v = map(float, h1[:3])
     if value == 'slip':
         value = sqrt(float(h2[1]) ** 2 + float(h2[3]) ** 2 + float(h2[5]) ** 2)
     elif value == 'tinit':
@@ -228,7 +229,11 @@ def get_lonlat(sf, value = None):
                 value[i] += (srate[r] - value[i]) / x
 
     if type(value).__name__ == 'NoneType':
+        if depth:
+            return lon, lat, depth_v
         return lon, lat
+    if depth:
+        return lon, lat, depth_v, value
     return lon, lat, value
 
 
@@ -434,7 +439,8 @@ def srf2llv(srf, seg = -1, value = 'slip', lonlatdep = True, depth = False):
         return np.reshape(llv, (len(llv) // 4, 4))[:, mask]
     return np.reshape(llv, (len(llv) // 3, 3))
 
-def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, flip_rake = False):
+def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, depth = False, \
+        flip_rake = False):
     """
     Return lon, lat, type for subfaults.
     Reading all at once is faster than reading each separate.
@@ -446,6 +452,7 @@ def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, flip_rake = False):
     srf: srf source
     nseg: which segment (-1 for all)
     lonlat: return lon lat (True) or x y (False)
+    depth: give depth as well as lonlat (lonlat must be true)
     flip_rake: angles above 180 degrees will have 360 taken away
     """
     with open(srf, 'r') as sf:
@@ -469,9 +476,15 @@ def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, flip_rake = False):
                 continue
 
             if not multi:
-                plane_values = np.zeros((nstk * ndip, 3))
+                if depth:
+                    plane_values = np.zeros((nstk * ndip, 4))
+                else:
+                    plane_values = np.zeros((nstk * ndip, 3))
             else:
-                plane_values = np.zeros((nstk * ndip, 2))
+                if depth:
+                    plane_values = np.zeros((nstk * ndip, 3))
+                else:
+                    plane_values = np.zeros((nstk * ndip, 2))
                 plane_series = [None] * (nstk * ndip)
             if not lonlat:
                 # calculate x, y offsets
@@ -493,11 +506,19 @@ def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, flip_rake = False):
             else:
                 if not multi:
                     for i in xrange(nstk * ndip):
-                        plane_values[i] = get_lonlat(sf, value = value)
+                        plane_values[i] = get_lonlat(sf, value = value, \
+                                depth = depth)
                 else:
                     for i in xrange(nstk * ndip):
-                        plane_values[i][0], plane_values[i][1], \
-                                plane_series[i] = get_lonlat(sf, value = value)
+                        if depth:
+                            plane_values[i][0], plane_values[i][1], \
+                                    plane_values[i][2], plane_series[i] \
+                                    = get_lonlat(sf, value = value, \
+                                    depth = depth)
+                        else:
+                            plane_values[i][0], plane_values[i][1], \
+                                    plane_series[i] = get_lonlat(sf, \
+                                    value = value)
             if type == 'rake' and flip_rake:
                 np.where(plane_values[:, 2] > 180, \
                         plane_values[:, 2] - 360, plane_values[:, 2])
