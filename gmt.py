@@ -454,7 +454,8 @@ def xyv_cpt_range(xyv_file, max_step = 12, percentile = 99.5, \
     return mn, cpt_inc, cpt_mx, mx
 
 def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
-        cpt_percentile = 95, z = False, wd = '.'):
+        cpt_percentile = 95, z = False, xy = False, wd = '.', pz = None, \
+        dpu = None):
     """
     Creates geographic overlay data from SRF files.
     out_dir: where to place outputs
@@ -464,6 +465,10 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
     cpt_percentile: also create CPT to fit SRF data range
             covers this percentile of data
     z: prepare for 3d plotting
+    xy: reproject 3d points on x, y offsets of page
+    pz: float value for z scaling -Jz<float> (if small 'z' is used)
+    dpu: xy gridpoints per xy unit. eg: dpi
+    wd: gmt working directory. must have .gmt_history for -J, -R and -p
     """
     dx, dy = srf.srf_dxy(srf_file)
     plot_dx = '%sk' % (dx * 0.6)
@@ -478,6 +483,12 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
     # each plane will use a region which just fits
     # these are needed for plotting
     regions = []
+    if xy:
+        regions_xy = []
+        # used to retrieve corner positions of planes
+        planes = srf.read_header(srf_file, idx = True)
+        xy_dx = 1. / dpu
+        xy_dy = 1. / dpu
     # repeating sections
     def bin2grd(in_file, out_file):
         table2grd(in_file, out_file, file_input = True, grd_type = 'surface', \
@@ -507,6 +518,48 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                     .tofile('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value))
             bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
+            if xy:
+                # X Y V reprojected on non-geographic surface
+                assert(pz != None)
+                assert(dpu != None)
+                # reproject on flat surface
+                xyv_repr = np.empty((seg_llvs[s].shape[0], 3))
+                xyv_repr[:, :2] = mapproject_multi(seg_llvs[s][:, :2], wd = wd, \
+                        p = True, z = '-Jz%s' % (pz))
+                # load values
+                xyv_repr[:, 2] = seg_llvs[s][:, 3]
+                # adjust z level manually
+                xyv_repr[:, 1] += seg_llvs[s][:, 2] * pz
+                # dump as binary
+                xyv_repr.astype(np.float32) \
+                    .tofile('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value))
+                # region
+                x_min, y_min = np.min(xyv_repr[:, :2], axis = 0)
+                x_max, y_max = np.max(xyv_repr[:, :2], axis = 0)
+                regions_xy.append((x_min, x_max, y_min, y_max))
+                # XY bounds
+                bounds_xy = []
+                bounds_idx = [0, planes[s]['nstrike'] - 1, \
+                        planes[s]['ndip'] * planes[s]['nstrike'] - 1, \
+                        (planes[s]['ndip'] - 1) * planes[s]['nstrike']]
+                for idx in bounds_idx:
+                    bounds_xy.append(xyv_repr[idx, :2])
+                with open('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), 'w') \
+                        as bounds_f:
+                    for point in bounds_xy:
+                        bounds_f.write('%s %s\n' % tuple(point))
+                # XY mask
+                grd_mask('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), \
+                        '%s/%s_%d_mask_xy.grd' % (out_dir, prefix, s), \
+                        geo = False, dx = xy_dx, dy = xy_dy, \
+                        region = regions_xy[s], wd = wd)
+                # XY grid
+                # TODO: search based on diagonal distance
+                table2grd('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value), \
+                        '%s/%s_%s_%s_xy.grd' % (out_dir, prefix, s, value), \
+                        file_input = True, grd_type = 'nearneighbor', \
+                        region = regions_xy[s], dx = xy_dx, dy = xy_dy, \
+                        wd = wd, geo = False, search = 0.05)
         else:
             # X Y V files only
             seg_llvs[s].astype(np.float32).tofile('%s/%s_%d_%s.bin' \
@@ -514,6 +567,8 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
             bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
 
+    if xy:
+        return (plot_dx, plot_dy), regions, (xy_dx, xy_dy), regions_xy
     return (plot_dx, plot_dy), regions
 
 # TODO: function should be able to modify result CPT such that:
@@ -778,12 +833,13 @@ def gmt_defaults(wd = '.', font_annot_primary = 16, \
     cmd.extend(map(str, extra))
     Popen(cmd, cwd = wd).wait()
 
-def mapproject(x, y, wd = '.', projection = None, region = None, \
+def mapproject_multi(points, wd = '.', projection = None, region = None, \
     inverse = False, unit = None, z = None, p = False):
     """
     Project coordinates to get position or get coordinates from position.
     NOTE: if projection specifies units of length,
             output will still be in default units
+    points: 2d list of x, y or lon, lat
     projection: map projection, default uses history file
     region: map region (x_min, x_max, y_min, y_max), default uses history file
     inverse: False to get coords from pos, True to get pos from coords
@@ -812,13 +868,21 @@ def mapproject(x, y, wd = '.', projection = None, region = None, \
         cmd.append('-p')
 
     projp = Popen(cmd, stdin = PIPE, stdout = PIPE, cwd = wd)
-    result = projp.communicate('%f %f\n' % (x, y))[0]
+    result = projp.communicate('\n'.join([' '.join(map(str, i)) for i in points]))[0]
     projp.wait()
 
     # re-enable history file
     write_history(True, wd = wd)
 
-    return map(float, result.split())
+    return np.loadtxt(result.split('\n'), dtype = 'f')
+
+def mapproject(x, y, wd = '.', projection = None, region = None, \
+    inverse = False, unit = None, z = None, p = False):
+    """
+    Wrapper for mapproject_multi
+    """
+    return mapproject_multi([[x, y]], wd = wd, projection = projection, \
+            region = region, inverse = inverse, unit = unit, z = z, p = p)
 
 def map_width(projection, height, region, wd = '.', abs_diff = False, \
         start_width = 6, accuracy = 0.01, reference = 'left'):
