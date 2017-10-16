@@ -9,6 +9,7 @@ import numpy as np
 
 R_EARTH = 6378.139
 # ideally implemented in python
+# TODO: extract this and add to config file
 ll2xy_bin = '/nesi/projects/nesi00213/tools/ll2xy'
 xy2ll_bin = '/nesi/projects/nesi00213/tools/xy2ll'
 

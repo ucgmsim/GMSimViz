@@ -15,6 +15,7 @@ class WallClockDB:
        
         
     def connect(self):
+        # TODO: remove this hardcoded value here. See the GM slurm based repo for the same file
         con = lite.connect('/nesi/projects/nesi00213/share/wallclock.sqlite')
         return con
 

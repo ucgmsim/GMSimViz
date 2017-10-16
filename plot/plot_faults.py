@@ -3,6 +3,8 @@
 Plot faults that have been studied by QuakeCoRE
 """
 
+# TODO: change all references to hardcoded values and extract them to config (ie. /nesi/projects/nesi00213/).
+
 import os
 
 import qcore_path
