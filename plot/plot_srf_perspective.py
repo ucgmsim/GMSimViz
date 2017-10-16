@@ -75,22 +75,19 @@ p.spacial('M', map_region, z = 'z-0.1i', sizing = gmt_x_size, \
         p = '%s/%s/0' % (s_azimuth, map_tilt), x_shift = - sx, y_shift = - by)
 # load srf plane data
 srf_data = gmt.srf2map(srf_file, gmt_temp, prefix = 'plane', value = 'slip', \
-        cpt_percentile = 95, wd = gmt_temp, z = True, xy = True, pz = -0.1, \
-        dpu = dpi * 0.25)
+        cpt_percentile = 95, wd = gmt_temp, z = True, xy = True, \
+        pz = -0.1 * math.cos(math.radians(map_tilt)), dpu = dpi * 0.25)
 p.basemap(topo = None)
-#p.basemap()
-#for s in xrange(len(srf_data[1])):
-#    p.overlay3d('%s/plane_%d_z.grd' % (gmt_temp, s), \
-#            drapefile = '%s/plane_%d_slip.grd' % (gmt_temp, s), \
-#            crop_grd = '%s/plane_%d_mask.grd' % (gmt_temp, s),
-#            cpt = '%s/plane.cpt' % (gmt_temp), dpi = dpi)
 p.ticks(major = 0.1, minor = 0.01)
-p.path(gmt_bottom, is_file = False, colour = 'blue', width = '1p', split = '-', close = True, z = True)
+# srf outline: underground, surface, hypocentre
+p.path(gmt_bottom, is_file = False, colour = 'blue', width = '1p', \
+        split = '-', close = True, z = True)
 p.path(gmt_top, is_file = False, colour = 'blue', width = '2p', z = True)
-#p.sites(gmt.sites_major)
+# TODO: add hypocentre
+p.sites(gmt.sites_major)
 
-p.spacial('X', (0, page_width, 0, page_height), \
-        sizing = '%s/%s' % (page_width, page_height))
+p.spacial('X', (0, page_width + sx, 0, page_height + by), \
+        sizing = '%s/%s' % (page_width + sx, page_height + by))
 for s in xrange(len(srf_data[3])):
     p.overlay('%s/plane_%d_slip_xy.grd' % (gmt_temp, s), \
             '%s/plane.cpt' % (gmt_temp), transparency = 40, \
