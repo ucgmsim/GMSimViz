@@ -152,13 +152,14 @@ def make_movie(input_pattern, output, fps = 20):
         Popen(['ffmpeg', '-y', '-framerate', str(fps), '-i', input_pattern, \
                 '-c:v', 'qtrle', '-r', str(fps), output], stderr = sink).wait()
 
-def perspective_fill(width, height, view = 180, tilt = 90):
+def perspective_fill(width, height, view = 180, tilt = 90, zlevel = 0):
     """
     Fills page (width x height) area with minimum size given perspective.
     width: width of the page
     height: height of the page
     view: source (rotation), 180 = south facing down
     tilt: backwards tilt angle, 90 = straight on
+    zlevel: z-level of 2d data (such as map borders)
     """
     # part of the map view (outside) edge is bs, bl, ss, sl
     #        /\
@@ -197,9 +198,9 @@ def perspective_fill(width, height, view = 180, tilt = 90):
     # result sizes
     page_x_size = abs(bl) + abs(ss)
     page_y_size = abs(bs) + abs(sl)
-    # GMT lifts map upwards slightly when map is tilted back
+    # adjust for 2d z-level
     # 'by' is still as before, can only be used for offsets from now
-    by += c_tilt / 10.
+    by += zlevel * c_tilt / 10.
     # gmt_x_size and gmt_y_size are pre-tilt dimensions
     # with tilt applied, they will be equivalent to page_x_size and page_y_size
     gmt_x_size = math.sqrt((page_x_size * math.cos(gmt_x_angle)) ** 2 \
@@ -1320,15 +1321,18 @@ class GMTPlot:
         colour: the colour of the background
         """
         if spacial:
-            self.spacial('X', (0, length, 0, height), sizing = '%s/%s' % (length, height))
+            # spacial doesn't work properly with x_margin and y_margin atm
+            self.spacial('X', (0, length, 0, height), \
+                    sizing = '%s/%s' % (length, height))
 
         # leave window on inside
         # TODO: allow margins and window
         if window != None:
-            self.clip('%s %s\n%s %s\n%s %s\n%s %s' % (window[0], window[3], \
-                    window[0], height - window[2], \
-                    length - window[1], height - window[2], \
-                    length - window[1], window[3]), \
+            self.clip('%s %s\n%s %s\n%s %s\n%s %s' % (window[0] + x_margin, window[3] + y_margin, \
+                    window[0] + x_margin, (height + y_margin) - window[2], \
+                    (length + x_margin) - window[1], \
+                    (height + y_margin) - window[2], \
+                    (length + x_margin) - window[1], window[3] + y_margin), \
                     is_file = False, invert = True)
 
         # draw background and place origin up, right as wanted
@@ -1747,7 +1751,7 @@ class GMTPlot:
 
     def points(self, in_data, is_file = True, shape = 't', size = 0.08, \
             fill = None, line = 'white', line_thickness = '0.8p', \
-            cpt = None, cols = None, header = 0):
+            cpt = None, cols = None, header = 0, z = False, clip = True):
         """
         Adds points to map.
         in_data: file or text containing '\n' separated x, y positions to plot
@@ -1770,8 +1774,12 @@ class GMTPlot:
             shaping = '-S%s' % (shape)
         else:
             shaping = '-S%s%s' % (shape, size)
+        if z:
+            module = 'psxyz'
+        else:
+            module = 'psxy'
         # build command based on optional fill and thickness
-        cmd = [GMT, 'psxy', '-J', '-R', shaping, '-K', '-O', self.z]
+        cmd = [GMT, module, '-J', '-R', shaping, '-K', '-O', self.z]
         if fill != None:
             cmd.append('-G%s' % (fill))
         elif cpt != None:
@@ -1782,6 +1790,10 @@ class GMTPlot:
             cmd.append('-i%s' % (cols))
         if header > 0:
             cmd.append('-hi%d' % (header))
+        if self.p:
+            cmd.append('-p')
+        if not clip:
+            cmd.append('-N')
 
         if is_file:
             cmd.append(os.path.abspath(in_data))
