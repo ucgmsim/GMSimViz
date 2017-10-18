@@ -35,6 +35,10 @@ except ImportError:
 gmt_install_bin = ''
 GMT = os.path.join(gmt_install_bin, 'gmt')
 
+# state files
+GMT_CONF = 'gmt.conf'
+GMT_HISTORY = 'gmt.history'
+
 # GMT 5.2+ argument mapping
 GMT52_POS = {'map':'g', 'plot':'x', 'norm':'n', 'rel':'j', 'rel_out':'J'}
 
@@ -465,7 +469,7 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
             TODO: None to only create masks - don't re-create them
     cpt_percentile: also create CPT to fit SRF data range
             covers this percentile of data
-    z: prepare for 3d plotting
+    z: prepare for 3d plotting with a drapefile (no good for steep dip)
     xy: reproject 3d points on x, y offsets of page
     pz: float value for z scaling -Jz<float> (if small 'z' is used)
     dpu: xy gridpoints per xy unit. eg: dpi
@@ -519,48 +523,48 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                     .tofile('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value))
             bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
-            if xy:
-                # X Y V reprojected on non-geographic surface
-                assert(pz != None)
-                assert(dpu != None)
-                # reproject on flat surface
-                xyv_repr = np.empty((seg_llvs[s].shape[0], 3))
-                xyv_repr[:, :2] = mapproject_multi(seg_llvs[s][:, :2], wd = wd, \
-                        p = True, z = '-Jz%s' % (pz))
-                # load values
-                xyv_repr[:, 2] = seg_llvs[s][:, 3]
-                # adjust z level manually
-                xyv_repr[:, 1] += seg_llvs[s][:, 2] * pz
-                # dump as binary
-                xyv_repr.astype(np.float32) \
-                    .tofile('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value))
-                # region
-                x_min, y_min = np.min(xyv_repr[:, :2], axis = 0)
-                x_max, y_max = np.max(xyv_repr[:, :2], axis = 0)
-                regions_xy.append((x_min, x_max, y_min, y_max))
-                # XY bounds
-                bounds_xy = []
-                bounds_idx = [0, planes[s]['nstrike'] - 1, \
-                        planes[s]['ndip'] * planes[s]['nstrike'] - 1, \
-                        (planes[s]['ndip'] - 1) * planes[s]['nstrike']]
-                for idx in bounds_idx:
-                    bounds_xy.append(xyv_repr[idx, :2])
-                with open('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), 'w') \
-                        as bounds_f:
-                    for point in bounds_xy:
-                        bounds_f.write('%s %s\n' % tuple(point))
-                # XY mask
-                grd_mask('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), \
-                        '%s/%s_%d_mask_xy.grd' % (out_dir, prefix, s), \
-                        geo = False, dx = xy_dx, dy = xy_dy, \
-                        region = regions_xy[s], wd = wd)
-                # XY grid
-                # TODO: search based on diagonal distance
-                table2grd('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value), \
-                        '%s/%s_%s_%s_xy.grd' % (out_dir, prefix, s, value), \
-                        file_input = True, grd_type = 'nearneighbor', \
-                        region = regions_xy[s], dx = xy_dx, dy = xy_dy, \
-                        wd = wd, geo = False, search = 0.05)
+        elif xy:
+            # X Y V reprojected on non-geographic surface
+            assert(pz != None)
+            assert(dpu != None)
+            # reproject on flat surface
+            xyv_repr = np.empty((seg_llvs[s].shape[0], 3))
+            xyv_repr[:, :2] = mapproject_multi(seg_llvs[s][:, :2], wd = wd, \
+                    p = True, z = '-Jz%s' % (pz))
+            # load values
+            xyv_repr[:, 2] = seg_llvs[s][:, 3]
+            # adjust z level manually
+            xyv_repr[:, 1] += seg_llvs[s][:, 2] * pz
+            # dump as binary
+            xyv_repr.astype(np.float32) \
+                .tofile('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value))
+            # region
+            x_min, y_min = np.min(xyv_repr[:, :2], axis = 0)
+            x_max, y_max = np.max(xyv_repr[:, :2], axis = 0)
+            regions_xy.append((x_min, x_max, y_min, y_max))
+            # XY bounds
+            bounds_xy = []
+            bounds_idx = [0, planes[s]['nstrike'] - 1, \
+                    planes[s]['ndip'] * planes[s]['nstrike'] - 1, \
+                    (planes[s]['ndip'] - 1) * planes[s]['nstrike']]
+            for idx in bounds_idx:
+                bounds_xy.append(xyv_repr[idx, :2])
+            with open('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), 'w') \
+                    as bounds_f:
+                for point in bounds_xy:
+                    bounds_f.write('%s %s\n' % tuple(point))
+            # XY mask
+            grd_mask('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), \
+                    '%s/%s_%d_mask_xy.grd' % (out_dir, prefix, s), \
+                    geo = False, dx = xy_dx, dy = xy_dy, \
+                    region = regions_xy[s], wd = wd)
+            # XY grid
+            # TODO: search based on diagonal distance
+            table2grd('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value), \
+                    '%s/%s_%s_%s_xy.grd' % (out_dir, prefix, s, value), \
+                    file_input = True, grd_type = 'nearneighbor', \
+                    region = regions_xy[s], dx = xy_dx, dy = xy_dy, \
+                    wd = wd, geo = False, search = 0.05)
         else:
             # X Y V files only
             seg_llvs[s].astype(np.float32).tofile('%s/%s_%d_%s.bin' \
