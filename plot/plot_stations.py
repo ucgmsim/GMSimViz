@@ -498,10 +498,10 @@ if len(sys.argv) > 1:
     # retrieve arguments
     parser = ArgumentParser()
     parser.add_argument('station_file', help = 'data input file')
-    parser.add_argument('--out-dir', help = 'folder where outputs are saved')
+    parser.add_argument('--out_dir', help = 'folder where outputs are saved')
     parser.add_argument('--srf', help = 'srf file, will use corners file instead if available')
-    parser.add_argument('--srf-cnrs', help = 'standard srf fault corners file')
-    parser.add_argument('--model-params', help = 'model_params file for simulation domain')
+    parser.add_argument('--srf_cnrs', help = 'standard srf fault corners file')
+    parser.add_argument('--model_params', help = 'model_params file for simulation domain')
     args = parser.parse_args()
     station_file = args.station_file
     if args.out_dir:
