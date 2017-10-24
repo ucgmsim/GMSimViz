@@ -10,10 +10,10 @@ add support for different interpolation methods
 avg_ll calculated elsewhere should be local function that works over equator
 """
 
-from math import ceil, floor, log10, sqrt
+import math
 import os
 from shutil import copyfile, move
-from subprocess import call, PIPE, Popen
+from subprocess import PIPE, Popen
 from sys import byteorder
 from time import time
 
@@ -21,7 +21,7 @@ import numpy as np
 
 # only needed if plotting fault planes direct from SRF
 try:
-    from srf import *
+    import srf
 except ImportError:
     print('srf.py not found. will not be able to plot faults from SRF.')
 # only needed for some functions
@@ -55,6 +55,7 @@ LINZ_ROAD = os.path.join(GMT_DATA, 'Paths/lds-nz-road-centre-line/wgs84.gmt')
 LINZ_HWY = os.path.join(GMT_DATA, 'Paths/shwy/wgs84.gmt')
 # OTHER GEO DATA
 TOPO_HIGH = os.path.join(GMT_DATA, 'Topo/srtm_all_filt_nz.grd')
+TOPO_LOW = os.path.join(GMT_DATA, 'Topo/nztopo.grd')
 CHCH_WATER = os.path.join(GMT_DATA, 'Paths/water_network/water.gmt')
 # CPT DATA
 CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plot', 'cpt')
@@ -150,6 +151,63 @@ def make_movie(input_pattern, output, fps = 20):
     with open('/dev/null', 'w') as sink:
         Popen(['ffmpeg', '-y', '-framerate', str(fps), '-i', input_pattern, \
                 '-c:v', 'qtrle', '-r', str(fps), output], stderr = sink).wait()
+
+def perspective_fill(width, height, view = 180, tilt = 90):
+    """
+    Fills page (width x height) area with minimum size given perspective.
+    width: width of the page
+    height: height of the page
+    view: source (rotation), 180 = south facing down
+    tilt: backwards tilt angle, 90 = straight on
+    """
+    # part of the map view (outside) edge is bs, bl, ss, sl
+    #        /\
+    #    bl /  \ bs        s|\
+    #  ___ /____\____      l| \             /|\
+    #  ss /|GMT |\ sl      y|  \ sl        / | \
+    # ___/ |PAGE| \___      |___\      bl /  |b \ bs
+    # sl \ |AREA| / ss      |sx\/sxss    /   |y  \
+    #  ___\|____|/___      s|  / ss     /____|____\
+    #      \    /          s| /          blx   bsx
+    #    bs \  / bl        y|/
+    #        \/
+    # repeated values
+    s_tilt = math.sin(math.radians(tilt))
+    c_tilt = math.cos(math.radians(tilt))
+    s_view = abs(math.sin(math.radians(view)))
+    c_view = abs(math.cos(math.radians(view)))
+    gmt_x_angle = math.atan2(s_view * s_tilt, c_view)
+    gmt_y_angle = math.atan2(s_view, c_view * s_tilt)
+    # bottom and top edge segments
+    bs = width * s_view
+    bsx = bs * s_view
+    by = math.sqrt(bs ** 2 - bsx ** 2) * s_tilt
+    bs = math.sqrt(bsx ** 2 + by ** 2)
+    bl = math.sqrt((width - bsx) ** 2 + by ** 2)
+    # side segments
+    ss = height * s_view
+    sx = ss * c_view
+    ssy = math.sqrt(ss ** 2 - sx ** 2)
+    try:
+        sx = ssy / math.tan(math.atan((ssy * s_tilt) / sx))
+    except ZeroDivisionError:
+        sx = 0
+    ss = math.sqrt(ssy ** 2 + sx ** 2)
+    sl = math.sqrt((height - ssy) ** 2 + sx ** 2)
+    # result sizes
+    page_x_size = abs(bl) + abs(ss)
+    page_y_size = abs(bs) + abs(sl)
+    # GMT lifts map upwards slightly when map is tilted back
+    # 'by' is still as before, can only be used for offsets from now
+    by += c_tilt / 10.
+    # gmt_x_size and gmt_y_size are pre-tilt dimensions
+    # with tilt applied, they will be equivalent to page_x_size and page_y_size
+    gmt_x_size = math.sqrt((page_x_size * math.cos(gmt_x_angle)) ** 2 \
+            + (page_x_size * math.sin(gmt_x_angle) / s_tilt) ** 2)
+    gmt_y_size = math.sqrt((page_y_size * math.sin(gmt_y_angle)) ** 2 \
+            + (page_y_size * math.cos(gmt_y_angle) / s_tilt) ** 2)
+
+    return gmt_x_size, gmt_y_size, sx, by
 
 def make_seismo(out_file, timeseries, x0, y0, xfac, yfac, \
             pos = 'simple', fmt = 'inc', append = True, title = None):
@@ -372,17 +430,17 @@ def xyv_cpt_range(xyv_file, max_step = 12, percentile = 99.5, \
     cpt_mx = np.percentile(lonlatvalue[:, 2], percentile)
     if cpt_mx < 100:
         # 1 sf
-        cpt_mx = round(cpt_mx, - int(floor(log10(abs(cpt_mx)))))
+        cpt_mx = round(cpt_mx, - int(math.floor(math.log10(abs(cpt_mx)))))
     else:
         # 2 sf
-        cpt_mx = round(cpt_mx, 1 - int(floor(log10(abs(cpt_mx)))))
+        cpt_mx = round(cpt_mx, 1 - int(math.floor(math.log10(abs(cpt_mx)))))
     if my_max != None:
         cpt_mx = my_max
 
     # un-rounded smallest increment for cpt
     min_inc = cpt_mx / max_step
     # rounded up to nearest power of 10
-    inc_10 = 10 ** ceil(log10(min_inc))
+    inc_10 = 10 ** math.ceil(math.log10(min_inc))
     # will be ok 1x10**x
     cpt_inc = inc_10
     # 5x10**x and 2x10**x are also a round numbers
@@ -395,8 +453,8 @@ def xyv_cpt_range(xyv_file, max_step = 12, percentile = 99.5, \
 
     return mn, cpt_inc, cpt_mx, mx
 
-def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', \
-        cpt_percentile = 95, wd = '.'):
+def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
+        cpt_percentile = 95, z = False, wd = '.'):
     """
     Creates geographic overlay data from SRF files.
     out_dir: where to place outputs
@@ -405,25 +463,28 @@ def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', \
             TODO: None to only create masks - don't re-create them
     cpt_percentile: also create CPT to fit SRF data range
             covers this percentile of data
+    z: prepare for 3d plotting
     """
-    dx, dy = srf_dxy(srf)
+    dx, dy = srf.srf_dxy(srf_file)
     plot_dx = '%sk' % (dx * 0.6)
     plot_dy = '%sk' % (dy * 0.6)
-    bounds = get_bounds(srf)
+    bounds = srf.get_bounds(srf_file)
     np_bounds = np.array(bounds)
-    seg_llvs = srf2llv_py(srf, value = value)
-    all_vs = np.concatenate((seg_llvs))[:, 2]
+    seg_llvs = srf.srf2llv_py(srf_file, value = value, depth = z)
+    all_vs = np.concatenate((seg_llvs))[:, -1]
     percentile = np.percentile(all_vs, cpt_percentile)
     # TODO: fix mess
     makecpt(CPTS['slip'], '%s/%s.cpt' % (out_dir, prefix), 0, percentile, 1)
     # each plane will use a region which just fits
     # these are needed for plotting
     regions = []
+    # repeating sections
+    def bin2grd(in_file, out_file):
+        table2grd(in_file, out_file, file_input = True, grd_type = 'surface', \
+                region = regions[s], dx = plot_dx, dy = plot_dy, \
+                climit = 1, wd = wd, geo = True, tension = '0.0')
     # create resources for each plane
     for s in xrange(len(bounds)):
-        # data in binary files
-        seg_llvs[s].astype(np.float32).tofile('%s/%s_%d_slip.bin' \
-                % (out_dir, prefix, s))
         # mask path
         geo.path_from_corners(corners = bounds[s], min_edge_points = 100, \
                 output = '%s/%s_%d_bounds.ll' % (out_dir, prefix, s))
@@ -434,6 +495,24 @@ def srf2map(srf, out_dir, prefix = 'plane', value = 'slip', \
         grd_mask('%s/%s_%d_bounds.ll' % (out_dir, prefix, s), \
                 '%s/%s_%d_mask.grd' % (out_dir, prefix, s), \
                 dx = plot_dx, dy = plot_dy, region = regions[s], wd = wd)
+        # data in binary files
+        if z:
+            # X Y Z relief_file grd
+            seg_llvs[s][:, :3].astype(np.float32) \
+                    .tofile('%s/%s_%d_z.bin' % (out_dir, prefix, s))
+            bin2grd('%s/%s_%d_z.bin' % (out_dir, prefix, s), \
+                    '%s/%s_%d_z.grd' % (out_dir, prefix, s))
+            # X Y V drapefile grd
+            seg_llvs[s][:, (0, 1, 3)].astype(np.float32) \
+                    .tofile('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value))
+            bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
+                    '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
+        else:
+            # X Y V files only
+            seg_llvs[s].astype(np.float32).tofile('%s/%s_%d_%s.bin' \
+                    % (out_dir, prefix, s, value))
+            bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
+                    '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
 
     return (plot_dx, plot_dy), regions
 
@@ -700,7 +779,7 @@ def gmt_defaults(wd = '.', font_annot_primary = 16, \
     Popen(cmd, cwd = wd).wait()
 
 def mapproject(x, y, wd = '.', projection = None, region = None, \
-    inverse = False, unit = None):
+    inverse = False, unit = None, z = None, p = False):
     """
     Project coordinates to get position or get coordinates from position.
     NOTE: if projection specifies units of length,
@@ -709,6 +788,7 @@ def mapproject(x, y, wd = '.', projection = None, region = None, \
     region: map region (x_min, x_max, y_min, y_max), default uses history file
     inverse: False to get coords from pos, True to get pos from coords
     unit: return value units, default uses PROJ_LENGTH_UNIT from gmt.conf
+    z: required if region has z extent, example: '-Jz1'
     """
     # calculation should not affect plotting
     write_history(False, wd = wd)
@@ -726,6 +806,10 @@ def mapproject(x, y, wd = '.', projection = None, region = None, \
         cmd.append('-I')
     if unit != None:
         cmd.append('-D%s' % (unit))
+    if z != None:
+        cmd.append(z)
+    if p:
+        cmd.append('-p')
 
     projp = Popen(cmd, stdin = PIPE, stdout = PIPE, cwd = wd)
     result = projp.communicate('%f %f\n' % (x, y))[0]
@@ -790,6 +874,9 @@ def adjust_latitude(projection, width, height, region, wd = '.', \
     top: able to adjust latitude maximum
     bottom: able to adjust latitude minimum (top or bottom == True)
     """
+    # store unused z region
+    z_region = region[4:]
+
     # TODO: merge this and map_width function as 90% is the same
     # some map projections will be higher/lower in the middle of the map
     if reference == 'left':
@@ -806,7 +893,7 @@ def adjust_latitude(projection, width, height, region, wd = '.', \
 
     mirror = 1
     if top and bottom:
-        mid_lat = sum(region[2:]) / 2.
+        mid_lat = sum(region[2:4]) / 2.
         mirror = 0.5
     elif top:
         mid_lat = region[2]
@@ -815,7 +902,7 @@ def adjust_latitude(projection, width, height, region, wd = '.', \
 
     while True:
         new_height = mapproject(x_ref, region[3], wd = wd, \
-                projection = '%s%s' % (projection, width), region = region)[1]
+                projection = '%s%s' % (projection, width), region = region[:4])[1]
         if new_height > window_max or new_height < window_min:
             # this would work first time with constant latitude distance
             scale_factor = height / float(new_height)
@@ -826,7 +913,7 @@ def adjust_latitude(projection, width, height, region, wd = '.', \
         else:
             break
 
-    return new_height, region
+    return new_height, region + z_region
 
 def fill_space(space_x, space_y, region, dpi, proj = 'M', wd = '.'):
     """
@@ -928,9 +1015,9 @@ def region_transition(projection, region_start, region_end, \
     if movement == 'linear':
         position = frame / (float(frame_total) - 1)
     elif movement == 'log':
-        position = log10(frame + 1) / log10(frame_total)
+        position = math.log10(frame + 1) / math.log10(frame_total)
     elif movement == 'sqrt':
-        position = sqrt(frame) / sqrt(frame_total - 1)
+        position = math.sqrt(frame) / math.sqrt(frame_total - 1)
     else:
         # TODO: this should really be throwing an exception
         print('Not a supported camera movement style. Exiting.')
@@ -1048,7 +1135,7 @@ def backup_history(restore = False, wd = '.'):
 ### RELATING TO GMT SPATIAL
 ###
 def intersections(inputs, external = True, internal = False, \
-        duplicates = False, wd = '.', containing = None):
+        duplicates = False, wd = '.', containing = None, items = False):
     """
     Return intersecting points.
     inputs: list of file paths or single file path
@@ -1056,6 +1143,7 @@ def intersections(inputs, external = True, internal = False, \
     internal: intra-polygon intersections
     duplicates: keep duplicate points (True), unique points (False)
     containing: useful with 3+ inputs. only where this input is involved
+    items: also return which inputs are involved in the intersection
     """
     cmd = [GMT, 'spatial', '-I%s%s' % ('e' * external, 'i' * internal)]
     if not duplicates:
@@ -1071,9 +1159,46 @@ def intersections(inputs, external = True, internal = False, \
     sp.wait()
     # process
     points = []
+    comps = []
     for line in so.rstrip().split('\n'):
         if containing == None or containing in line.split()[4:6]:
             points.append(map(float, line.split()[:2]))
+            if items:
+                comps.append(line.split()[-2:])
+    if not items:
+        return points
+    else:
+        return points, comps
+
+def truncate(inputs, clip = None, region = None, wd = '.'):
+    """
+    Return inputs with points outside clip removed.
+    inputs: list of file paths or single file path
+    clip: clip path or None to use region
+    region: when clip is None, specify region or None to use history
+    """
+    cmd = [GMT, 'spatial', '-T%s' % (str(clip) * (clip != None))]
+    if type(inputs).__name__ == 'list':
+        cmd.extend(inputs)
+    else:
+        cmd.append(inputs)
+
+    if clip == None:
+        if region == None:
+            cmd.append('-R')
+        else:
+            cmd.append('-R%s' % ('/'.join(region)))
+
+    # run
+    sp = Popen(cmd, cwd = wd, stdout = PIPE)
+    so = sp.communicate()[0]
+    sp.wait()
+    # process
+    points = []
+    for line in so.rstrip().split('\n'):
+        if line == '':
+            continue
+        points.append(map(float, line.split()[:2]))
     return points
 
 ###
@@ -1099,8 +1224,9 @@ class GMTPlot:
             gmt_defaults(wd = self.wd)
         # place to reject unwanted warnings
         self.sink = open('/dev/null', 'a')
-        # perspective mode switch
+        # perspective mode, 3D mode default
         self.p = False
+        self.z = '-Jz1'
 
     def history(self, item):
         """
@@ -1166,14 +1292,15 @@ class GMTPlot:
         if window != None:
             self.clip(n = 1)
 
-    def spacial(self, proj, region, \
+    def spacial(self, proj, region, z = 'z1', \
             lon0 = None, lat0 = None, sizing = 1, \
             x_shift = 0, y_shift = 0, fill = None, p = None):
         """
         Sets up the spacial parameters for plotting.
         doc http://gmt.soest.hawaii.edu/doc/5.1.0/gmt.html#j-full
         proj: GMT projection eg 'X' = cartesian, 'M|m' = mercator
-        region: tuple containing x_min, x_max, y_min, y_max
+        region: tuple containing x_min, x_max, y_min, y_max [, z_min, z_max]
+        z: z scaling (starts with z|Z)
         lon0: standard meridian (not always necessary)
         lat0: standard parallel (not always necessary)
         sizing: either scale: distance / degree longitude at meridian
@@ -1186,17 +1313,19 @@ class GMTPlot:
         # work out projection format
         if proj.lower() == 't' and lon0 == None:
             # lon0 is not optional, use centre as default
-            lon0 = sum(map(float, rogion.split('/')[:2])) / 2.
+            lon0 = sum(map(float, region[:2])) / 2.
         if lon0 == None:
             gmt_proj = '-J%s%s' % (proj, sizing)
         elif lat0 == None:
             gmt_proj = '-J%s%s/%s' % (proj, lon0, sizing)
         else:
             gmt_proj = '-J%s%s/%s/%s' % (proj, lon0, lat0, sizing)
+        # need to keep track of -Jz or -JZ
+        self.z = '-J%s' % (z)
 
         cmd = [GMT, 'psxy', gmt_proj, '-X%s' % (x_shift), \
-                '-Y%s' % (y_shift), '-K', \
-                '-R%s/%s/%s/%s' % region]
+                '-Y%s' % (y_shift), '-K', self.z, \
+                '-R%s' % ('/'.join(map(str, region)))]
         # one of the functions that can be run on a blank file
         # as such, '-O' flag needs to be taken care of
         if self.new:
@@ -1231,11 +1360,14 @@ class GMTPlot:
         """
         if path != None:
             # start crop by path
-            cmd = [GMT, 'psclip', '-J', '-R', '-K', '-O']
+            cmd = [GMT, 'psclip', '-J', '-R', '-K', '-O', self.z]
             if invert:
                 cmd.append('-N')
             if is_file:
-                cmd.append(os.path.abspath(path))
+                if type(path).__name__ == 'list':
+                    cmd.extend(map(os.path.abspath, path))
+                else:
+                    cmd.append(os.path.abspath(path))
                 Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
             else:
                 p = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
@@ -1243,7 +1375,7 @@ class GMTPlot:
                 p.wait()
         else:
             # finish crop (-C)
-            cmd = [GMT, 'psclip', '-K', '-O', '-J', '-R']
+            cmd = [GMT, 'psclip', '-K', '-O', '-J', '-R', self.z]
             if n == None:
                 cmd.append('-C')
             else:
@@ -1267,7 +1399,7 @@ class GMTPlot:
         clip: crop text to map boundary
         box_fill: colour to fill text box with
         """
-        cmd = [GMT, 'pstext', '-J', '-R', '-K', '-O', \
+        cmd = [GMT, 'pstext', '-J', '-R', '-K', '-O', self.z, \
                 '-D%s/%s' % (dx, dy), \
                 '-F+f%s,%s,%s+j%s+a%s' % (size, font, colour, align, angle)]
         if not clip:
@@ -1281,7 +1413,8 @@ class GMTPlot:
     def sites(self, site_names, shape = 'c', size = 0.1, \
             width = 0.8, colour = 'black', \
             fill = 'gainsboro', transparency = 50, spacing = 0.08, \
-            font = 'Helvetica', font_size = '10p', font_colour = 'black'):
+            font = 'Helvetica', font_size = '10p', font_colour = 'black', \
+            box_fill = None):
         """
         Add sites to map.
         site_names: list of sites to add from defined dictionary
@@ -1290,10 +1423,12 @@ class GMTPlot:
         # step 1: add points on map
         sites_xy = '\n'.join([' '.join(map(str, sites[x.split(',')[0]][:2])) \
                 for x in site_names])
-        sproc = Popen([GMT, 'psxy', '-J', '-R', '-S%s%s' % (shape, size), \
+        cmd = [GMT, 'psxy', '-J', '-R', '-S%s%s' % (shape, size), \
                 '-G%s@%s' % (fill, transparency), '-K', '-O', \
-                '-W%s,%s' % (width, colour)], \
-                stdin = PIPE, stdout = self.psf, cwd = self.wd)
+                '-W%s,%s' % (width, colour), self.z]
+        if self.p:
+            cmd.append('-p')
+        sproc = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
         sproc.communicate(sites_xy)
         sproc.wait()
 
@@ -1310,10 +1445,14 @@ class GMTPlot:
                 align = sites[name][2]
             xyan.append('%s %s %s' % (xy, align, name))
 
-        tproc = Popen([GMT, 'pstext', '-J', '-R', '-K', '-O', \
+        cmd = [GMT, 'pstext', '-J', '-R', '-K', '-O', self.z, \
                 '-Dj%s/%s' % (spacing, spacing), \
-                '-F+j+f%s,%s,%s+a0' % (font_size, font, font_colour)], \
-                stdin = PIPE, stdout = self.psf, cwd = self.wd)
+                '-F+j+f%s,%s,%s+a0' % (font_size, font, font_colour)]
+        if box_fill != None:
+            cmd.append('-G%s' % (box_fill))
+        if self.p:
+            cmd.append('-p')
+        tproc = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
         tproc.communicate('\n'.join(xyan))
         tproc.wait()
 
@@ -1333,28 +1472,28 @@ class GMTPlot:
         if len(res) > 1:
             # start cropping inverted (-N) land area
             cmd = [GMT, 'psclip', '-J', '-R', '-K', '-O', \
-                    LINZ_COAST[res], '-N']
+                    LINZ_COAST[res], '-N', self.z]
             if self.p:
                 cmd.append('-p')
             Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
             # fill map with water colour
             cmd = [GMT, 'pscoast', '-J', '-R', '-G%s' % (colour), \
-                '-Dc', '-K', '-O', '-S%s' % (colour)]
+                '-Dc', '-K', '-O', '-S%s' % (colour), self.z]
             if self.p:
                 cmd.append('-p')
             Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
             # finish crop
-            cmd = [GMT, 'psclip', '-C', '-K', '-O']
+            cmd = [GMT, 'psclip', '-C', '-J', '-K', '-O']
             if self.p:
                 cmd.append('-p')
             Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
             # also add lakes and rivers
-            cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O', \
+            cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O', self.z, \
                     '-G%s' % (colour), LINZ_LAKE[res]]
             if self.p:
                 cmd.append('-p')
             Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
-            cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O', \
+            cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O', self.z, \
                     '-G%s' % (colour), LINZ_RIVER[res]]
             if self.p:
                 cmd.append('-p')
@@ -1363,18 +1502,18 @@ class GMTPlot:
 
         # start cropping to only show wet areas
         cmd = [GMT, 'pscoast', '-J', '-R', '-D%s' % (res), \
-                '-Sc', '-K', '-O']
+                '-Sc', '-K', '-O', self.z]
         if self.p:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
         # fill land and water to prevent segment artifacts
         cmd = [GMT, 'pscoast', '-J', '-R', '-G%s' % (colour), \
-                '-Dc', '-K', '-O', '-S%s' % (colour)]
+                '-Dc', '-K', '-O', '-S%s' % (colour), self.z]
         if self.p:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
         # crop (-Q) land area off to show only water
-        cmd = [GMT, 'pscoast', '-J', '-R', '-Q', '-K', '-O']
+        cmd = [GMT, 'pscoast', '-J', '-R', '-Q', '-K', '-O', self.z]
         if self.p:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
@@ -1388,7 +1527,7 @@ class GMTPlot:
 
         # LINZ correct res option
         if len(res) > 1:
-            cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O', \
+            cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O', self.z, \
                     '-G%s' % (fill), LINZ_COAST[res]]
             if self.p:
                 cmd.append('-p')
@@ -1400,18 +1539,18 @@ class GMTPlot:
         # then cropped to only include land
         # start cropping to only fill dry areas
         cmd = [GMT, 'pscoast', '-J', '-R', '-D%s' % (res), \
-                '-Gc', '-K', '-O']
+                '-Gc', '-K', '-O', self.z]
         if self.p:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
         # fill land and water to prevent segment artifacts
-        cmd = [GMT, 'pscoast', '-J', '-R', '-G%s' % (fill), \
+        cmd = [GMT, 'pscoast', '-J', self.z, '-R', '-G%s' % (fill), \
                 '-D%s' % (res), '-K', '-O', '-S%s' % (fill)]
         if self.p:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
         # crop (-Q) wet area off to show only land
-        cmd = [GMT, 'pscoast', '-J', '-R', '-Q', '-K', '-O']
+        cmd = [GMT, 'pscoast', '-J', '-R', '-Q', '-K', '-O', self.z]
         if self.p:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
@@ -1434,9 +1573,11 @@ class GMTPlot:
             topo_file_illu = '.'.join(parts)
 
         # Q here makes NaN transparent
-        Popen([GMT, 'grdimage', topo_file, '-I%s' % (topo_file_illu), \
-                '-C%s' % (cpt), '-J', '-R', '-K', '-O', '-Q'], \
-                stdout = self.psf, cwd = self.wd).wait()
+        cmd = [GMT, 'grdimage', topo_file, '-I%s' % (topo_file_illu), \
+                '-C%s' % (cpt), '-J', '-R', '-K', '-O', '-Q', self.z]
+        if self.p:
+            cmd.append('-p')
+        Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def basemap(self, land = 'darkgreen', water = 'lightblue', \
                 topo = TOPO_HIGH, topo_cpt = 'green-brown', \
@@ -1454,8 +1595,9 @@ class GMTPlot:
         # auto sizing factor calculation
         region = map(float, self.history('R').split('/'))
         km = geo.ll_dist(region[0], region[2], region[1], region[3])
-        size = mapproject(region[1], region[3], wd = self.wd, unit = 'inch')
-        inch = sqrt(sum(np.power(size, 2)))
+        size = mapproject(region[1], region[3], wd = self.wd, \
+                unit = 'inch', z = self.z)
+        inch = math.sqrt(sum(np.power(size, 2)))
         refs = inch / (km * 0.618)
 
         if land != None:
@@ -1503,7 +1645,7 @@ class GMTPlot:
         """
         # LINZ correct high res option
         if len(res) > 1:
-            cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O', \
+            cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O', self.z, \
                     '-W%s,%s' % (width, colour), LINZ_COAST[res]]
             if self.p:
                 cmd.append('-p')
@@ -1512,7 +1654,7 @@ class GMTPlot:
 
         # internal GMT GSHHG rough traces
         cmd = [GMT, 'pscoast', '-J', '-R', '-D%s' % (res), '-K', '-O', \
-                '-W%s,%s' % (width, colour)]
+                '-W%s,%s' % (width, colour), self.z]
         if self.p:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
@@ -1533,7 +1675,7 @@ class GMTPlot:
             if direction not in sides:
                 sides = '%s%s' % (sides, direction.lower())
 
-        cmd = [GMT, 'psbasemap', '-J', '-R', '-K', '-O', \
+        cmd = [GMT, 'psbasemap', '-J', '-R', '-K', '-O', self.z, \
                 '-Ba%sf%s%s' % (major, minor, sides)]
         if self.p:
             cmd.append('-p')
@@ -1565,8 +1707,7 @@ class GMTPlot:
         else:
             shaping = '-S%s%s' % (shape, size)
         # build command based on optional fill and thickness
-        cmd = [GMT, 'psxy', '-J', '-R', \
-                shaping, '-K', '-O']
+        cmd = [GMT, 'psxy', '-J', '-R', shaping, '-K', '-O', self.z]
         if fill != None:
             cmd.append('-G%s' % (fill))
         elif cpt != None:
@@ -1588,7 +1729,7 @@ class GMTPlot:
 
     def path(self, in_data, is_file = True, close = False, \
             width = '0.4p', colour = 'black', split = None, \
-            straight = False, fill = None, cols = None):
+            straight = False, fill = None, cols = None, z = False):
         """
         Draws a path between points.
         in_data: either a filepath to file containing x, y points
@@ -1603,7 +1744,11 @@ class GMTPlot:
         cols: override columns to be used as specified by GMT '-i'
         """
         # build command based on parameters
-        cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O']
+        if z:
+            module = 'psxyz'
+        else:
+            module = 'psxy'
+        cmd = [GMT, module, '-J', '-R', '-K', '-O', self.z]
         if width != None and colour != None:
             pen = '-W%s,%s' % (width, colour)
             if split != None:
@@ -1656,7 +1801,7 @@ class GMTPlot:
         gmt_in = gp.communicate()[0]
         gp.wait()
 
-        cmd = [GMT, 'psxy', '-J', '-R', '-N', '-K', '-O',
+        cmd = [GMT, 'psxy', '-J', '-R', '-N', '-K', '-O', self.z, \
                 '-W%s,%s' % (width, colour)]
         if straight:
             cmd.append('-A')
@@ -1687,7 +1832,7 @@ class GMTPlot:
             # TODO: fix geographic midpoint calculation (make a function)
             slat = (region[3] + region[2]) / 2.
 
-        cmd = [GMT, 'psbasemap', '-J', '-R', '-K', '-O']
+        cmd = [GMT, 'psbasemap', '-J', '-R', '-K', '-O', self.z]
         if GMT_MAJOR == 5 and GMT_MINOR < 2:
             # convert longitude, latitude location to offset
             if pos == 'map':
@@ -1769,7 +1914,7 @@ class GMTPlot:
                 cmd.append('-E%s%s' % ('f' * arrow_f, 'b' * arrow_b))
         else:
             if pos != 'plot':
-                cmd.extend(['-R', '-J'])
+                cmd.extend(['-R', '-J', self.z])
             # mimic 5.1 default behaviour
             if align == None and pos == 'plot':
                 if horiz:
@@ -1924,7 +2069,7 @@ class GMTPlot:
 
         # clip path for land to crop overlay
         if land_crop:
-            Popen([GMT, 'pscoast', '-J', '-R', '-Df', '-Gc', \
+            Popen([GMT, 'pscoast', '-J', '-R', '-Df', '-Gc', self.z, \
                     '-K', '-O'], stdout = self.psf, cwd = self.wd).wait()
 
         if cpt != None:
@@ -1934,7 +2079,7 @@ class GMTPlot:
             # add resulting grid onto map
             # here '-Q' will make NaN transparent
             cmd = [GMT, 'grdimage', temp_grd, '-J', '-R', '-C%s' % (cpt), \
-                    '-t%s' % (transparency), '-Q', '-K', '-O']
+                    '-t%s' % (transparency), '-Q', '-K', '-O', self.z]
             # ignore stderr: usually because no data in area
             Popen(cmd, stdout = self.psf, stderr = self.sink, \
                     cwd = self.wd).wait()
@@ -1942,7 +2087,7 @@ class GMTPlot:
         # add contours
         if contours != None or acontours != None:
             cmd = [GMT, 'grdcontour', '-J', '-R', temp_grd, '-K', '-O', \
-            '-W%s,%s' % (contour_thickness, contour_colour)]
+            '-W%s,%s' % (contour_thickness, contour_colour), self.z]
             if contours != None:
                 cmd.append('-C%s+f%s' % (contours, font_size))
             if acontours != None:
@@ -1960,29 +2105,45 @@ class GMTPlot:
 
         # apply land clip path
         if land_crop:
-            Popen([GMT, 'pscoast', '-J', '-R', '-Q', '-K', '-O'], \
+            Popen([GMT, 'pscoast', '-J', '-R', '-Q', '-K', '-O', self.z], \
                     stdout = self.psf, cwd = self.wd).wait()
 
         # grd file not needed anymore, prevent clutter
         os.remove(temp_grd)
 
-    def overlay3d(self, xyv_file, \
-            min_v = None, max_v = None, crop_grd = None, \
-            transparency = 40, \
-            limit_low = None, limit_high = None, contours = None, \
-            cols = None, \
-            binary = True, \
-            header = None):
+    def overlay3d(self, xyz_file, drapefile = None, cpt = None, \
+            crop_grd = None, transparency = 40, contours = None, dpi = None):
         """
+        Plot 3d datasets.
+        xyz_file: 3d positioning. x, y, z values
+        drapefile: x, y, v values for colour at x, y position (may be higher res)
+        cpt: cpt to colourise z in xyz_file or v in drapefile if given
+        crop_grd: crop values where crop_grd is NaN
+        transparency: transparency of entire layer
+        contours: not implemented
+        dpi: dpi of raster image generation. should match desired output dpi
         """
-        cmd = [GMT, 'grdview', '-K', '-O', '-J', '-R', '-p', xyv_file, '-JZ1i', '-Qmdarkgreen@0']
+        if crop_grd != None:
+            temp_grd = '%s/overlay3d_tmp.grd' % (self.wd)
+            Popen([GMT, 'grdmath', xyz_file, crop_grd, 'MUL', '=', temp_grd], \
+                    cwd = self.wd).wait()
+            xyz_file = temp_grd
+        cmd = [GMT, 'grdview', '-K', '-O', '-J', '-R', '-p', self.z, xyz_file, \
+                '-t%s' % (transparency)]
+        if drapefile != None:
+            cmd.append('-G%s' % (drapefile))
+        if cpt != None:
+            cmd.append('-C%s' % (cpt))
+            cmd.append('-Qi%s@%s' % (dpi, transparency))
+        else:
+            cmd.append('-Qm%s@%s' % ('darkgreen', '50'))
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def fault(self, in_path, is_srf = False, \
             hyp_shape = 'a', hyp_size = 0.35, \
             plane_width = '1p', plane_colour = 'black', \
             top_width = '2p', top_colour = 'black', \
-            hyp_width = '1p', hyp_colour = 'black'):
+            hyp_width = '1p', hyp_colour = 'black', plane_fill = None):
         """
         Plot SRF fault plane onto map.
         Requires shared_srf.py, replaces addStandardFaultPlane.sh
@@ -1999,8 +2160,8 @@ class GMTPlot:
         """
         if is_srf:
             # use SRF library to retrieve info
-            bounds = get_bounds(in_path)
-            hypocentre = get_hypo(in_path)
+            bounds = srf.get_bounds(in_path)
+            hypocentre = srf.get_hypo(in_path)
 
             # process for input into GMT
             gmt_bounds = [['%s %s' % tuple(corner) for corner in plane] \
@@ -2032,20 +2193,22 @@ class GMTPlot:
             all_edges = '>\n'.join([''.join(c) for c in bounds[1:]])
 
         # plot planes
-        planep = Popen([GMT, 'psxy', '-J', '-R', '-L', '-K', '-O', \
-                '-W%s,%s,-' % (plane_width, plane_colour)], \
-                stdin = PIPE, stdout = self.psf, cwd = self.wd)
+        cmd = [GMT, 'psxy', '-J', '-R', '-L', '-K', '-O', self.z, \
+                '-W%s,%s,-' % (plane_width, plane_colour)]
+        if plane_fill != None:
+            cmd.append('-G%s' % (plane_fill))
+        planep = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
         planep.communicate(all_edges)
         planep.wait()
         # plot top edges
-        topp = Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', \
+        topp = Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', self.z, \
                 '-W%s,%s' % (top_width, top_colour)], \
                 stdin = PIPE, stdout = self.psf, cwd = self.wd)
         topp.communicate(top_edges)
         topp.wait()
         # hypocentre
         if hyp_size > 0:
-            hypp = Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', \
+            hypp = Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', self.z, \
                     '-W%s,%s' % (hyp_width, hyp_colour), \
                     '-S%s%s' % (hyp_shape, hyp_size)], \
                     stdin = PIPE, stdout = self.psf, cwd = self.wd)
@@ -2069,7 +2232,7 @@ class GMTPlot:
         depths: None to plot all beachballs or
             a tuple (depth_min, depth_max) to only plot a subset
         """
-        cmd = [GMT, 'psmeca', '-J', '-R', '-K', '-O', \
+        cmd = [GMT, 'psmeca', '-J', '-R', '-K', '-O', self.z, \
                 '-S%s%s%s' % (fmt, scale, 'u' * text_under), \
                 '-G%s' % (colour), '-E%s' % (extensive), \
                 '-hi%d' % header]
@@ -2126,7 +2289,7 @@ class GMTPlot:
         else:
             # new style positioning
             if pos != 'plot':
-                cmd.extend(['-J', '-R'])
+                cmd.extend(['-J', '-R', self.z])
             pos_spec = '-D%s%s%s%s+w%s+o%s/%s' % (GMT52_POS[pos], x, \
                     '/' * (pos[:3] != 'rel'), y, width, dx, dy)
             if align != None:
@@ -2143,7 +2306,7 @@ class GMTPlot:
         Finalises the postscript.
         """
         # finalisation by running a GMT command without '-K'
-        Popen([GMT, 'psxy', '-J', '-R', '-O', '-T'], \
+        Popen([GMT, 'psxy', '-J', '-R', '-O', '-T', self.z], \
                 stdout = self.psf, cwd = self.wd).wait()
         # no more modifications allowed
         self.psf.close()
@@ -2162,6 +2325,15 @@ class GMTPlot:
         """
         self.psf = open(self.pspath, 'a')
 
+    def pause(self):
+        """
+        Close the plot temporarily, allows external modifications before continuing.
+        To make automated changes, call leave and enter functions instead.
+        """
+        self.leave()
+        input('GMT plotting paused. Press return to return... ')
+        self.enter()
+
     def png(self, out_dir = None, dpi = 96, clip = True, background = None, \
                 margin = [0], size = None, portrait = False, out_name = None):
         """
@@ -2178,7 +2350,8 @@ class GMTPlot:
         portrait: rotate page right way up
         out_name: filename excluding prefix, default is same as input
         """
-        cmd = [GMT, psconvert, self.pspath, '-TG', '-E%s' % (dpi)]
+        cmd = [GMT, psconvert, self.pspath, '-TG', '-E%s' % (dpi), \
+                '-Qg4', '-Qt4']
         if clip:
             cmd.append('-A%s%s%s%s%s' % ('/'.join(map(str, margin)), \
                     '+g' * (background != None), \
@@ -2196,4 +2369,4 @@ class GMTPlot:
             if out_dir == '':
                 out_dir = '.'
             cmd.append('-D%s' % (out_dir))
-        call(cmd)
+        Popen(cmd, cwd = self.wd).wait()

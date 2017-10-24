@@ -1,4 +1,8 @@
 """
+
+GENERAL SRF NOTES:
+SHYP: hypocentre position along strike from centre
+DHYP: hypocentre position along dip from top
 Common SRF functions.
 
 SRF format:
@@ -27,45 +31,100 @@ def get_nseg(srf):
         nseg = int(sf.readline().split()[1])
     return nseg
 
-def read_header(sf):
+def read_header(sf, idx = False):
     """
     Parse header information.
-    sf: open srf file at position 0
+    sf: open srf file at position 0 or filename
     """
+    # detect if file already open
+    try:
+        sf.name
+        close_me = False
+    except AttributeError:
+        sf = open(sf, 'r')
+        close_me = True
+
     version = float(sf.readline())
-    nseg = int(sf.readline().split()[1])
+    line2 = sf.readline().split()
+    # this function requires the optional PLANE header
+    assert(line2[0] == 'PLANE')
+    nseg = int(line2[1])
     planes = []
     for _ in xrange(nseg):
         # works for version 1.0 and 2.0
         elon, elat, nstk, ndip, ln, wid = sf.readline().split()
         stk, dip, dtop, shyp, dhyp = sf.readline().split()
         # store as correct format
-        planes.append((float(elon), float(elat), int(nstk), int(ndip), \
-                float(ln), float(wid), float(stk), float(dip), \
-                float(dtop), float(shyp), float(dhyp)))
+        if idx:
+            planes.append({'centre':[float(elon), float(elat)], \
+                    'nstrike':int(nstk), 'ndip':int(ndip), \
+                    'length':float(ln), 'width':float(wid), \
+                    'strike':float(stk), 'dip':float(dip), \
+                    'shyp':float(shyp), 'dhyp':float(dhyp), \
+                    'dtop':float(dtop)})
+        else:
+            planes.append((float(elon), float(elat), int(nstk), int(ndip), \
+                    float(ln), float(wid), float(stk), float(dip), \
+                    float(dtop), float(shyp), float(dhyp)))
+    if close_me:
+        sf.close()
     return planes
 
-def check_type(srf):
+def is_ff(srf):
+    """
+    Returns True if srf is a finite fault, False if srf is a point source.
+    srf: path to srf file
+    """
+    with open(srf, 'r') as sf:
+        return check_type(sf) > 1
+
+def check_type(sf):
     """
     Returns the type of the srf.
-    srf: file pointer(already opened)
+    1: point source
+    2: finite fault, most likely converted from point source params
+    3: finite fault, most likely created from finite fault params
+    4: multi-segment finite fault
+    NOTE: type 2 and 3 depend on input during creation and
+    # can only be distinguished using heuristics,
+    # as such the true result may be the other one.
+    sf: file pointer (already opened)
     """
-    version = float(srf.readline())
-    line = srf.readline()
+    version = float(sf.readline())
+    # either starts with POINTS or PLANE (optional but expected)
+    line = sf.readline()
+    n = int(line.split()[1])
     if 'POINTS' in line:
-        #type one: point source srf. not planes in file.
-        return 1
+        # PLANE header is ommited
+        if n == 1:
+            return 1
+        # more complex logic required to procede in this case
+        # give an invalid result to show this, we don't create such SRFs anyway
+        return 0
     elif 'PLANE' in line:
-        nseg = line.split()[1]
-        if nseg > 1:
-            #multi-segment, type 4
+        if n > 1:
             return 4
         else:
-            elon, elat, nstk, ndip, ln, wid = srf.readline().split()
+            elon, elat, nstk, ndip, ln, wid = sf.readline().split()
+            if int(nstk) * int(ndip) == 1:
+                return 1
             if ln == wid:
                 return 2
-            else:
-                return 3
+            return 3
+
+def ps_params(srf):
+    """
+    Returns point source (subfault) params (strike, dip, rake).
+    srf: srf file path
+    """
+    with open(srf, 'r') as sf:
+        read_header(sf)
+        n_subfault = int(sf.readline().split()[1])
+        assert(n_subfault == 1)
+        strike, dip = map(float, sf.readline().split()[3:5])
+        rake = float(sf.readline().split()[0])
+
+    return strike, dip, rake
 
 def skip_points(sf, np):
     """
@@ -81,11 +140,12 @@ def skip_points(sf, np):
         for _ in xrange(int(ceil(values / VPL))):
             sf.readline()
 
-def get_lonlat(sf, value = None):
+def get_lonlat(sf, value = None, depth = False):
     """
     Returns only the longitude, latitude of a point.
     sf: open file at start of point
     value: also retrieve value
+    depth: return value in 3d space (return lon, lat, depth, value)
     end: sf at start of next point
     """
     # header 1 contains:
@@ -96,7 +156,7 @@ def get_lonlat(sf, value = None):
     h2 = sf.readline().split()
 
     # always returning lon, lat
-    lon, lat = map(float, h1[:2])
+    lon, lat, depth_v = map(float, h1[:3])
     if value == 'slip':
         value = sqrt(float(h2[1]) ** 2 + float(h2[3]) ** 2 + float(h2[5]) ** 2)
     elif value == 'tinit':
@@ -169,7 +229,11 @@ def get_lonlat(sf, value = None):
                 value[i] += (srate[r] - value[i]) / x
 
     if type(value).__name__ == 'NoneType':
+        if depth:
+            return lon, lat, depth_v
         return lon, lat
+    if depth:
+        return lon, lat, depth_v, value
     return lon, lat, value
 
 
@@ -197,11 +261,12 @@ def read_latlondepth(srf):
 
     return points
 
-def get_bounds(srf, seg = -1):
+def get_bounds(srf, seg = -1, depth = False):
     """
     Return corners of segments.
     srf: srf source
     nseg: which segment (-1 for all)
+    depth: also include depth if True
     """
     bounds = []
     with open(srf, 'r') as sf:
@@ -209,21 +274,26 @@ def get_bounds(srf, seg = -1):
         planes = read_header(sf)
         points = int(sf.readline().split()[1])
 
+        # third value to retrieve after longitude, latitude
+        if depth:
+            value = 'depth'
+        else:
+            value = None
         # each plane has a separate set of corners
         for n, plane in enumerate(planes):
             plane_bounds = []
             nstk, ndip = plane[2:4]
             # set of points starts at corner
-            plane_bounds.append(get_lonlat(sf))
+            plane_bounds.append(get_lonlat(sf, value = value))
             # travel along strike, read last value
             skip_points(sf, nstk - 2)
-            plane_bounds.append(get_lonlat(sf))
+            plane_bounds.append(get_lonlat(sf, value = value))
             # go to start of strike at bottom of dip
             skip_points(sf, (ndip - 2) * nstk)
-            plane_bounds.append(get_lonlat(sf))
+            plane_bounds.append(get_lonlat(sf, value = value))
             # travel along strike at bottom of dip
             skip_points(sf, nstk - 2)
-            plane_bounds.insert(2, get_lonlat(sf))
+            plane_bounds.insert(2, get_lonlat(sf, value = value))
             # store plane bounds or return if only 1 wanted
             if n == seg:
                 return plane_bounds
@@ -249,6 +319,17 @@ def get_hypo(srf, lonlat = True, depth = False):
                 if planes[i][10] >= 0:
                     del planes[i:]
                     break
+        # check for point source
+        elif sum(planes[0][2:4]) == 2:
+            # returning offsets doesn't make sense
+            # should have already checked for point source before calling this
+            assert(lonlat)
+            points = int(sf.readline().split()[1])
+            assert(points == 1)
+            hlon, hlat, depth_km = get_lonlat(sf, value = 'depth')
+            if not depth:
+                return hlon, hlat
+            return hlon, hlat, depth_km
 
         # dip will be constant along shared segments
         ndip = planes[0][3]
@@ -358,7 +439,8 @@ def srf2llv(srf, seg = -1, value = 'slip', lonlatdep = True, depth = False):
         return np.reshape(llv, (len(llv) // 4, 4))[:, mask]
     return np.reshape(llv, (len(llv) // 3, 3))
 
-def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, flip_rake = False):
+def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, depth = False, \
+        flip_rake = False):
     """
     Return lon, lat, type for subfaults.
     Reading all at once is faster than reading each separate.
@@ -370,6 +452,7 @@ def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, flip_rake = False):
     srf: srf source
     nseg: which segment (-1 for all)
     lonlat: return lon lat (True) or x y (False)
+    depth: give depth as well as lonlat (lonlat must be true)
     flip_rake: angles above 180 degrees will have 360 taken away
     """
     with open(srf, 'r') as sf:
@@ -393,9 +476,15 @@ def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, flip_rake = False):
                 continue
 
             if not multi:
-                plane_values = np.zeros((nstk * ndip, 3))
+                if depth:
+                    plane_values = np.zeros((nstk * ndip, 4))
+                else:
+                    plane_values = np.zeros((nstk * ndip, 3))
             else:
-                plane_values = np.zeros((nstk * ndip, 2))
+                if depth:
+                    plane_values = np.zeros((nstk * ndip, 3))
+                else:
+                    plane_values = np.zeros((nstk * ndip, 2))
                 plane_series = [None] * (nstk * ndip)
             if not lonlat:
                 # calculate x, y offsets
@@ -417,11 +506,19 @@ def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, flip_rake = False):
             else:
                 if not multi:
                     for i in xrange(nstk * ndip):
-                        plane_values[i] = get_lonlat(sf, value = value)
+                        plane_values[i] = get_lonlat(sf, value = value, \
+                                depth = depth)
                 else:
                     for i in xrange(nstk * ndip):
-                        plane_values[i][0], plane_values[i][1], \
-                                plane_series[i] = get_lonlat(sf, value = value)
+                        if depth:
+                            plane_values[i][0], plane_values[i][1], \
+                                    plane_values[i][2], plane_series[i] \
+                                    = get_lonlat(sf, value = value, \
+                                    depth = depth)
+                        else:
+                            plane_values[i][0], plane_values[i][1], \
+                                    plane_series[i] = get_lonlat(sf, \
+                                    value = value)
             if type == 'rake' and flip_rake:
                 np.where(plane_values[:, 2] > 180, \
                         plane_values[:, 2] - 360, plane_values[:, 2])

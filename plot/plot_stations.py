@@ -38,7 +38,7 @@ ISSUES:
 import os
 from shutil import copy, rmtree
 import sys
-sys.path.append('.')
+sys.path.insert(0, '.')
 from time import time, sleep
 
 from mpi4py import MPI
@@ -84,6 +84,7 @@ def load_file(station_file):
         cpt_bg = None
         cpt_gap = ''
         cpt_topo = None
+        cpt_overlays = 'black'
         if os.path.exists(cpt):
             # assuming it is a built in cpt if not matching filename
             cpt = os.path.abspath(cpt)
@@ -101,6 +102,8 @@ def load_file(station_file):
                     cpt_gap = p[4:]
                 elif p[:5] == 'topo-':
                     cpt_topo = p[5:]
+                elif p[:9] == 'overlays-':
+                    cpt_overlays = p[9:]
         except IndexError:
             cpt_properties = []
         if len(cpt_info) > 1:
@@ -184,13 +187,13 @@ def load_file(station_file):
             'cpt_inc':cpt_inc, 'cpt_tick':cpt_tick, 'cpt_properties':cpt_properties, \
             'transparency':transparency, 'ncol':ncol, 'cpt_gap':cpt_gap, \
             'label_colour':label_colour, 'col_labels':col_labels, \
-            'cpt_topo':cpt_topo, 'landmask':landmask}
+            'cpt_topo':cpt_topo, 'landmask':landmask, 'overlays':cpt_overlays}
 
 ###
 ### boundaries
 ###
 def determine_sizing(station_file, meta):
-    if statplot.region == None and (SIM_DIR or sfs_modelparams != None):
+    if plot.region == None and sfs_modelparams != None:
         # path following sim domain curved on mercator like projections
         fine_path = geo.path_from_corners(corners = meta['corners'], output = None)
         # fit simulation region
@@ -198,17 +201,17 @@ def determine_sizing(station_file, meta):
         x_max = max([xy[0] for xy in fine_path])
         y_min = min([xy[1] for xy in fine_path])
         y_max = max([xy[1] for xy in fine_path])
-    elif statplot.region == None:
+    elif plot.region == None:
         # fit all values
         xy = np.loadtxt(station_file, skiprows = 6, usecols = (0, 1), dtype = 'f')
         x_min, y_min = np.min(xy, axis = 0) - 0.1
         x_max, y_max = np.max(xy, axis = 0) + 0.1
     else:
-        x_min, x_max, y_min, y_max = statplot.region
+        x_min, x_max, y_min, y_max = plot.region
     # combined region
-    ll_region = (x_min, x_max, y_min, y_max)
+    plot.region = (x_min, x_max, y_min, y_max)
     # avg lon/lat (midpoint of plotting region)
-    ll_avg = sum(ll_region[:2]) / 2, sum(ll_region[2:]) / 2
+    plot.ll_avg = sum(plot.region[:2]) / 2, sum(plot.region[2:]) / 2
 
     # create masking if using grid overlay
     if meta['grid'] != None:
@@ -222,38 +225,36 @@ def determine_sizing(station_file, meta):
                     min_edge_points = 100, \
                     output = model_path)
         gmt.grd_mask(model_path, mask, dx = meta['stat_size'], \
-                dy = meta['stat_size'], region = ll_region)
+                dy = meta['stat_size'], region = plot.region)
 
     # work out an ideal tick increment (ticks per inch)
     # x axis is more constrainig
-    if statplot.tick_major == None:
+    if plot.tick_major == None:
         try:
-            width = float(statplot.width)
+            width = float(plot.width)
         except ValueError:
             # expecting a unit suffix even though formula only works for inches
-            width = float(statplot.width[:-1])
-        statplot.tick_major, statplot.tick_minor = \
+            width = float(plot.width[:-1])
+        plot.tick_major, plot.tick_minor = \
                 gmt.auto_tick(x_min, x_max, width)
-    elif statplot.tick_minor == None:
-        statplot.tick_minor = statplot.tick_major / 5.
+    elif plot.tick_minor == None:
+        plot.tick_minor = plot.tick_major / 5.
     # cities/locations to plot
-    if statplot.sites == None:
-        region_sites = []
-    if statplot.sites == 'auto':
+    if plot.sites == None:
+        plot.sites = []
+    elif plot.sites == 'auto':
         if x_max - x_min > 3:
-            region_sites = gmt.sites_major
+            plot.sites = gmt.sites_major
         else:
-            region_sites = gmt.sites.keys()
-    elif statplot.sites == 'major':
-        region_sites = gmt.sites_major
-    elif statplot.sites == 'all':
-        region_sites = gmt.sites.keys()
-    else:
-        region_sites = statplot.sites
+            plot.sites = gmt.sites.keys()
+    elif plot.sites == 'major':
+        plot.sites = gmt.sites_major
+    elif plot.sites == 'all':
+        plot.sites = gmt.sites.keys()
 
-    return {'ll_region':ll_region, 'll_avg':ll_avg, \
-            'major_tick':statplot.tick_major, \
-            'minor_tick':statplot.tick_minor, 'sites':region_sites}
+    # bug in mpi will send originally imported version of plot,
+    # not the current version of plot! transform to dictionary instead.
+    return plot.__dict__
 
 def template(plot):
     """
@@ -264,7 +265,7 @@ def template(plot):
     t = gmt.GMTPlot(ps_template)
     # background can be larger as whitespace is later cropped
     t.background(11, 15)
-    t.spacial('M', plot['ll_region'], sizing = statplot.width, \
+    t.spacial('M', plot['region'], sizing = plot['width'], \
             x_shift = 1, y_shift = 2.5)
     t.leave()
 
@@ -309,7 +310,7 @@ def fault_prep(srf_file = None, cnrs_file = None):
     """
     # fault path - boundaries already available
     if cnrs_file != None:
-        copyfile(cnrs_file, txt_cnrs)
+        copy(cnrs_file, txt_cnrs)
     # fault path - determine boundaries (slow)
     elif srf_file != None:
         srf2corners(srf_file, cnrs = txt_cnrs)
@@ -350,7 +351,7 @@ def column_overlay(n, station_file, meta, plot):
 
     # common title
     if len(meta['title']):
-        p.text(plot['ll_avg'][0], plot['ll_region'][3], meta['title'], \
+        p.text(plot['ll_avg'][0], plot['region'][3], meta['title'], \
                 colour = 'black', align = 'CB', size = 28, dy = 0.2)
 
     # add ratios to map
@@ -372,7 +373,7 @@ def column_overlay(n, station_file, meta, plot):
         else:
             col_mask = None
         gmt.table2grd(station_file, grd_file, file_input = True, \
-                grd_type = meta['grid'], region = plot['ll_region'], \
+                grd_type = meta['grid'], region = plot['region'], \
                 dx = meta['stat_size'], climit = meta['cpt_inc'][n] * 0.5, \
                 wd = swd, geo = True, sectors = 4, min_sectors = 1, \
                 search = meta['nn_search'], cols = '0,1,%d' % (n + 2), \
@@ -392,12 +393,12 @@ def column_overlay(n, station_file, meta, plot):
 
     # title for this data column
     if len(meta['col_labels']):
-        p.text(plot['ll_region'][0], plot['ll_region'][3], \
+        p.text(plot['region'][0], plot['region'][3], \
                 meta['col_labels'][n], colour = meta['label_colour'], \
                 align = 'LB', size = '18p', dx = 0.2, dy = -0.35)
 
     # ticks on top otherwise parts of map border may be drawn over
-    p.ticks(major = plot['major_tick'], minor = plot['minor_tick'], sides = 'ws')
+    p.ticks(major = plot['tick_major'], minor = plot['tick_minor'], sides = 'ws')
 
     # colour scale
     if 'categorical' in meta['cpt_properties']:
@@ -410,7 +411,7 @@ def column_overlay(n, station_file, meta, plot):
                 meta['cpt_inc'][n], label = meta['legend'], \
                 arrow_f = meta['cpt_max'][n] > 0, arrow_b = meta['cpt_min'][n] < 0)
 
-def render(n):
+def render(meta, plot, n):
     """
     Rendering postscript can be slow (by amount of details)
     """
@@ -431,12 +432,14 @@ def render(n):
     # only add srf here to reduce dependencies on column_overlay function
     if os.path.exists(txt_cnrs):
         p.fault(txt_cnrs, is_srf = False, \
-                plane_width = 0.5, top_width = 1, hyp_width = 0.5)
+                plane_width = 0.5, top_width = 1, hyp_width = 0.5, \
+                top_colour = meta['overlays'], \
+                plane_colour = meta['overlays'], hyp_colour = meta['overlays'])
 
     # actual rendering (slow)
     p.finalise()
-    p.png(dpi = statplot.dpi, clip = True, out_name = \
-            os.path.join(statplot.out_dir, \
+    p.png(dpi = plot['dpi'], clip = True, out_name = \
+            os.path.join(plot['out_dir'], \
             os.path.splitext(os.path.basename(top))[0]))
 
 def stats(logs, t_master, t_total):
@@ -475,13 +478,34 @@ if len(sys.argv) > 1:
     # timing
     t_start = MPI.Wtime()
 
+    from argparse import ArgumentParser
     from glob import glob
 
+    sys.path.insert(0, '.')
     from shared import get_corners
+
+    # copy default params
+    script_dir = os.path.abspath(os.path.dirname(__file__))
+    if not os.path.exists('params_plot.py'):
+        copy('%s/params_plot.template.py' % (script_dir), 'params_plot.py')
+    import params_plot
+    plot = params_plot.STATION
 
     sysproc = int(os.sysconf('SC_NPROCESSORS_ONLN'))
     # TODO: allow override
     nproc_max = sysproc
+
+    # retrieve arguments
+    parser = ArgumentParser()
+    parser.add_argument('station_file', help = 'data input file')
+    parser.add_argument('--out_dir', help = 'folder where outputs are saved')
+    parser.add_argument('--srf', help = 'srf file, will use corners file instead if available')
+    parser.add_argument('--srf_cnrs', help = 'standard srf fault corners file')
+    parser.add_argument('--model_params', help = 'model_params file for simulation domain')
+    args = parser.parse_args()
+    station_file = args.station_file
+    if args.out_dir:
+        plot.out_dir = os.path.abspath(args.out_dir)
 
     ###
     ### PREPARE
@@ -497,68 +521,70 @@ if len(sys.argv) > 1:
     base_dir = os.path.abspath(os.getcwd())
     event_name = os.path.basename(base_dir.rstrip(os.sep))
     event_name = '_'.join(event_name.split('_')[:3])
+    # MODEL_PARAMS
     try:
-        sfs_modelparams = glob('%s/VM/Model/%s/*/model_params_*' % (base_dir, event_name))[0]
+        assert(args.model_params == None)
+        if SIM_DIR and os.path.exists(sim_params.MODELPARAMS):
+            sfs_modelparams = [sim_params.MODELPARAMS]
+        else:
+            sfs_modelparams = []
+        sfs_modelparams = glob('%s/VM/Model/%s/*/model_params_*' % (base_dir, event_name))
+        sfs_modelparams.extend(glob('%s/model_params_*' % (base_dir)))
+        sfs_modelparams = sfs_modelparams[0]
     except IndexError:
         sfs_modelparams = None
+    except AssertionError:
+        sfs_modelparams = args.model_params
+    # SRF_FILE
     try:
-        srf_file = glob('%s/Src/Model/*/Srf/*.srf' % (base_dir))
+        assert(args.srf == None)
+        if SIM_DIR and os.path.exists(sim_params.srf_files[0]):
+            srf_file = sim_params.srf_files
+        else:
+            srf_file = []
+        srf_file.extend(glob('%s/Src/Model/*/Srf/*.srf' % (base_dir)))
         srf_file.extend(glob('%s/Src/Model/*/*/Srf/*.srf' % (base_dir)))
         srf_file = srf_file[0]
     except IndexError:
         srf_file = None
-    # try to override with simulation params
-    cnrs_file = None
-    if SIM_DIR:
+    except AssertionError:
+        srf_file = args.srf
+    # CNRS_FILE
+    cnrs_file = args.srf_cnrs
+    if cnrs_file == None and SIM_DIR:
         try:
-            if os.path.exists(sim_params.srf_files[0]):
-                srf_file = sim_params.srf_files[0]
-            elif os.path.exists(sim_params.srf_cnrs[0]):
+            if os.path.exists(sim_params.srf_cnrs[0]):
                 cnrs_file = sim_params.srf_cnrs[0]
         except AttributeError:
             pass
-    # copy default params
-    script_dir = os.path.abspath(os.path.dirname(__file__))
-    if not os.path.exists('params_plot.py'):
-        copy('%s/params_plot.template.py' % (script_dir), 'params_plot.py')
-    import params_plot
-    statplot = params_plot.STATION
+    # STATION_FILE
     try:
-        station_file = os.path.abspath(sys.argv[1])
-        assert(os.path.exists(station_file))
-    except IndexError:
-        print('First parameter must be input file. Parameter not found.')
-        exit(1)
+        assert(os.path.exists(args.station_file))
     except AssertionError:
-        print('Cannot find input file: %s' % (station_file))
+        print('Cannot find input file: %s' % (args.station_file))
         exit(1)
-    # allow overriding output directories more easily when scripting
-    if len(sys.argv) > 2:
-        statplot.out_dir = os.path.abspath(sys.argv[2])
+
     # clear output dirs
-    for out_dir in [statplot.out_dir, gmt_temp]:
+    for out_dir in [plot.out_dir, gmt_temp]:
         if not os.path.isdir(out_dir):
             os.makedirs(out_dir)
     # load station file
-    meta = load_file(station_file)
-    meta['out_dir'] = statplot.out_dir
+    meta = load_file(args.station_file)
+    meta['out_dir'] = plot.out_dir
     # retrieve simulation domain if available
-    if SIM_DIR or sfs_modelparams != None:
-        try:
-            corners, cnr_str = get_corners(sim_params.MODELPARAMS, gmt_format = True)
-        except (NameError, IOError):
-            corners, cnr_str = get_corners(sfs_modelparams, gmt_format = True)
+    if sfs_modelparams != None:
+        corners, cnr_str = get_corners(sfs_modelparams, gmt_format = True)
         meta['corners'] = corners
         meta['cnr_str'] = cnr_str
-    # calculate other parameters
-    plot = determine_sizing(station_file, meta)
+    # calculate other parameters in plot
+    plot = determine_sizing(args.station_file, meta)
     # template postscript
     template(plot)
 
     # tasks that don't have dependencies
     msg_list = [(template_2, meta), (fault_prep, srf_file, cnrs_file)]
     for i in xrange(meta['ncol']):
-        msg_list.append((column_overlay, i, station_file, meta, plot))
+        msg_list.append((column_overlay, i, args.station_file, meta, plot))
     nimage = meta['ncol']
     # hold render tasks until ready to be released
     render_tasks = []
@@ -589,7 +615,7 @@ if len(sys.argv) > 1:
                 msg_list.extend(render_tasks)
                 render_tasks = msg_list
         elif column_overlay is finished[0]:
-            render_tasks.append((render, finished[1]))
+            render_tasks.append((render, meta, plot, finished[1]))
         elif render is finished[0]:
             nimage -= 1
 
@@ -629,12 +655,6 @@ else:
         print('Alternatively MPI cannot connect to parent.')
         exit(1)
 
-    ###
-    ### PREPARE
-    ###
-    import params_plot
-    statplot = params_plot.STATION
-
     # ask for work until stop sentinel
     logbook = []
     for task in iter(lambda: comm.sendrecv(None, dest = MASTER), StopIteration):
@@ -648,8 +668,8 @@ else:
             column_overlay(task[1], task[2], task[3], task[4])
             logbook.append(('column overlay', task[1], time() - t0))
         elif task[0] is render:
-            render(task[1])
-            logbook.append(('ps2png', task[1], time() - t0))
+            render(task[1], task[2], task[3])
+            logbook.append(('ps2png', task[3], time() - t0))
         elif task[0] is template_2:
             template_2(task[1])
             logbook.append(('basemap', time() - t0))

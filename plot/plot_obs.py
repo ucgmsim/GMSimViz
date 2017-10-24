@@ -46,7 +46,7 @@ if not os.path.exists(event_stats):
 ### continue environment setup and importing
 ###
 script_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(base_dir)
+sys.path.insert(0, base_dir)
 params = '%s/params_plot.py' % (base_dir)
 if not os.path.exists(params):
     shutil.copyfile('%s/params_plot.template.py' % (script_dir), params)

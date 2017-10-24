@@ -2,13 +2,14 @@
 Various tools which may be needed in various processes.
 """
 
-from math import sin, asin, cos, atan2, degrees, radians, sqrt
+from math import sin, asin, cos, atan, atan2, degrees, radians, sqrt, pi
 from subprocess import Popen, PIPE
 
 import numpy as np
 
 R_EARTH = 6378.139
 # ideally implemented in python
+# TODO: extract this and add to config file
 ll2xy_bin = '/nesi/projects/nesi00213/tools/ll2xy'
 xy2ll_bin = '/nesi/projects/nesi00213/tools/xy2ll'
 
@@ -179,6 +180,24 @@ def ll_bearing(lon1, lat1, lon2, lat2):
     return degrees(atan2(cos(lat2) * sin(lon_diff), \
             cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon_diff))) \
             % 360
+
+def avg_wbearing(angles):
+    """
+    Return average angle given angles and weightings.
+    NB: angles are clockwise from North, not anti-clockwise from East.
+    angles: 2d list of (angle, weight)
+    """
+    x = 0
+    y = 0
+    for a in angles:
+        x += a[1] * sin(radians(a[0]))
+        y += a[1] * cos(radians(a[0]))
+    q_diff = 0
+    if y < 0:
+        q_diff = pi
+    elif x < 0:
+        q_diff = 2 * pi
+    return degrees(atan(x / y) + q_diff)
 
 def path_from_corners(corners = None, output = 'sim.modelpath_hr', \
         min_edge_points = 100, close = True):

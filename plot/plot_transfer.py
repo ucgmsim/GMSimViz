@@ -136,6 +136,7 @@ elif sys.argv[1] == 'auto':
     # location of scripts
     lbase = os.path.abspath(os.path.dirname(__file__))
     # remote temp dir
+    # TODO: remove this hardcoded value and add to external config
     rtemp = '/nesi/projects/nesi00213/scratch/%s/data_transfers' % (ruser)
     # make sure user has temp directory
     Popen(['ssh', '%s@fitzroy.nesi.org.nz' % (ruser), \
@@ -148,6 +149,7 @@ elif sys.argv[1] == 'auto':
             '%s/../geo.py' % (lbase),\
             '%s@fitzroy.nesi.org.nz:%s/' % (ruser, rtemp)]).wait()
     # run prepare in temp
+    # TODO: change those hardcoded values to fitzroy
     Popen(['ssh', '%s@fitzroy.nesi.org.nz' % (ruser), \
             '/opt/niwa/Python/AIX/2.7.5/bin/python %s/%s prepare %s %s' \
             % (rtemp, os.path.basename(__file__), \
