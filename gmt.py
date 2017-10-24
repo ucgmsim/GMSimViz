@@ -2160,8 +2160,8 @@ class GMTPlot:
         """
         if is_srf:
             # use SRF library to retrieve info
-            bounds = get_bounds(in_path)
-            hypocentre = get_hypo(in_path)
+            bounds = srf.get_bounds(in_path)
+            hypocentre = srf.get_hypo(in_path)
 
             # process for input into GMT
             gmt_bounds = [['%s %s' % tuple(corner) for corner in plane] \
