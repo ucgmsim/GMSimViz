@@ -5,6 +5,7 @@ import os
 from shutil import copy, rmtree
 import sys
 from tempfile import mkdtemp
+from time import time
 
 from mpi4py import MPI
 
@@ -12,38 +13,40 @@ import geo
 import gmt
 import srf
 
+MASTER = 0
 TILT_MAX = 20
 PAGE_WIDTH = 16
 PAGE_HEIGHT = 9
 # 120 for 1920x1080, 16ix9i
-DPI = 600
+DPI = 120
 
 def timeslice(i, n, meta):
 
     # working directory for current image
     swd = mkdtemp(prefix = '_%.4d_' % (i), dir = meta['wd'])
-    copy(os.path.join(meta['wd'], gmt.GMT_CONF), \
-            os.path.join(swd, gmt.GMT_CONF))
-    copy(os.path.join(meta['wd'], gmt.GMT_HISTORY), \
-            os.path.join(swd, gmt.GMT_HISTORY))
+    #copy(os.path.join(meta['wd'], gmt.GMT_CONF), \
+    #        os.path.join(swd, gmt.GMT_CONF))
+    #copy(os.path.join(meta['wd'], gmt.GMT_HISTORY), \
+    #        os.path.join(swd, gmt.GMT_HISTORY))
     gmt_ps = os.path.join(swd, '%s_perspective%s.ps' \
         % (os.path.splitext(os.path.basename(meta['srf_file']))[0], \
         '_%.4d' % (i) * (n > 1)))
 
     # position in animation
-    if s_azimuth <= 180:
-        azimuth = (i / float(n)) * s_azimuth
+    if meta['s_azimuth'] <= 180:
+        azimuth = 180 - (i / float(n)) * (180 - meta['s_azimuth'])
     else:
-        azimuth = - (i / float(n)) * (360 - s_azimuth)
-    tilt = 90 - (i / float(n)) * (90 - map_tilt)
+        azimuth = 180 + (i / float(n)) * (meta['s_azimuth'] - 180)
+    tilt = 90 - (i / float(n)) * (90 - meta['map_tilt'])
 
     # smallest size to fill page
     gmt_x_size, gmt_y_size, sx, by = gmt.perspective_fill( \
             PAGE_WIDTH, PAGE_HEIGHT, view = azimuth, tilt = tilt)
     # TODO: use oblique mercator 'O'
     new_y_size, map_region = gmt.adjust_latitude('M', gmt_x_size, gmt_y_size, \
-            map_region, wd = '.', abs_diff = True, accuracy = 0.4 * 1. / DPI, \
-            reference = 'left', top = True, bottom = True)
+            meta['map_region'], wd = swd, abs_diff = True, \
+            accuracy = 0.4 * 1. / DPI, reference = 'left', top = True, \
+            bottom = True)
 
     p = gmt.GMTPlot(gmt_ps)
     # use custom page size
@@ -58,34 +61,38 @@ def timeslice(i, n, meta):
     p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
             p = '%s/%s/0' % (azimuth, tilt), x_shift = - sx, y_shift = - by)
     # load srf plane data
-    srf_data = gmt.srf2map(srf_file, swd, prefix = 'plane', value = 'slip', \
-            cpt_percentile = 95, wd = swd, z = True, xy = True, \
-            pz = z_scale * math.cos(math.radians(tilt)), dpu = DPI * 0.25)
+    srf_data = gmt.srf2map(meta['srf_file'], swd, prefix = 'plane', \
+            value = 'slip', cpt_percentile = 95, wd = swd, \
+            xy = True, pz = z_scale * math.cos(math.radians(tilt)), \
+            dpu = DPI)
     p.basemap(topo = None)
 
     # slip distribution has been reprojected onto x, y of page area
     p.spacial('X', (0, PAGE_WIDTH + sx, 0, PAGE_HEIGHT + by), \
             sizing = '%s/%s' % (PAGE_WIDTH + sx, PAGE_HEIGHT + by))
     for s in xrange(len(srf_data[3])):
-        p.overlay('%s/plane_%d_slip_xy.grd' % (gmt_temp, s), \
-                '%s/plane.cpt' % (gmt_temp), transparency = 40, \
-                crop_grd = '%s/plane_%d_mask_xy.grd' % (gmt_temp, s))
+        if not os.path.exists('%s/plane_%d_slip_xy.grd' % (swd, s)):
+            continue
+        p.overlay('%s/plane_%d_slip_xy.grd' % (swd, s), \
+                '%s/plane.cpt' % (swd), transparency = 40, \
+                crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s))
     p.background(PAGE_WIDTH, PAGE_HEIGHT, spacial = False, \
             window = (0.5, 0.5, 0.8, 0.3), x_margin = sx, y_margin = by, \
             colour = 'white@50')
     p.text(sx + PAGE_WIDTH / 2.0, by + PAGE_HEIGHT - 0.3, \
-            os.path.basename(srf_file), align = 'CT', size = 26)
+            os.path.basename(meta['srf_file']), align = 'CT', size = 26)
 
     # place outlines on top of slip distribution
     p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
-            p = '%s/%s/0' % (s_azimuth, tilt))
+            p = '%s/%s/0' % (azimuth, tilt))
     # srf outline: underground, surface, hypocentre
-    p.path(gmt_bottom, is_file = False, colour = 'blue', width = '1p', \
+    p.path(meta['gmt_bottom'], is_file = False, colour = 'blue', width = '1p', \
             split = '-', close = True, z = True)
-    p.path(gmt_top, is_file = False, colour = 'blue', width = '2p', z = True)
-    p.points('%s %s %s\n' % (hlon, hlat, hdepth), is_file = False, shape = 'a', \
-            size = 0.35, line = 'blue', line_thickness = '1p', \
-            z = True, clip = False)
+    p.path(meta['gmt_top'], is_file = False, colour = 'blue', width = '2p', \
+            z = True)
+    p.points('%s %s %s\n' % (meta['hlon'], meta['hlat'], meta['hdepth']), \
+            is_file = False, shape = 'a', size = 0.35, line = 'blue', \
+            line_thickness = '1p', z = True, clip = False)
     p.sites(gmt.sites_major)
 
     # finish, clean up
@@ -140,14 +147,16 @@ if len(sys.argv) > 1:
     gmt_temp = mkdtemp(prefix = '_GMT_WD_PERSPECTIVE_', \
             dir = os.path.dirname(srf_file))
 
-    meta = {'wd', gmt_temp}
+    meta = {'wd':gmt_temp, 'srf_file':srf_file, 's_azimuth':s_azimuth, \
+            'map_tilt':map_tilt, 'hlon':hlon, 'hlat':hlat, 'hdepth':hdepth, \
+            'gmt_bottom':gmt_bottom, 'gmt_top':gmt_top, 'map_region':map_region}
 
     # tasks
     if not args.animate:
         msg_list = [(timeslice, 1, 1, meta)]
     else:
-        frames = 10
-        mgs_list = [(timeslice, i, frames - 1, meta) for i in xrange(frames)]
+        frames = 128
+        msg_list = [(timeslice, i, frames - 1, meta) for i in xrange(frames)]
     nproc = min(len(msg_list), args.nproc)
     # spawn slaves
     comm = MPI.COMM_WORLD.Spawn(
@@ -164,7 +173,8 @@ if len(sys.argv) > 1:
 
         if len(msg_list) == 0:
             # all jobs complete, kill off slaves
-            msg_list.append(None)
+            msg_list.append(StopIteration)
+            nproc -= 1
 
         # next job
         msg = msg_list[0]
@@ -174,12 +184,17 @@ if len(sys.argv) > 1:
 
     # gather, print reports from slaves
     reports = comm.gather(None, root = MPI.ROOT)
-    stats(reports, t_master, MPI.Wtime() - t_start)
-
-    # cleanup
-    rmtree(gmt_temp)
     # stop mpi
     comm.Disconnect()
+
+    if args.animate:
+        # output movie
+        gmt.make_movie('%s/%s_perspective_%%04d.png' % (gmt_temp, \
+                os.path.splitext(os.path.basename(meta['srf_file']))[0]), \
+                os.path.splitext(os.path.basename(meta['srf_file']))[0], \
+                fps = 25)
+    # cleanup
+    rmtree(gmt_temp)
 
 ###
 ### SLAVE

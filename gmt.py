@@ -39,6 +39,11 @@ GMT = os.path.join(gmt_install_bin, 'gmt')
 GMT_CONF = 'gmt.conf'
 GMT_HISTORY = 'gmt.history'
 
+# function return values
+STATUS_UNKNOWN = -1
+STATUS_SUCCESS = 0
+STATUS_INVALID = 1
+
 # GMT 5.2+ argument mapping
 GMT52_POS = {'map':'g', 'plot':'x', 'norm':'n', 'rel':'j', 'rel_out':'J'}
 
@@ -480,7 +485,7 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
     plot_dy = '%sk' % (dy * 0.6)
     bounds = srf.get_bounds(srf_file)
     np_bounds = np.array(bounds)
-    seg_llvs = srf.srf2llv_py(srf_file, value = value, depth = z)
+    seg_llvs = srf.srf2llv_py(srf_file, value = value, depth = z or xy)
     all_vs = np.concatenate((seg_llvs))[:, -1]
     percentile = np.percentile(all_vs, cpt_percentile)
     # TODO: fix mess
@@ -553,11 +558,15 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                     as bounds_f:
                 for point in bounds_xy:
                     bounds_f.write('%s %s\n' % tuple(point))
-            # XY mask
-            grd_mask('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), \
+            # XY mask grid
+            rc = grd_mask('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), \
                     '%s/%s_%d_mask_xy.grd' % (out_dir, prefix, s), \
                     geo = False, dx = xy_dx, dy = xy_dy, \
                     region = regions_xy[s], wd = wd)
+            # bounds are likely of area = 0, do not procede
+            # should check if file exists externally
+            if rc == STATUS_INVALID:
+                continue
             # XY grid
             # TODO: search based on diagonal distance
             table2grd('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value), \
@@ -723,8 +732,9 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
             with open(table_in, 'r') as tf:
                 for _ in xrange(header):
                     tf.readline()
-                map(float, tf.readline().split()[:2])
-        except ValueError:
+                # assert added to catch eg: first line = '\n'
+                assert(len(map(float, tf.readline().split()[:2])) == 2)
+        except (ValueError, AssertionError):
             cmd.append('-bi3f')
         # run command
         Popen(cmd, cwd = wd).wait()
@@ -781,8 +791,17 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
         cmd.append('-R%s/%s/%s/%s' % region)
 
     write_history(False, wd = wd)
-    Popen(cmd, cwd = wd).wait()
+    p = Popen(cmd, cwd = wd, stderr = PIPE)
+    e = p.communicate()[1]
+    p.wait()
     write_history(True, wd = wd)
+
+    if len(e) == 0:
+        return STATUS_SUCCESS
+    elif 'No valid values in grid' in e:
+        return STATUS_INVALID
+    else:
+        return STATUS_UNKNOWN
 
 def grdmath(expression, region = None, dx = '1k', dy = '1k', \
         wd = '.'):
