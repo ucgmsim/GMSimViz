@@ -10,8 +10,11 @@ import numpy as np
 R_EARTH = 6378.139
 # ideally implemented in python
 # TODO: extract this and add to config file
-ll2xy_bin = '/nesi/projects/nesi00213/tools/ll2xy'
-xy2ll_bin = '/nesi/projects/nesi00213/tools/xy2ll'
+import load_config as ldcfg
+import os
+qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore.cfg"))
+ll2xy_bin = os.path.join(qcore_cfg['tools_dir'],'ll2xy') #'/projects/nesi00213/tools/ll2xy'
+xy2ll_bin = os.path.join(qcore_cfg['tools_dir'],'xy2ll') #'/projects/nesi00213/tools/xy2ll'
 
 class InputError(Exception):
     pass

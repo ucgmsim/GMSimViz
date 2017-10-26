@@ -19,6 +19,9 @@ from time import time
 
 import numpy as np
 
+import load_config as ldcfg
+qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore.cfg"))
+
 # only needed if plotting fault planes direct from SRF
 try:
     import srf
@@ -38,7 +41,7 @@ GMT = os.path.join(gmt_install_bin, 'gmt')
 # GMT 5.2+ argument mapping
 GMT52_POS = {'map':'g', 'plot':'x', 'norm':'n', 'rel':'j', 'rel_out':'J'}
 
-GMT_DATA = '/home/nesi00213/PlottingData'
+GMT_DATA = qcore_cfg['GMT_DATA'] #GMT_DATA = '/home/nesi00213/PlottingData'
 # LINZ DATA
 LINZ_COAST = {
         '150k':os.path.join(GMT_DATA, 'Paths/lds-nz-coastlines-and-islands/150k.gmt')

@@ -16,8 +16,13 @@ import numpy as np
 
 import geo
 
+import load_config as ldcfg
+import os
+qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore.cfg"))
+
+
 # binary paths
-srf2xyz = '/nesi/projects/nesi00213/tools/srf2xyz'
+srf2xyz = os.path.join(qcore_cfg['tools_dir'],'srf2xyz')  #srf2xyz = '/nesi/projects/nesi00213/tools/srf2xyz'
 # assumption that all srf files contain 6 values per line
 VPL = 6.
 

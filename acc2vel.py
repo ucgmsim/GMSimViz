@@ -1,7 +1,10 @@
 from shared import *
 import sys
 import glob
-int_bin = '/nesi/projects/nesi00213/tools/integ_diff'
+import load_config as ldcfg
+import os
+qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore.cfg"))
+int_bin = os.path.join(qcore_cfg['tools_dir'],'integ_diff') #int_bin = '/nesi/projects/nesi00213/tools/integ_diff'
 
 if len(sys.argv) < 3:
     print "Usage:%s Acc_dir Vel_dir" %(sys.argv[0])

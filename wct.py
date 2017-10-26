@@ -3,6 +3,11 @@ import sqlite3 as lite
 import sys
 import datetime
 import os
+import load_config as ldcfg
+
+qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore.cfg"))
+
+
 
 class WallClockDB:
     def __init__(self):
@@ -16,7 +21,7 @@ class WallClockDB:
         
     def connect(self):
         # TODO: remove this hardcoded value here. See the GM slurm based repo for the same file
-        con = lite.connect('/nesi/projects/nesi00213/share/wallclock.sqlite')
+        con = lite.connect(qcore_cfg['wallclock'])
         return con
 
     def estimate_wall_clock_time(self, nx, ny, nz, sim_duration,num_procs=512):
