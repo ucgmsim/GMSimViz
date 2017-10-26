@@ -2,7 +2,7 @@
 
 import math
 import os
-from shutil import copy, rmtree
+from shutil import copy, move, rmtree
 import sys
 from tempfile import mkdtemp
 from time import time
@@ -108,9 +108,17 @@ if len(sys.argv) > 1:
     parser = ArgumentParser()
     parser.add_argument('srf_file', help = 'srf file to plot')
     parser.add_argument('-a', '--animate', help = 'create animation', \
-        action = 'store_true')
+            action = 'store_true')
     parser.add_argument('-n', '--nproc', help = 'number of processes to run', \
             type = int, default = int(os.sysconf('SC_NPROCESSORS_ONLN')))
+    parser.add_argument('-f', '--framerate', help = 'animation framerate', \
+            type = int, default = 25)
+    parser.add_argument('-t', '--time', help = 'animation transition time (s)', \
+            type = float, default = 6.0)
+    parser.add_argument('-d', '--delay', help = 'animation start delay (s)', \
+            type = float, default = 1.5)
+    parser.add_argument('-e', '--end', help = 'animation end delay (s)', \
+            type = float, default = 3.0)
     args = parser.parse_args()
     srf_file = os.path.abspath(sys.argv[1])
     # check file exists
@@ -155,7 +163,7 @@ if len(sys.argv) > 1:
     if not args.animate:
         msg_list = [(timeslice, 1, 1, meta)]
     else:
-        frames = 128
+        frames = int(args.time * args.framerate)
         msg_list = [(timeslice, i, frames - 1, meta) for i in xrange(frames)]
     nproc = min(len(msg_list), args.nproc)
     # spawn slaves
@@ -187,12 +195,31 @@ if len(sys.argv) > 1:
     # stop mpi
     comm.Disconnect()
 
+    basename = os.path.splitext(os.path.basename(meta['srf_file']))[0]
     if args.animate:
+        # copy last frame
+        frames_end = int(args.end * args.framerate)
+        frames_start = int(args.delay * args.framerate)
+        for i in xrange(frames_end):
+            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, frames - 1), \
+                    '%s/%s_perspective_%.4d.png' \
+                        % (gmt_temp, basename, frames + frames_start + i))
+        # shift sequence
+        for i in xrange(frames - 1, -1, -1):
+            move('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i), \
+                    '%s/%s_perspective_%.4d.png' \
+                        % (gmt_temp, basename, frames_start + i))
+        # copy first frame
+        for i in xrange(frames_start):
+            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, frames_start), \
+                    '%s/%s_perspective_%.4d.png' \
+                        % (gmt_temp, basename, i))
         # output movie
-        gmt.make_movie('%s/%s_perspective_%%04d.png' % (gmt_temp, \
-                os.path.splitext(os.path.basename(meta['srf_file']))[0]), \
-                os.path.splitext(os.path.basename(meta['srf_file']))[0], \
-                fps = 25)
+        gmt.make_movie('%s/%s_perspective_%%04d.png' % (gmt_temp, basename), \
+                basename, fps = args.framerate, codec = 'libx264')
+    else:
+        move('%s/%s_perspective.png' % (gmt_temp, basename), \
+            '%s_perspective.png' % (basename))
     # cleanup
     rmtree(gmt_temp)
 
