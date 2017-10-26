@@ -142,7 +142,7 @@ nz_region = (166, 179, -47.5, -34)
 ###
 ### ACCESSORY FUNCTIONS
 ###
-def make_movie(input_pattern, output, fps = 20):
+def make_movie(input_pattern, output, fps = 20, codec = 'qtrle', crf = 23):
     """
     Makes animation from output images.
     Must have ffmpeg available in $PATH.
@@ -153,13 +153,23 @@ def make_movie(input_pattern, output, fps = 20):
     input_pattern: matches sequence of images eg: PNG/image-%04d.png
     output: movie output filename
     fps: frames per second (images per second of video)
+    codec: tested: 'qtrle', 'libx264'
+    crf: constant quality value
     """
-    if output[-4:] != '.mov':
-        output = '%s.mov' % (output)
+    if '.' not in output[-4:-1]:
+        if codec == 'qtrle':
+            ext = '.mov'
+        elif codec == 'libx264':
+            ext = '.m4v'
+        output = '%s%s' % (output, ext)
+
+    cmd = ['ffmpeg', '-y', '-framerate', str(fps), '-i', input_pattern, \
+                '-c:v', codec, '-r', str(fps), output]
+    if crf != None and codec not in ['qtrle']:
+        cmd.extend(['-crf', str(crf)])
 
     with open('/dev/null', 'w') as sink:
-        Popen(['ffmpeg', '-y', '-framerate', str(fps), '-i', input_pattern, \
-                '-c:v', 'qtrle', '-r', str(fps), output], stderr = sink).wait()
+        Popen(cmd, stderr = sink).wait()
 
 def perspective_fill(width, height, view = 180, tilt = 90, zlevel = 0):
     """
