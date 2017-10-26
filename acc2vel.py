@@ -3,7 +3,7 @@ import sys
 import glob
 import load_config as ldcfg
 import os
-qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore.cfg"))
+qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore_config.json"))
 int_bin = os.path.join(qcore_cfg['tools_dir'],'integ_diff') #int_bin = '/nesi/projects/nesi00213/tools/integ_diff'
 
 if len(sys.argv) < 3:

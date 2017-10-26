@@ -12,7 +12,7 @@ R_EARTH = 6378.139
 # TODO: extract this and add to config file
 import load_config as ldcfg
 import os
-qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore.cfg"))
+qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore_config.json"))
 ll2xy_bin = os.path.join(qcore_cfg['tools_dir'],'ll2xy') #'/projects/nesi00213/tools/ll2xy'
 xy2ll_bin = os.path.join(qcore_cfg['tools_dir'],'xy2ll') #'/projects/nesi00213/tools/xy2ll'
 

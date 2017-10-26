@@ -18,7 +18,7 @@ import geo
 
 import load_config as ldcfg
 import os
-qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore.cfg"))
+qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore_config.json"))
 
 
 # binary paths
