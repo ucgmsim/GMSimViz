@@ -7,7 +7,10 @@ import os.path
 # should already be in PYTHONPATH (qcore library)
 from shared import *
 
-GEN_CORD_BIN = "/nesi/projects/nesi00213/tools/gen_model_cords"
+import load_config as ldcfg
+qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore.cfg"))
+
+GEN_CORD_BIN = os.path.join(qcore_cfg['tools_dir'],'gen_model_cords')  #GEN_CORD_BIN = "/nesi/projects/nesi00213/tools/gen_model_cords"
 # hard coded defaults
 CENTER_ORIGIN = '1'
 GEOPROJ = '1'
