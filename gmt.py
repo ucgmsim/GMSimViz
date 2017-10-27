@@ -891,7 +891,7 @@ def mapproject_multi(points, wd = '.', projection = None, region = None, \
     if region == None:
         cmd.append('-R')
     else:
-        cmd.append('-R%s/%s/%s/%s' % (region))
+        cmd.append('-R%s' % ('/'.join(map(str, region))))
     if inverse:
         cmd.append('-I')
     if unit != None:
@@ -899,7 +899,11 @@ def mapproject_multi(points, wd = '.', projection = None, region = None, \
     if z != None:
         cmd.append(z)
     if p:
-        cmd.append('-p')
+        if type(p) == bool:
+            cmd.append('-p')
+        else:
+            # str
+            cmd.append('-p%s' % (p))
 
     projp = Popen(cmd, stdin = PIPE, stdout = PIPE, cwd = wd)
     result = projp.communicate('\n'.join([' '.join(map(str, i)) for i in points]))[0]
@@ -2355,6 +2359,47 @@ class GMTPlot:
             meca = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
             meca.communicate(data)
             meca.wait()
+
+    def rose(self, x, y, width, pos = 'map', fancy = 0, justify = None, \
+            wesn = (), dx = 0, dy = 0, transparency = 0, dxp = 0, dyp = 0):
+        """
+        Draws compass rose.
+        x: x position in 'pos' based units
+        y: y position in 'pos' based units
+        width: width and height of compass rose
+        pos: x and y position system, see others for info
+        fancy: 0 for plain style, 1, 2 and 3 for 4, 8 and 16 fancy style petals
+        justify: 'L'eft 'C'entre 'R'ight, 'B'ottom 'M'iddle 'T'op
+        wesn: labels (only N displayed when fancy == 0), eg: ('', '', '', 'N')
+        dx: x offset in distance units, direction implied by justification
+        dy: y offset in distance units, direction implied by justification
+        dxp: x page origin offset (x relative to page), useful with -p rotations
+        dyp: y page offset as above but for y
+        """
+        # common options
+        cmd = [GMT, 'psbasemap', '-J', '-R', '-K', '-O', self.z, \
+                '-t%s' % (transparency)]
+
+        # construct -Td
+        rose_spec = '-Td%s%s%s%s+w%s+o%s/%s' % (GMT52_POS[pos], x, \
+                '/' * (pos[:3] != 'rel'), y, width, dx, dy)
+        if fancy > 0:
+            rose_spec = '%s+f%d' % (rose_spec, fancy)
+        if justify != None:
+            rose_spec = '%s+j%s' % (rose_spec, justify)
+        if len(wesn) == 4:
+            rose_spec = '%s+l%s' % (rose_spec, ','.join(wesn))
+        cmd.append(rose_spec)
+        # TODO: add options for using -Ft
+
+        if self.p:
+            cmd.append('-p')
+        if dxp != 0 or dyp != 0:
+            cmd.append('-Xa%s' % (dxp))
+            cmd.append('-Ya%s' % (dyp))
+
+        # run GMT
+        Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def image(self, x, y, image_path, width = '2i', align = None, \
             transparent = None, pos = 'map', dx = 0, dy = 0):
