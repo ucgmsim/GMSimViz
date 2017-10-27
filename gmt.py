@@ -2361,7 +2361,8 @@ class GMTPlot:
             meca.wait()
 
     def rose(self, x, y, width, pos = 'map', fancy = 0, justify = None, \
-            wesn = (), dx = 0, dy = 0, transparency = 0, dxp = 0, dyp = 0):
+            wesn = (), dx = 0, dy = 0, transparency = 0, dxp = 0, dyp = 0, \
+            fill = None, clearance = None, rounding = None, pen = None):
         """
         Draws compass rose.
         x: x position in 'pos' based units
@@ -2375,6 +2376,10 @@ class GMTPlot:
         dy: y offset in distance units, direction implied by justification
         dxp: x page origin offset (x relative to page), useful with -p rotations
         dyp: y page offset as above but for y
+        fill: colour of background box
+        clearance: for background box; gap, xgap/ygap or lgap/rgap/bgap/tgap
+        rounding: background box corner radius
+        pen: background box outline pen
         """
         # common options
         cmd = [GMT, 'psbasemap', '-J', '-R', '-K', '-O', self.z, \
@@ -2390,7 +2395,18 @@ class GMTPlot:
         if len(wesn) == 4:
             rose_spec = '%s+l%s' % (rose_spec, ','.join(wesn))
         cmd.append(rose_spec)
-        # TODO: add options for using -Ft
+        # backgrounds -Ft
+        if fill != None or pen != None:
+            out_spec = '-Ft'
+            if fill != None:
+                out_spec = '%s+g%s' % (out_spec, fill)
+            if pen != None:
+                out_spec = '%s+p%s' % (out_spec, pen)
+            if rounding != None:
+                out_spec = '%s+g%s' % (out_spec, rounding)
+            if clearance != None:
+                out_spec = '%s+c%s' % (out_spec, clearance)
+            cmd.append(out_spec)
 
         if self.p:
             cmd.append('-p')

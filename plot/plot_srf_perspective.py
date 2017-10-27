@@ -67,7 +67,8 @@ def timeslice(i, n, meta):
             dpu = DPI)
     p.basemap(topo = None)
     p.rose('C', 'M', '2i', pos = 'rel', \
-            dxp = PAGE_WIDTH / 2 - 2, dyp = PAGE_HEIGHT / 2 - 1.5)
+            dxp = PAGE_WIDTH / 2 - 2, dyp = PAGE_HEIGHT / 2 - 1.8, \
+            fill = 'white@80', clearance = '-0.4i/0.2i', pen = 'thick,red')
 
     # slip distribution has been reprojected onto x, y of page area
     p.spacial('X', (0, PAGE_WIDTH + sx, 0, PAGE_HEIGHT + by), \
