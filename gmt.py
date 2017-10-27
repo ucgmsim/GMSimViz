@@ -490,44 +490,48 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
     dpu: xy gridpoints per xy unit. eg: dpi
     wd: gmt working directory. must have .gmt_history for -J, -R and -p
     """
-    dx, dy = srf.srf_dxy(srf_file)
-    plot_dx = '%sk' % (dx * 0.6)
-    plot_dy = '%sk' % (dy * 0.6)
-    bounds = srf.get_bounds(srf_file)
-    np_bounds = np.array(bounds)
+    if xy:
+        # used to retrieve corner positions of planes
+        planes = srf.read_header(srf_file, idx = True)
+        plot_dx = 1. / dpu
+        plot_dy = 1. / dpu
+        n_plane = len(planes)
+    else:
+        dx, dy = srf.srf_dxy(srf_file)
+        plot_dx = '%sk' % (dx * 0.6)
+        plot_dy = '%sk' % (dy * 0.6)
+        bounds = srf.get_bounds(srf_file)
+        np_bounds = np.array(bounds)
+        n_plane = len(bounds)
     seg_llvs = srf.srf2llv_py(srf_file, value = value, depth = z or xy)
     all_vs = np.concatenate((seg_llvs))[:, -1]
     percentile = np.percentile(all_vs, cpt_percentile)
-    # TODO: fix mess
     makecpt(CPTS['slip'], '%s/%s.cpt' % (out_dir, prefix), 0, percentile, 1)
     # each plane will use a region which just fits
-    # these are needed for plotting
+    # these are needed for efficient plotting
     regions = []
-    if xy:
-        regions_xy = []
-        # used to retrieve corner positions of planes
-        planes = srf.read_header(srf_file, idx = True)
-        xy_dx = 1. / dpu
-        xy_dy = 1. / dpu
     # repeating sections
     def bin2grd(in_file, out_file):
         table2grd(in_file, out_file, file_input = True, grd_type = 'surface', \
                 region = regions[s], dx = plot_dx, dy = plot_dy, \
                 climit = 1, wd = wd, geo = True, tension = '0.0')
     # create resources for each plane
-    for s in xrange(len(bounds)):
-        # mask path
-        geo.path_from_corners(corners = bounds[s], min_edge_points = 100, \
+    for s in xrange(n_plane):
+        if not xy:
+            # geographical based resources
+            x_min, y_min = np.min(np_bounds[s], axis = 0)
+            x_max, y_max = np.max(np_bounds[s], axis = 0)
+            regions.append((x_min, x_max, y_min, y_max))
+            # mask path
+            geo.path_from_corners(corners = bounds[s], min_edge_points = 100, \
                 output = '%s/%s_%d_bounds.ll' % (out_dir, prefix, s))
-        x_min, y_min = np.min(np_bounds[s], axis = 0)
-        x_max, y_max = np.max(np_bounds[s], axis = 0)
-        regions.append((x_min, x_max, y_min, y_max))
-        # GMT grd mask
-        grd_mask('%s/%s_%d_bounds.ll' % (out_dir, prefix, s), \
-                '%s/%s_%d_mask.grd' % (out_dir, prefix, s), \
-                dx = plot_dx, dy = plot_dy, region = regions[s], wd = wd)
-        # data in binary files
+            # GMT grd mask
+            grd_mask('%s/%s_%d_bounds.ll' % (out_dir, prefix, s), \
+                    '%s/%s_%d_mask.grd' % (out_dir, prefix, s), \
+                    dx = plot_dx, dy = plot_dy, region = regions[s], wd = wd)
+
         if z:
+            # 3D (drapefile based) plotting - not ideal (crap)
             # X Y Z relief_file grd
             seg_llvs[s][:, :3].astype(np.float32) \
                     .tofile('%s/%s_%d_z.bin' % (out_dir, prefix, s))
@@ -538,7 +542,9 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                     .tofile('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value))
             bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
+
         elif xy:
+            # 3D (paper pixel reprojection based) - efficient / looks best
             # X Y V reprojected on non-geographic surface
             assert(pz != None)
             assert(dpu != None)
@@ -556,34 +562,38 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
             # region
             x_min, y_min = np.min(xyv_repr[:, :2], axis = 0)
             x_max, y_max = np.max(xyv_repr[:, :2], axis = 0)
-            regions_xy.append((x_min, x_max, y_min, y_max))
+            regions.append((x_min, x_max, y_min, y_max))
             # XY bounds
-            bounds_xy = []
+            bounds = []
             bounds_idx = [0, planes[s]['nstrike'] - 1, \
                     planes[s]['ndip'] * planes[s]['nstrike'] - 1, \
                     (planes[s]['ndip'] - 1) * planes[s]['nstrike']]
             for idx in bounds_idx:
-                bounds_xy.append(xyv_repr[idx, :2])
+                bounds.append(xyv_repr[idx, :2])
             with open('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), 'w') \
                     as bounds_f:
-                for point in bounds_xy:
+                for point in bounds:
                     bounds_f.write('%s %s\n' % tuple(point))
             # XY mask grid
             rc = grd_mask('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), \
                     '%s/%s_%d_mask_xy.grd' % (out_dir, prefix, s), \
-                    geo = False, dx = xy_dx, dy = xy_dy, \
-                    region = regions_xy[s], wd = wd)
-            # bounds are likely of area = 0, do not procede
-            # should check if file exists externally
+                    geo = False, dx = plot_dx, dy = plot_dy, \
+                    region = regions[s], wd = wd)
             if rc == STATUS_INVALID:
+                # bounds are likely of area = 0, do not procede
+                # caller should check if file below produced
+                # attempted plotting could cause invalid postscript / crash
                 continue
+            # search radius based on diagonal distance
+            p2 = xyv_repr[1 + planes[s]['nstrike'], :2]
+            search = math.sqrt(abs(xyv_repr[0, 0] - p2[0]) ** 2 \
+                    + abs(xyv_repr[0, 1] - p2[1]) ** 2)
             # XY grid
-            # TODO: search based on diagonal distance
             table2grd('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%s_%s_xy.grd' % (out_dir, prefix, s, value), \
                     file_input = True, grd_type = 'nearneighbor', \
-                    region = regions_xy[s], dx = xy_dx, dy = xy_dy, \
-                    wd = wd, geo = False, search = 0.05)
+                    region = regions[s], dx = plot_dx, dy = plot_dy, \
+                    wd = wd, geo = False, search = search)
         else:
             # X Y V files only
             seg_llvs[s].astype(np.float32).tofile('%s/%s_%d_%s.bin' \
@@ -591,8 +601,6 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
             bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
 
-    if xy:
-        return (plot_dx, plot_dy), regions, (xy_dx, xy_dy), regions_xy
     return (plot_dx, plot_dy), regions
 
 # TODO: function should be able to modify result CPT such that:

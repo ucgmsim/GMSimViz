@@ -73,12 +73,13 @@ def timeslice(i, n, meta):
     # slip distribution has been reprojected onto x, y of page area
     p.spacial('X', (0, PAGE_WIDTH + sx, 0, PAGE_HEIGHT + by), \
             sizing = '%s/%s' % (PAGE_WIDTH + sx, PAGE_HEIGHT + by))
-    for s in xrange(len(srf_data[3])):
+    for s in xrange(len(srf_data[1])):
         if not os.path.exists('%s/plane_%d_slip_xy.grd' % (swd, s)):
             continue
         p.overlay('%s/plane_%d_slip_xy.grd' % (swd, s), \
                 '%s/plane.cpt' % (swd), transparency = 40, \
-                crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s))
+                crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s), \
+                custom_region = srf_data[1][s])
     p.background(PAGE_WIDTH, PAGE_HEIGHT, spacial = False, \
             window = (0.5, 0.5, 0.8, 0.3), x_margin = sx, y_margin = by, \
             colour = 'white@50')
