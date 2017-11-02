@@ -38,11 +38,19 @@ def timeslice(i, n, meta):
     else:
         azimuth = 180 + (i / float(n)) * (meta['s_azimuth'] - 180)
     tilt = 90 - (i / float(n)) * (90 - meta['map_tilt'])
+    # borders on page
+    window_t = 0.8
+    window_b = 0.3
+    scale_p_final = 0.7
+    if meta['animate']:
+        scale_p = min(i, meta['t_frames']) / meta['t_frames'] * scale_p_final
+    else:
+        scale_p = scale_p_final
 
     # smallest size to fill page
     gmt_x_size, gmt_y_size, sx, by = gmt.perspective_fill( \
             PAGE_WIDTH, PAGE_HEIGHT, view = azimuth, tilt = tilt)
-    # TODO: use oblique mercator 'O'
+    # oblique mercator 'O' would be ideal but doesn't seem to work with 3D
     new_y_size, map_region = gmt.adjust_latitude('M', gmt_x_size, gmt_y_size, \
             meta['map_region'], wd = swd, abs_diff = True, \
             accuracy = 0.4 * 1. / DPI, reference = 'left', top = True, \
@@ -65,7 +73,7 @@ def timeslice(i, n, meta):
             value = 'slip', cpt_percentile = 95, wd = swd, \
             xy = True, pz = z_scale * math.cos(math.radians(tilt)), \
             dpu = DPI)
-    p.basemap(topo = None)
+    p.basemap()
     p.rose('C', 'M', '2i', pos = 'rel', \
             dxp = PAGE_WIDTH / 2 - 2, dyp = PAGE_HEIGHT / 2 - 1.8, \
             fill = 'white@80', clearance = '-0.4i/0.2i', pen = 'thick,red')
@@ -81,10 +89,27 @@ def timeslice(i, n, meta):
                 crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s), \
                 custom_region = srf_data[1][s])
     p.background(PAGE_WIDTH, PAGE_HEIGHT, spacial = False, \
-            window = (0.5, 0.5, 0.8, 0.3), x_margin = sx, y_margin = by, \
-            colour = 'white@50')
-    p.text(sx + PAGE_WIDTH / 2.0, by + PAGE_HEIGHT - 0.3, \
-            os.path.basename(meta['srf_file']), align = 'CT', size = 26)
+            window = (0.5, 0.5, window_t, max(window_b, scale_p)), \
+            x_margin = sx, y_margin = by, colour = 'white@50')
+    p.cpt_scale(PAGE_WIDTH / 2.0 + sx, scale_p + by, '%s/plane.cpt' % (swd), \
+            length = PAGE_WIDTH / 1.618, align = 'CT', \
+            dy = 0.1, thickness = 0.25, major = srf_data[2][2] / 5., \
+            minor = srf_data[2][2] / 20., cross_tick = srf_data[2][2] / 20.)
+    # cpt label
+    p.text((PAGE_WIDTH - PAGE_WIDTH / 1.618) / 2.0 + sx, scale_p + by, \
+            'Slip (cm)', align = 'RM', dx = - 0.2, dy = scale_p_final / -2.0, \
+            size = 16)
+    # title
+    p.text(sx + PAGE_WIDTH / 2.0, by + PAGE_HEIGHT, \
+            os.path.basename(meta['srf_file']), align = 'RM', size = 26, \
+            dy = window_t / -2.0, dx = - 0.2)
+    # slip max, 95%, avg, 25%
+    p.text(sx + PAGE_WIDTH / 2.0, by + PAGE_HEIGHT, 'slip max: %s cm' % \
+            int(round(srf_data[2][0])), align = 'LB', size = 14, \
+            dy = - window_t + 0.45, dx = 0.2)
+    p.text(sx + PAGE_WIDTH / 2.0, by + PAGE_HEIGHT, 'slip 95%%: %s cm' % \
+            int(round(srf_data[2][1])), align = 'LB', size = 14, \
+            dy = - window_t + 0.2, dx = 0.2)
 
     # place outlines on top of slip distribution
     p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
@@ -119,11 +144,16 @@ if len(sys.argv) > 1:
             type = int, default = 25)
     parser.add_argument('-t', '--time', help = 'animation transition time (s)', \
             type = float, default = 6.0)
+    parser.add_argument('-m', '--mtime', help = 'minor animation transition time (s)', \
+            type = float, default = 0.5)
     parser.add_argument('-d', '--delay', help = 'animation start delay (s)', \
             type = float, default = 1.5)
     parser.add_argument('-e', '--end', help = 'animation end delay (s)', \
             type = float, default = 3.0)
     args = parser.parse_args()
+    if args.mtime > args.time:
+        print('Failed constraints (mtime <= time).')
+        sys.exit(1)
     srf_file = os.path.abspath(sys.argv[1])
     # check file exists
     try:
@@ -161,7 +191,8 @@ if len(sys.argv) > 1:
 
     meta = {'wd':gmt_temp, 'srf_file':srf_file, 's_azimuth':s_azimuth, \
             'map_tilt':map_tilt, 'hlon':hlon, 'hlat':hlat, 'hdepth':hdepth, \
-            'gmt_bottom':gmt_bottom, 'gmt_top':gmt_top, 'map_region':map_region}
+            'gmt_bottom':gmt_bottom, 'gmt_top':gmt_top, 'animate':args.animate, \
+            'map_region':map_region, 't_frames':args.mtime * args.framerate}
 
     # tasks
     if not args.animate:

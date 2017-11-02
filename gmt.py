@@ -506,7 +506,17 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
     seg_llvs = srf.srf2llv_py(srf_file, value = value, depth = z or xy)
     all_vs = np.concatenate((seg_llvs))[:, -1]
     percentile = np.percentile(all_vs, cpt_percentile)
-    makecpt(CPTS['slip'], '%s/%s.cpt' % (out_dir, prefix), 0, percentile, 1)
+    # round percentile significant digits for colour pallete
+    if percentile < 1000:
+        # 1 sf
+        cpt_max = round(percentile, \
+                - int(math.floor(math.log10(abs(percentile)))))
+    else:
+        # 2 sf
+        cpt_max = round(percentile, \
+                1 - int(math.floor(math.log10(abs(percentile)))))
+    makecpt(CPTS['slip'], '%s/%s.cpt' % (out_dir, prefix), 0, cpt_max, \
+            max(1, cpt_max / 100))
     # each plane will use a region which just fits
     # these are needed for efficient plotting
     regions = []
@@ -601,7 +611,10 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
             bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
 
-    return (plot_dx, plot_dy), regions
+    return (plot_dx, plot_dy), regions, \
+            (max(all_vs), percentile, cpt_max, np.percentile(all_vs, 75), \
+                    np.average(all_vs), np.percentile(all_vs, 50), \
+                    np.percentile(all_vs, 25), min(all_vs))
 
 # TODO: function should be able to modify result CPT such that:
 #       background colour is extended just like foreground (bidirectional)
