@@ -38,6 +38,15 @@ except ImportError:
 gmt_install_bin = ''
 GMT = os.path.join(gmt_install_bin, 'gmt')
 
+# state files
+GMT_CONF = 'gmt.conf'
+GMT_HISTORY = 'gmt.history'
+
+# function return values
+STATUS_UNKNOWN = -1
+STATUS_SUCCESS = 0
+STATUS_INVALID = 1
+
 # GMT 5.2+ argument mapping
 GMT52_POS = {'map':'g', 'plot':'x', 'norm':'n', 'rel':'j', 'rel_out':'J'}
 
@@ -136,7 +145,7 @@ nz_region = (166, 179, -47.5, -34)
 ###
 ### ACCESSORY FUNCTIONS
 ###
-def make_movie(input_pattern, output, fps = 20):
+def make_movie(input_pattern, output, fps = 20, codec = 'qtrle', crf = 23):
     """
     Makes animation from output images.
     Must have ffmpeg available in $PATH.
@@ -147,21 +156,32 @@ def make_movie(input_pattern, output, fps = 20):
     input_pattern: matches sequence of images eg: PNG/image-%04d.png
     output: movie output filename
     fps: frames per second (images per second of video)
+    codec: tested: 'qtrle', 'libx264'
+    crf: constant quality value
     """
-    if output[-4:] != '.mov':
-        output = '%s.mov' % (output)
+    if '.' not in output[-4:-1]:
+        if codec == 'qtrle':
+            ext = '.mov'
+        elif codec == 'libx264':
+            ext = '.m4v'
+        output = '%s%s' % (output, ext)
+
+    cmd = ['ffmpeg', '-y', '-framerate', str(fps), '-i', input_pattern, \
+                '-c:v', codec, '-r', str(fps), output]
+    if crf != None and codec not in ['qtrle']:
+        cmd.extend(['-crf', str(crf)])
 
     with open('/dev/null', 'w') as sink:
-        Popen(['ffmpeg', '-y', '-framerate', str(fps), '-i', input_pattern, \
-                '-c:v', 'qtrle', '-r', str(fps), output], stderr = sink).wait()
+        Popen(cmd, stderr = sink).wait()
 
-def perspective_fill(width, height, view = 180, tilt = 90):
+def perspective_fill(width, height, view = 180, tilt = 90, zlevel = 0):
     """
     Fills page (width x height) area with minimum size given perspective.
     width: width of the page
     height: height of the page
     view: source (rotation), 180 = south facing down
     tilt: backwards tilt angle, 90 = straight on
+    zlevel: z-level of 2d data (such as map borders)
     """
     # part of the map view (outside) edge is bs, bl, ss, sl
     #        /\
@@ -200,9 +220,9 @@ def perspective_fill(width, height, view = 180, tilt = 90):
     # result sizes
     page_x_size = abs(bl) + abs(ss)
     page_y_size = abs(bs) + abs(sl)
-    # GMT lifts map upwards slightly when map is tilted back
+    # adjust for 2d z-level
     # 'by' is still as before, can only be used for offsets from now
-    by += c_tilt / 10.
+    by += zlevel * c_tilt / 10.
     # gmt_x_size and gmt_y_size are pre-tilt dimensions
     # with tilt applied, they will be equivalent to page_x_size and page_y_size
     gmt_x_size = math.sqrt((page_x_size * math.cos(gmt_x_angle)) ** 2 \
@@ -457,7 +477,8 @@ def xyv_cpt_range(xyv_file, max_step = 12, percentile = 99.5, \
     return mn, cpt_inc, cpt_mx, mx
 
 def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
-        cpt_percentile = 95, z = False, wd = '.'):
+        cpt_percentile = 95, z = False, xy = False, wd = '.', pz = None, \
+        dpu = None):
     """
     Creates geographic overlay data from SRF files.
     out_dir: where to place outputs
@@ -466,20 +487,41 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
             TODO: None to only create masks - don't re-create them
     cpt_percentile: also create CPT to fit SRF data range
             covers this percentile of data
-    z: prepare for 3d plotting
+    z: prepare for 3d plotting with a drapefile (no good for steep dip)
+    xy: reproject 3d points on x, y offsets of page
+    pz: float value for z scaling -Jz<float> (if small 'z' is used)
+    dpu: xy gridpoints per xy unit. eg: dpi
+    wd: gmt working directory. must have .gmt_history for -J, -R and -p
     """
-    dx, dy = srf.srf_dxy(srf_file)
-    plot_dx = '%sk' % (dx * 0.6)
-    plot_dy = '%sk' % (dy * 0.6)
-    bounds = srf.get_bounds(srf_file)
-    np_bounds = np.array(bounds)
-    seg_llvs = srf.srf2llv_py(srf_file, value = value, depth = z)
+    if xy:
+        # used to retrieve corner positions of planes
+        planes = srf.read_header(srf_file, idx = True)
+        plot_dx = 1. / dpu
+        plot_dy = 1. / dpu
+        n_plane = len(planes)
+    else:
+        dx, dy = srf.srf_dxy(srf_file)
+        plot_dx = '%sk' % (dx * 0.6)
+        plot_dy = '%sk' % (dy * 0.6)
+        bounds = srf.get_bounds(srf_file)
+        np_bounds = np.array(bounds)
+        n_plane = len(bounds)
+    seg_llvs = srf.srf2llv_py(srf_file, value = value, depth = z or xy)
     all_vs = np.concatenate((seg_llvs))[:, -1]
     percentile = np.percentile(all_vs, cpt_percentile)
-    # TODO: fix mess
-    makecpt(CPTS['slip'], '%s/%s.cpt' % (out_dir, prefix), 0, percentile, 1)
+    # round percentile significant digits for colour pallete
+    if percentile < 1000:
+        # 1 sf
+        cpt_max = round(percentile, \
+                - int(math.floor(math.log10(abs(percentile)))))
+    else:
+        # 2 sf
+        cpt_max = round(percentile, \
+                1 - int(math.floor(math.log10(abs(percentile)))))
+    makecpt(CPTS['slip'], '%s/%s.cpt' % (out_dir, prefix), 0, cpt_max, \
+            max(1, cpt_max / 100))
     # each plane will use a region which just fits
-    # these are needed for plotting
+    # these are needed for efficient plotting
     regions = []
     # repeating sections
     def bin2grd(in_file, out_file):
@@ -487,19 +529,22 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                 region = regions[s], dx = plot_dx, dy = plot_dy, \
                 climit = 1, wd = wd, geo = True, tension = '0.0')
     # create resources for each plane
-    for s in xrange(len(bounds)):
-        # mask path
-        geo.path_from_corners(corners = bounds[s], min_edge_points = 100, \
+    for s in xrange(n_plane):
+        if not xy:
+            # geographical based resources
+            x_min, y_min = np.min(np_bounds[s], axis = 0)
+            x_max, y_max = np.max(np_bounds[s], axis = 0)
+            regions.append((x_min, x_max, y_min, y_max))
+            # mask path
+            geo.path_from_corners(corners = bounds[s], min_edge_points = 100, \
                 output = '%s/%s_%d_bounds.ll' % (out_dir, prefix, s))
-        x_min, y_min = np.min(np_bounds[s], axis = 0)
-        x_max, y_max = np.max(np_bounds[s], axis = 0)
-        regions.append((x_min, x_max, y_min, y_max))
-        # GMT grd mask
-        grd_mask('%s/%s_%d_bounds.ll' % (out_dir, prefix, s), \
-                '%s/%s_%d_mask.grd' % (out_dir, prefix, s), \
-                dx = plot_dx, dy = plot_dy, region = regions[s], wd = wd)
-        # data in binary files
+            # GMT grd mask
+            grd_mask('%s/%s_%d_bounds.ll' % (out_dir, prefix, s), \
+                    '%s/%s_%d_mask.grd' % (out_dir, prefix, s), \
+                    dx = plot_dx, dy = plot_dy, region = regions[s], wd = wd)
+
         if z:
+            # 3D (drapefile based) plotting - not ideal (crap)
             # X Y Z relief_file grd
             seg_llvs[s][:, :3].astype(np.float32) \
                     .tofile('%s/%s_%d_z.bin' % (out_dir, prefix, s))
@@ -510,6 +555,58 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                     .tofile('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value))
             bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
+
+        elif xy:
+            # 3D (paper pixel reprojection based) - efficient / looks best
+            # X Y V reprojected on non-geographic surface
+            assert(pz != None)
+            assert(dpu != None)
+            # reproject on flat surface
+            xyv_repr = np.empty((seg_llvs[s].shape[0], 3))
+            xyv_repr[:, :2] = mapproject_multi(seg_llvs[s][:, :2], wd = wd, \
+                    p = True, z = '-Jz%s' % (pz))
+            # load values
+            xyv_repr[:, 2] = seg_llvs[s][:, 3]
+            # adjust z level manually
+            xyv_repr[:, 1] += seg_llvs[s][:, 2] * pz
+            # dump as binary
+            xyv_repr.astype(np.float32) \
+                .tofile('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value))
+            # region
+            x_min, y_min = np.min(xyv_repr[:, :2], axis = 0)
+            x_max, y_max = np.max(xyv_repr[:, :2], axis = 0)
+            regions.append((x_min, x_max, y_min, y_max))
+            # XY bounds
+            bounds = []
+            bounds_idx = [0, planes[s]['nstrike'] - 1, \
+                    planes[s]['ndip'] * planes[s]['nstrike'] - 1, \
+                    (planes[s]['ndip'] - 1) * planes[s]['nstrike']]
+            for idx in bounds_idx:
+                bounds.append(xyv_repr[idx, :2])
+            with open('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), 'w') \
+                    as bounds_f:
+                for point in bounds:
+                    bounds_f.write('%s %s\n' % tuple(point))
+            # XY mask grid
+            rc = grd_mask('%s/%s_%d_bounds.xy' % (out_dir, prefix, s), \
+                    '%s/%s_%d_mask_xy.grd' % (out_dir, prefix, s), \
+                    geo = False, dx = plot_dx, dy = plot_dy, \
+                    region = regions[s], wd = wd)
+            if rc == STATUS_INVALID:
+                # bounds are likely of area = 0, do not procede
+                # caller should check if file below produced
+                # attempted plotting could cause invalid postscript / crash
+                continue
+            # search radius based on diagonal distance
+            p2 = xyv_repr[1 + planes[s]['nstrike'], :2]
+            search = math.sqrt(abs(xyv_repr[0, 0] - p2[0]) ** 2 \
+                    + abs(xyv_repr[0, 1] - p2[1]) ** 2)
+            # XY grid
+            table2grd('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value), \
+                    '%s/%s_%s_%s_xy.grd' % (out_dir, prefix, s, value), \
+                    file_input = True, grd_type = 'nearneighbor', \
+                    region = regions[s], dx = plot_dx, dy = plot_dy, \
+                    wd = wd, geo = False, search = search)
         else:
             # X Y V files only
             seg_llvs[s].astype(np.float32).tofile('%s/%s_%d_%s.bin' \
@@ -517,7 +614,10 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
             bin2grd('%s/%s_%d_%s.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
 
-    return (plot_dx, plot_dy), regions
+    return (plot_dx, plot_dy), regions, \
+            (max(all_vs), percentile, cpt_max, np.percentile(all_vs, 75), \
+                    np.average(all_vs), np.percentile(all_vs, 50), \
+                    np.percentile(all_vs, 25), min(all_vs))
 
 # TODO: function should be able to modify result CPT such that:
 #       background colour is extended just like foreground (bidirectional)
@@ -666,8 +766,9 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
             with open(table_in, 'r') as tf:
                 for _ in xrange(header):
                     tf.readline()
-                map(float, tf.readline().split()[:2])
-        except ValueError:
+                # assert added to catch eg: first line = '\n'
+                assert(len(map(float, tf.readline().split()[:2])) == 2)
+        except (ValueError, AssertionError):
             cmd.append('-bi3f')
         # run command
         Popen(cmd, cwd = wd).wait()
@@ -724,8 +825,17 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
         cmd.append('-R%s/%s/%s/%s' % region)
 
     write_history(False, wd = wd)
-    Popen(cmd, cwd = wd).wait()
+    p = Popen(cmd, cwd = wd, stderr = PIPE)
+    e = p.communicate()[1]
+    p.wait()
     write_history(True, wd = wd)
+
+    if len(e) == 0:
+        return STATUS_SUCCESS
+    elif 'No valid values in grid' in e:
+        return STATUS_INVALID
+    else:
+        return STATUS_UNKNOWN
 
 def grdmath(expression, region = None, dx = '1k', dy = '1k', \
         wd = '.'):
@@ -781,12 +891,13 @@ def gmt_defaults(wd = '.', font_annot_primary = 16, \
     cmd.extend(map(str, extra))
     Popen(cmd, cwd = wd).wait()
 
-def mapproject(x, y, wd = '.', projection = None, region = None, \
+def mapproject_multi(points, wd = '.', projection = None, region = None, \
     inverse = False, unit = None, z = None, p = False):
     """
     Project coordinates to get position or get coordinates from position.
     NOTE: if projection specifies units of length,
             output will still be in default units
+    points: 2d list of x, y or lon, lat
     projection: map projection, default uses history file
     region: map region (x_min, x_max, y_min, y_max), default uses history file
     inverse: False to get coords from pos, True to get pos from coords
@@ -804,7 +915,7 @@ def mapproject(x, y, wd = '.', projection = None, region = None, \
     if region == None:
         cmd.append('-R')
     else:
-        cmd.append('-R%s/%s/%s/%s' % (region))
+        cmd.append('-R%s' % ('/'.join(map(str, region))))
     if inverse:
         cmd.append('-I')
     if unit != None:
@@ -812,16 +923,28 @@ def mapproject(x, y, wd = '.', projection = None, region = None, \
     if z != None:
         cmd.append(z)
     if p:
-        cmd.append('-p')
+        if type(p) == bool:
+            cmd.append('-p')
+        else:
+            # str
+            cmd.append('-p%s' % (p))
 
     projp = Popen(cmd, stdin = PIPE, stdout = PIPE, cwd = wd)
-    result = projp.communicate('%f %f\n' % (x, y))[0]
+    result = projp.communicate('\n'.join([' '.join(map(str, i)) for i in points]))[0]
     projp.wait()
 
     # re-enable history file
     write_history(True, wd = wd)
 
-    return map(float, result.split())
+    return np.loadtxt(result.split('\n'), dtype = 'f')
+
+def mapproject(x, y, wd = '.', projection = None, region = None, \
+    inverse = False, unit = None, z = None, p = False):
+    """
+    Wrapper for mapproject_multi
+    """
+    return mapproject_multi([[x, y]], wd = wd, projection = projection, \
+            region = region, inverse = inverse, unit = unit, z = z, p = p)
 
 def map_width(projection, height, region, wd = '.', abs_diff = False, \
         start_width = 6, accuracy = 0.01, reference = 'left'):
@@ -1259,15 +1382,18 @@ class GMTPlot:
         colour: the colour of the background
         """
         if spacial:
-            self.spacial('X', (0, length, 0, height), sizing = '%s/%s' % (length, height))
+            # spacial doesn't work properly with x_margin and y_margin atm
+            self.spacial('X', (0, length, 0, height), \
+                    sizing = '%s/%s' % (length, height))
 
         # leave window on inside
         # TODO: allow margins and window
         if window != None:
-            self.clip('%s %s\n%s %s\n%s %s\n%s %s' % (window[0], window[3], \
-                    window[0], height - window[2], \
-                    length - window[1], height - window[2], \
-                    length - window[1], window[3]), \
+            self.clip('%s %s\n%s %s\n%s %s\n%s %s' % (window[0] + x_margin, window[3] + y_margin, \
+                    window[0] + x_margin, (height + y_margin) - window[2], \
+                    (length + x_margin) - window[1], \
+                    (height + y_margin) - window[2], \
+                    (length + x_margin) - window[1], window[3] + y_margin), \
                     is_file = False, invert = True)
 
         # draw background and place origin up, right as wanted
@@ -1686,7 +1812,7 @@ class GMTPlot:
 
     def points(self, in_data, is_file = True, shape = 't', size = 0.08, \
             fill = None, line = 'white', line_thickness = '0.8p', \
-            cpt = None, cols = None, header = 0):
+            cpt = None, cols = None, header = 0, z = False, clip = True):
         """
         Adds points to map.
         in_data: file or text containing '\n' separated x, y positions to plot
@@ -1709,8 +1835,12 @@ class GMTPlot:
             shaping = '-S%s' % (shape)
         else:
             shaping = '-S%s%s' % (shape, size)
+        if z:
+            module = 'psxyz'
+        else:
+            module = 'psxy'
         # build command based on optional fill and thickness
-        cmd = [GMT, 'psxy', '-J', '-R', shaping, '-K', '-O', self.z]
+        cmd = [GMT, module, '-J', '-R', shaping, '-K', '-O', self.z]
         if fill != None:
             cmd.append('-G%s' % (fill))
         elif cpt != None:
@@ -1721,6 +1851,10 @@ class GMTPlot:
             cmd.append('-i%s' % (cols))
         if header > 0:
             cmd.append('-hi%d' % (header))
+        if self.p:
+            cmd.append('-p')
+        if not clip:
+            cmd.append('-N')
 
         if is_file:
             cmd.append(os.path.abspath(in_data))
@@ -2249,6 +2383,63 @@ class GMTPlot:
             meca = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
             meca.communicate(data)
             meca.wait()
+
+    def rose(self, x, y, width, pos = 'map', fancy = 0, justify = None, \
+            wesn = (), dx = 0, dy = 0, transparency = 0, dxp = 0, dyp = 0, \
+            fill = None, clearance = None, rounding = None, pen = None):
+        """
+        Draws compass rose.
+        x: x position in 'pos' based units
+        y: y position in 'pos' based units
+        width: width and height of compass rose
+        pos: x and y position system, see others for info
+        fancy: 0 for plain style, 1, 2 and 3 for 4, 8 and 16 fancy style petals
+        justify: 'L'eft 'C'entre 'R'ight, 'B'ottom 'M'iddle 'T'op
+        wesn: labels (only N displayed when fancy == 0), eg: ('', '', '', 'N')
+        dx: x offset in distance units, direction implied by justification
+        dy: y offset in distance units, direction implied by justification
+        dxp: x page origin offset (x relative to page), useful with -p rotations
+        dyp: y page offset as above but for y
+        fill: colour of background box
+        clearance: for background box; gap, xgap/ygap or lgap/rgap/bgap/tgap
+        rounding: background box corner radius
+        pen: background box outline pen
+        """
+        # common options
+        cmd = [GMT, 'psbasemap', '-J', '-R', '-K', '-O', self.z, \
+                '-t%s' % (transparency)]
+
+        # construct -Td
+        rose_spec = '-Td%s%s%s%s+w%s+o%s/%s' % (GMT52_POS[pos], x, \
+                '/' * (pos[:3] != 'rel'), y, width, dx, dy)
+        if fancy > 0:
+            rose_spec = '%s+f%d' % (rose_spec, fancy)
+        if justify != None:
+            rose_spec = '%s+j%s' % (rose_spec, justify)
+        if len(wesn) == 4:
+            rose_spec = '%s+l%s' % (rose_spec, ','.join(wesn))
+        cmd.append(rose_spec)
+        # backgrounds -Ft
+        if fill != None or pen != None:
+            out_spec = '-Ft'
+            if fill != None:
+                out_spec = '%s+g%s' % (out_spec, fill)
+            if pen != None:
+                out_spec = '%s+p%s' % (out_spec, pen)
+            if rounding != None:
+                out_spec = '%s+g%s' % (out_spec, rounding)
+            if clearance != None:
+                out_spec = '%s+c%s' % (out_spec, clearance)
+            cmd.append(out_spec)
+
+        if self.p:
+            cmd.append('-p')
+        if dxp != 0 or dyp != 0:
+            cmd.append('-Xa%s' % (dxp))
+            cmd.append('-Ya%s' % (dyp))
+
+        # run GMT
+        Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def image(self, x, y, image_path, width = '2i', align = None, \
             transparent = None, pos = 'map', dx = 0, dy = 0):
