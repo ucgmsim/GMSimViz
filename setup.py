@@ -9,4 +9,5 @@ setup(
     url="https://github.com/ucgmsim/qcore",
     description="QuakeCoRE Library",
     package_data={'': ['*.json', '*.sh']},
+    install_requires=['numpy', 'mpi4py', 'scipy'],
 )
