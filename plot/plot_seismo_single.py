@@ -10,9 +10,8 @@ from shutil import copy, copyfile
 
 import numpy as np
 
-import qcore_path
-import gmt
-import timeseries as ts
+import qcore.gmt as gmt
+import qcore.timeseries as ts
 
 try:
     velfile = os.path.abspath(sys.argv[1])

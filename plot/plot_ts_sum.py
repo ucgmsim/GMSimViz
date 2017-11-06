@@ -24,10 +24,9 @@ import sys
 import h5py as h5
 import numpy as np
 
-import qcore_path
-from geo import path_from_corners, wgs_nztm2000x
-import gmt
-from xyts import XYTSFile
+from qcore.geo import path_from_corners, wgs_nztm2000x
+import qcore.gmt as gmt
+from qcore.xyts import XYTSFile
 # to import local parameters add them to path
 sys.path.insert(0, os.path.abspath(os.path.curdir))
 from params_base import *
@@ -139,6 +138,42 @@ dep = 8.66
 event_type = 'SCENARIO' # or 'SCENARIO'
 origin_time = '2017-04-25T13:02:33.631Z'
 
+
+def write_shakemap_grid_header(event_id, event_type, mag, dep, hlat, hlon, origin_time, run_name, x_min, x_max, y_min, y_max, grd_nx, grd_ny):
+    pager_grid.write('<?xml version="1.0" \
+encoding="UTF-8" standalone="yes"?>\n')
+    pager_grid.write('<shakemap_grid \
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" \
+xmlns="http://earthquake.usgs.gov/eqcenter/shakemap" \
+xsi:schemaLocation="http://earthquake.usgs.gov \
+http://earthquake.usgs.gov/eqcenter/shakemap/xml/schemas/shakemap.xsd" \
+event_id="%s" shakemap_id="%s" \
+shakemap_version="1" code_version="1" \
+process_timestamp="%s" \
+shakemap_originator="nz" \
+map_status="RELEASED" \
+shakemap_event_type="%s">\n' % (event_id, event_id, \
+                                datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), event_type))
+    pager_grid.write('<event event_id="%s" magnitude="%s" \
+depth="%s" lat="%s" lon="%s" event_timestamp="%s" \
+event_network="nz" event_description="%s" />\n' % (event_id, mag, \
+                                                   dep, hlat, hlon, origin_time, run_name.split('_')[0]))
+    pager_grid.write('<grid_specification lon_min="%s" lat_min="%s" \
+lon_max="%s" lat_max="%s" nominal_lon_spacing="%s" \
+nominal_lat_spacing="%s" nlon="%d" nlat="%d" />\n' % (x_min, y_min, \
+                                                      x_max, y_max, abs(x_max - x_min) / grd_nx, \
+                                                      abs(y_max - y_min) / grd_ny, grd_nx, grd_ny))
+    pager_grid.write('<event_specific_uncertainty name="pgv" \
+value="-1" numsta="0" />\n')
+    pager_grid.write('<event_specific_uncertainty name="mi" \
+value="-1" numsta="0" />\n')
+    pager_grid.write('<grid_field index="1" name="LON" units="dd" />\n')
+    pager_grid.write('<grid_field index="2" name="LAT" units="dd" />\n')
+    pager_grid.write('<grid_field index="3" name="PGV" units="cms" />\n')
+    pager_grid.write('<grid_field index="4" name="MMI" units="intensity" />\n')
+    pager_grid.write('<grid_data>\n')
+
+
 for s in xrange(len(suffixes)):
     if scenarios == 1:
         grid_out = '%s/grid.xml' % (png_dir)
@@ -187,38 +222,7 @@ for s in xrange(len(suffixes)):
         hlon, hlat = '', ''
 
     pager_grid = open(grid_out, 'w')
-    pager_grid.write('<?xml version="1.0" \
-encoding="UTF-8" standalone="yes"?>\n')
-    pager_grid.write('<shakemap_grid \
-xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" \
-xmlns="http://earthquake.usgs.gov/eqcenter/shakemap" \
-xsi:schemaLocation="http://earthquake.usgs.gov \
-http://earthquake.usgs.gov/eqcenter/shakemap/xml/schemas/shakemap.xsd" \
-event_id="%s" shakemap_id="%s" \
-shakemap_version="1" code_version="1" \
-process_timestamp="%s" \
-shakemap_originator="nz" \
-map_status="RELEASED" \
-shakemap_event_type="%s">\n' % (event_id, event_id, \
-            datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"), event_type))
-    pager_grid.write('<event event_id="%s" magnitude="%s" \
-depth="%s" lat="%s" lon="%s" event_timestamp="%s" \
-event_network="nz" event_description="%s" />\n' % (event_id, mag, \
-            dep, hlat, hlon, origin_time, run_name.split('_')[0]))
-    pager_grid.write('<grid_specification lon_min="%s" lat_min="%s" \
-lon_max="%s" lat_max="%s" nominal_lon_spacing="%s" \
-nominal_lat_spacing="%s" nlon="%d" nlat="%d" />\n' % (x_min, y_min, \
-            x_max, y_max, abs(x_max - x_min) / grd_nx, \
-            abs(y_max - y_min) / grd_ny, grd_nx, grd_ny))
-    pager_grid.write('<event_specific_uncertainty name="pgv" \
-value="-1" numsta="0" />\n')
-    pager_grid.write('<event_specific_uncertainty name="mi" \
-value="-1" numsta="0" />\n')
-    pager_grid.write('<grid_field index="1" name="LON" units="dd" />\n')
-    pager_grid.write('<grid_field index="2" name="LAT" units="dd" />\n')
-    pager_grid.write('<grid_field index="3" name="PGV" units="cms" />\n')
-    pager_grid.write('<grid_field index="4" name="MMI" units="intensity" />\n')
-    pager_grid.write('<grid_data>\n')
+    write_shakemap_grid_header(event_id, event_type, mag, dep, hlat, hlon, origin_time, run_name, x_min, x_max, y_min, y_max, grd_nx, grd_ny)
     for a in xrange(len(lats) - 1, - 1, - 1):
         for b in xrange(len(lons)):
             pager_grid.write('%s %s %s %s\n' \

@@ -18,12 +18,12 @@ from time import time
 
 import numpy as np
 
-import qcore_path
 from params import *
 import params_plot as plot
+from qcore.timeseries import *
+from qcore.geo import *
+
 seismoplot = plot.SEISMO
-from timeseries import *
-from geo import *
 
 for output in [seismoplot.obs_src, seismoplot.sim_src]:
     if os.path.exists(output):
