@@ -44,10 +44,9 @@ from time import time, sleep
 from mpi4py import MPI
 import numpy as np
 
-import qcore_path
-import gmt
-import geo
-from srf import srf2corners
+import qcore.gmt as gmt
+import qcore.geo as geo
+from qcore.srf import srf2corners
 
 MASTER = 0
 
