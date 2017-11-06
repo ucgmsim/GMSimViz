@@ -17,6 +17,9 @@ MASTER = 0
 TILT_MAX = 20
 PAGE_WIDTH = 16
 PAGE_HEIGHT = 9
+SCALE_WIDTH = PAGE_WIDTH / 1.618
+SCALE_SIZE = 0.25
+SCALE_PAD = 0.1
 # 120 for 1920x1080, 16ix9i
 DPI = 120
 
@@ -74,6 +77,7 @@ def timeslice(i, n, meta):
             xy = True, pz = z_scale * math.cos(math.radians(tilt)), \
             dpu = DPI)
     p.basemap()
+    p.sites(gmt.sites_major)
     p.rose('C', 'M', '2i', pos = 'rel', \
             dxp = PAGE_WIDTH / 2 - 2, dyp = PAGE_HEIGHT / 2 - 1.8, \
             fill = 'white@80', clearance = '-0.4i/0.2i', pen = 'thick,red')
@@ -92,24 +96,39 @@ def timeslice(i, n, meta):
             window = (0.5, 0.5, window_t, max(window_b, scale_p)), \
             x_margin = sx, y_margin = by, colour = 'white@50')
     p.cpt_scale(PAGE_WIDTH / 2.0 + sx, scale_p + by, '%s/plane.cpt' % (swd), \
-            length = PAGE_WIDTH / 1.618, align = 'CT', \
-            dy = 0.1, thickness = 0.25, major = srf_data[2][2] / 5., \
-            minor = srf_data[2][2] / 20., cross_tick = srf_data[2][2] / 20.)
+            length = SCALE_WIDTH, align = 'CT', \
+            dy = SCALE_PAD, thickness = SCALE_SIZE, \
+            major = srf_data[2]['cpt_max'] / 5., \
+            minor = srf_data[2]['cpt_max'] / 20., \
+            cross_tick = srf_data[2]['cpt_max'] / 20.)
+    # middle of scale
+    cpt_y = scale_p + by - 0.5 * SCALE_SIZE - SCALE_PAD
+    # space before scale starts
+    scale_margin = (PAGE_WIDTH - SCALE_WIDTH) / 2.0
     # cpt label
-    p.text((PAGE_WIDTH - PAGE_WIDTH / 1.618) / 2.0 + sx, scale_p + by, \
-            'Slip (cm)', align = 'RM', dx = - 0.2, dy = scale_p_final / -2.0, \
-            size = 16)
+    p.text(scale_margin + sx, cpt_y, \
+            'Slip (cm)', align = 'RM', dx = - SCALE_PAD, size = 16)
     # title
     p.text(sx + PAGE_WIDTH / 2.0, by + PAGE_HEIGHT, \
             os.path.basename(meta['srf_file']), align = 'RM', size = 26, \
             dy = window_t / -2.0, dx = - 0.2)
-    # slip max, 95%, avg, 25%
-    p.text(sx + PAGE_WIDTH / 2.0, by + PAGE_HEIGHT, 'slip max: %s cm' % \
-            int(round(srf_data[2][0])), align = 'LB', size = 14, \
-            dy = - window_t + 0.45, dx = 0.2)
-    p.text(sx + PAGE_WIDTH / 2.0, by + PAGE_HEIGHT, 'slip 95%%: %s cm' % \
-            int(round(srf_data[2][1])), align = 'LB', size = 14, \
-            dy = - window_t + 0.2, dx = 0.2)
+
+    # box-and-whisker slip distribution
+    scale_start = sx + scale_margin
+    scale_factor = 1.0 / srf_data[2]['cpt_max'] * SCALE_WIDTH
+    # max point should not be off the page, leave space for label
+    max_x = scale_start \
+            + min(srf_data[2]['max'] * scale_factor, SCALE_WIDTH + 1.0)
+    p.epoints('%s %s %s %s %s %s' \
+            % (scale_start + srf_data[2]['50p'] * scale_factor, cpt_y, \
+            scale_start + srf_data[2]['min'] * scale_factor, \
+            scale_start + srf_data[2]['25p'] * scale_factor, \
+            scale_start + srf_data[2]['75p'] * scale_factor, max_x), \
+            is_file = False, xy = 'X', asymmetric = True, \
+            width = SCALE_SIZE, colour = 'blue', line_width = '2p')
+    # label max
+    p.text(max_x, cpt_y, '%.1f' % (srf_data[2]['max']), size = '16p', \
+            align = 'LM', dx = SCALE_PAD)
 
     # place outlines on top of slip distribution
     p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
@@ -122,7 +141,6 @@ def timeslice(i, n, meta):
     p.points('%s %s %s\n' % (meta['hlon'], meta['hlat'], meta['hdepth']), \
             is_file = False, shape = 'a', size = 0.35, line = 'blue', \
             line_thickness = '1p', z = True, clip = False)
-    p.sites(gmt.sites_major)
 
     # finish, clean up
     p.finalise()

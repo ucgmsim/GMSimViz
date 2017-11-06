@@ -615,9 +615,10 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                     '%s/%s_%d_%s.grd' % (out_dir, prefix, s, value))
 
     return (plot_dx, plot_dy), regions, \
-            (max(all_vs), percentile, cpt_max, np.percentile(all_vs, 75), \
-                    np.average(all_vs), np.percentile(all_vs, 50), \
-                    np.percentile(all_vs, 25), min(all_vs))
+            {'max':max(all_vs), 'target_p':percentile, 'cpt_max':cpt_max, \
+                    '75p':np.percentile(all_vs, 75), \
+                    'avg':np.average(all_vs), '50p':np.percentile(all_vs, 50), \
+                    '25p':np.percentile(all_vs, 25), 'min':min(all_vs)}
 
 # TODO: function should be able to modify result CPT such that:
 #       background colour is extended just like foreground (bidirectional)
@@ -1864,13 +1865,50 @@ class GMTPlot:
             p.communicate(in_data)
             p.wait()
 
+    def epoints(self, in_data, is_file = True, xy = 'x', asymmetric = False, \
+            width = None, line_width = None, colour = None, fill = None):
+        """
+        Draws points with error bars or box-and-whisker plots.
+        in_data: file or string containing positional descriptions (man psxy)
+        is_file: whether in_data is a filepath (True) or a string (False)
+        xy: 'x' for error in x direction and 'y' for y direction, combinable
+                x and/or y in capitals for boxes as well
+        asymmetric: give low and high instead of error
+        width: width of whiskers and box
+        line_width: width of pen line
+        colour: colour of lines
+        fill: box fill
+        """
+        cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O']
+        if fill != None:
+            cmd.append('-G%s' % (fill))
+        espec = '-E%s' % (xy)
+        if asymmetric:
+            espec = '%s+a' % (espec)
+        if colour != None or line_width != None:
+            espec = '%s+p%s%s%s' % (espec, \
+                    str(line_width) * (line_width != None), \
+                    ',' * (colour != None and line_width != None), \
+                    str(colour) * (colour != None))
+        if width != None:
+            espec = '%s+w%s' % (espec, width)
+        cmd.append(espec)
+
+        if is_file:
+            cmd.append(os.path.abspath(in_data))
+            Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+        else:
+            p = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
+            p.communicate(in_data)
+            p.wait()
+
     def path(self, in_data, is_file = True, close = False, \
             width = '0.4p', colour = 'black', split = None, \
             straight = False, fill = None, cols = None, z = False):
         """
         Draws a path between points.
         in_data: either a filepath to file containing x, y points
-                    or a string containing the x, y points
+                or a string containing the x, y points
         is_file: whether in_data is a filepath (True) or a string (False)
         close: whether to close the path by joining the first and last points
         width: thickness of line
