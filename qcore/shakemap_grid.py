@@ -1,5 +1,8 @@
-import datetime
-class shakemap_grid:
+from datetime import datetime
+
+
+class shakemapGrid:
+
     def __init__(self, filename):
         self.fp = open(filename, 'w')
 
@@ -40,6 +43,6 @@ class shakemap_grid:
     def write(self, string):
         self.fp.write(string)
 
-    def write_shakemap_grid_footer():
+    def write_shakemap_grid_footer(self):
         self.fp.write('</grid_data>\n</shakemap_grid>\n')
         self.fp.close()

@@ -14,7 +14,6 @@ USAGE:
 ISSUES: currently assumes ABSMAX TS input.
 """
 
-from datetime import datetime
 from glob import glob
 from math import ceil, sqrt
 import os
@@ -27,7 +26,7 @@ import numpy as np
 from qcore.geo import path_from_corners, wgs_nztm2000x
 import qcore.gmt as gmt
 from qcore.xyts import XYTSFile
-from qcore.shakemap_grid import shakemap_grid
+from qcore.shakemap_grid import shakemapGrid
 # to import local parameters add them to path
 sys.path.insert(0, os.path.abspath(os.path.curdir))
 from params_base import *
@@ -187,7 +186,7 @@ for s in xrange(len(suffixes)):
         # MIN and MAX don't have specified hypocentres
         hlon, hlat = '', ''
 
-    pager_grid = shakemap_grid(grid_out)
+    pager_grid = shakemapGrid(grid_out)
     pager_grid.write_shakemap_grid_header(event_id, event_type, mag, dep, hlat, hlon, origin_time, run_name, x_min, x_max, y_min, y_max, grd_nx, grd_ny)
     for a in xrange(len(lats) - 1, - 1, - 1):
         for b in xrange(len(lons)):
