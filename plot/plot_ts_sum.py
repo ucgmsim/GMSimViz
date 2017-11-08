@@ -192,7 +192,7 @@ for s in xrange(len(suffixes)):
         for b in xrange(len(lons)):
             pager_grid.write('%s %s %s %s\n' \
                     % (lons[b], lats[a], pgvs[a, b], mmis[a, b]))
-            pager_grid.write_shakemap_grid_footer()
+    pager_grid.write_shakemap_grid_footer()
 
 print('PAGER MMI input ready.')
 
