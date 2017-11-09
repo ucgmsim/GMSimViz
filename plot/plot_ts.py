@@ -36,17 +36,15 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 if not os.path.exists('params_plot.py'):
     copy('%s/params_plot.template.py' % (script_dir), './params_plot.py')
 
-import qcore_path
-import geo
+import qcore.geo as geo
 from params_base import *
 srf_cnrs = srf_cnrs[0]
 xyts_file = xyts_files[0]
 import params_plot as plot
 tsplot = plot.TS
 base_dir = os.path.abspath(sim_dir)
-from shared import get_corners
-import gmt
-from xyts import XYTSFile
+import qcore.gmt as gmt
+from qcore.xyts import XYTSFile
 
 ###
 ### DIRECTORIES

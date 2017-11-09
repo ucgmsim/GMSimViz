@@ -17,9 +17,8 @@ import sys
 import tarfile as tf
 from tempfile import mkstemp
 
-import qcore_path
 # srf corners used repeatedly - precalculate
-from srf import srf2corners
+from qcore.srf import srf2corners
 
 def prepare(sd, tp):
     """
