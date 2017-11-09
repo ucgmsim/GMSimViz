@@ -20,11 +20,16 @@ PAGE_HEIGHT = 9
 SCALE_WIDTH = PAGE_WIDTH / 1.618
 SCALE_SIZE = 0.25
 SCALE_PAD = 0.1
+OVERLAY_T = 40
 # 120 for 1920x1080, 16ix9i
 DPI = 120
 
-def timeslice(i, n, meta):
+def timeslice(job, meta):
 
+    if job['seq'] == None:
+        i = 0
+    else:
+        i = job['seq']
     # working directory for current image
     swd = mkdtemp(prefix = '_%.4d_' % (i), dir = meta['wd'])
     #copy(os.path.join(meta['wd'], gmt.GMT_CONF), \
@@ -33,26 +38,17 @@ def timeslice(i, n, meta):
     #        os.path.join(swd, gmt.GMT_HISTORY))
     gmt_ps = os.path.join(swd, '%s_perspective%s.ps' \
         % (os.path.splitext(os.path.basename(meta['srf_file']))[0], \
-        '_%.4d' % (i) * (n > 1)))
+        '_%.4d' % (i) * (job['seq'] != None)))
 
-    # position in animation
-    if meta['s_azimuth'] <= 180:
-        azimuth = 180 - (i / float(n)) * (180 - meta['s_azimuth'])
-    else:
-        azimuth = 180 + (i / float(n)) * (meta['s_azimuth'] - 180)
-    tilt = 90 - (i / float(n)) * (90 - meta['map_tilt'])
     # borders on page
     window_t = 0.8
     window_b = 0.3
     scale_p_final = 0.7
-    if meta['animate']:
-        scale_p = min(i, meta['t_frames']) / meta['t_frames'] * scale_p_final
-    else:
-        scale_p = scale_p_final
+    scale_p = job['scale_t'] * scale_p_final
 
     # smallest size to fill page
     gmt_x_size, gmt_y_size, sx, by = gmt.perspective_fill( \
-            PAGE_WIDTH, PAGE_HEIGHT, view = azimuth, tilt = tilt)
+            PAGE_WIDTH, PAGE_HEIGHT, view = job['azimuth'], tilt = job['tilt'])
     # oblique mercator 'O' would be ideal but doesn't seem to work with 3D
     new_y_size, map_region = gmt.adjust_latitude('M', gmt_x_size, gmt_y_size, \
             meta['map_region'], wd = swd, abs_diff = True, \
@@ -70,11 +66,11 @@ def timeslice(i, n, meta):
     # geographic projection
     z_scale = -0.1
     p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
-            p = '%s/%s/0' % (azimuth, tilt), x_shift = - sx, y_shift = - by)
+            p = '%s/%s/0' % (job['azimuth'], job['tilt']), x_shift = - sx, y_shift = - by)
     # load srf plane data
     srf_data = gmt.srf2map(meta['srf_file'], swd, prefix = 'plane', \
             value = 'slip', cpt_percentile = 95, wd = swd, \
-            xy = True, pz = z_scale * math.cos(math.radians(tilt)), \
+            xy = True, pz = z_scale * math.cos(math.radians(job['tilt'])), \
             dpu = DPI)
     p.basemap()
     p.sites(gmt.sites_major)
@@ -89,7 +85,8 @@ def timeslice(i, n, meta):
         if not os.path.exists('%s/plane_%d_slip_xy.grd' % (swd, s)):
             continue
         p.overlay('%s/plane_%d_slip_xy.grd' % (swd, s), \
-                '%s/plane.cpt' % (swd), transparency = 40, \
+                '%s/plane.cpt' % (swd), \
+                transparency = job['transparency'], \
                 crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s), \
                 custom_region = srf_data[1][s])
     p.background(PAGE_WIDTH, PAGE_HEIGHT, spacial = False, \
@@ -132,7 +129,7 @@ def timeslice(i, n, meta):
 
     # place outlines on top of slip distribution
     p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
-            p = '%s/%s/0' % (azimuth, tilt))
+            p = '%s/%s/0' % (job['azimuth'], job['tilt']))
     # srf outline: underground, surface, hypocentre
     p.path(meta['gmt_bottom'], is_file = False, colour = 'blue', width = '1p', \
             split = '-', close = True, z = True)
@@ -210,14 +207,32 @@ if len(sys.argv) > 1:
     meta = {'wd':gmt_temp, 'srf_file':srf_file, 's_azimuth':s_azimuth, \
             'map_tilt':map_tilt, 'hlon':hlon, 'hlat':hlat, 'hdepth':hdepth, \
             'gmt_bottom':gmt_bottom, 'gmt_top':gmt_top, 'animate':args.animate, \
-            'map_region':map_region, 't_frames':args.mtime * args.framerate}
+            'map_region':map_region, 't_frames':int(args.mtime * args.framerate)}
 
     # tasks
     if not args.animate:
-        msg_list = [(timeslice, 1, 1, meta)]
+        msg_list = [(timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
+                'scale_t':1, 'seq':None, 'transparency':OVERLAY_T}, meta)]
     else:
+        msg_list = []
+        # stage 1 position in animation
         frames = int(args.time * args.framerate)
-        msg_list = [(timeslice, i, frames - 1, meta) for i in xrange(frames)]
+        for i in xrange(frames):
+            if s_azimuth <= 180:
+                azimuth = 180 - (i / float(frames - 1)) * (180 - s_azimuth)
+            else:
+                azimuth = 180 + (i / float(frames - 1)) * (s_azimuth - 180)
+            scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
+            tilt = 90 - (i / float(frames - 1)) * (90 - map_tilt)
+            msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
+                    'scale_t':scale_t, 'seq':i, 'transparency':OVERLAY_T}, meta])
+        # slip fadeout - todo: copy last frame to begin with
+        for i in xrange(meta['t_frames']):
+            scale_t = 1 - i / (meta['t_frames'] - 1.0)
+            over_t = 100 - (100 - OVERLAY_T) * scale_t
+            msg_list.append([timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
+                    'scale_t':scale_t, 'seq':frames + i, 'transparency':over_t}, meta])
+        frames += meta['t_frames']
     nproc = min(len(msg_list), args.nproc)
     # spawn slaves
     comm = MPI.COMM_WORLD.Spawn(
@@ -299,7 +314,7 @@ else:
             sleep(1)
             logbook.append(('sleep', time() - t0))
         elif task[0] is timeslice:
-            timeslice(task[1], task[2], task[3])
+            timeslice(task[1], task[2])
             logbook.append(('timeslice', task[1], time() - t0))
         else:
             print('Slave recieved unknown task to complete: %s.' % (task))
