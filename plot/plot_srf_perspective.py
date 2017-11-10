@@ -8,6 +8,7 @@ from tempfile import mkdtemp
 from time import time
 
 from mpi4py import MPI
+import numpy as np
 
 import geo
 import gmt
@@ -67,37 +68,51 @@ def timeslice(job, meta):
     z_scale = -0.1
     p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
             p = '%s/%s/0' % (job['azimuth'], job['tilt']), x_shift = - sx, y_shift = - by)
-    # load srf plane data
-    srf_data = gmt.srf2map(meta['srf_file'], swd, prefix = 'plane', \
-            value = 'slip', cpt_percentile = 95, wd = swd, \
-            xy = True, pz = z_scale * math.cos(math.radians(job['tilt'])), \
-            dpu = DPI)
     p.basemap()
     p.sites(gmt.sites_major)
     p.rose('C', 'M', '2i', pos = 'rel', \
             dxp = PAGE_WIDTH / 2 - 2, dyp = PAGE_HEIGHT / 2 - 1.8, \
             fill = 'white@80', clearance = '-0.4i/0.2i', pen = 'thick,red')
 
+    # load srf plane data
+    if job['sim_time'] == 0 and job['transparency'] < 100:
+        plot = 'slip'
+        srf_data = gmt.srf2map(meta['srf_file'], swd, prefix = 'plane', \
+                value = 'slip', cpt_percentile = 95, wd = swd, \
+                xy = True, pz = z_scale * math.cos(math.radians(job['tilt'])), \
+                dpu = DPI)
+    elif job['sim_time'] > 0:
+        plot = 'sliprate'
+
     # slip distribution has been reprojected onto x, y of page area
     p.spacial('X', (0, PAGE_WIDTH + sx, 0, PAGE_HEIGHT + by), \
             sizing = '%s/%s' % (PAGE_WIDTH + sx, PAGE_HEIGHT + by))
-    for s in xrange(len(srf_data[1])):
-        if not os.path.exists('%s/plane_%d_slip_xy.grd' % (swd, s)):
-            continue
-        p.overlay('%s/plane_%d_slip_xy.grd' % (swd, s), \
-                '%s/plane.cpt' % (swd), \
-                transparency = job['transparency'], \
-                crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s), \
-                custom_region = srf_data[1][s])
+    if plot == 'slip':
+        for s in xrange(len(srf_data[1])):
+            if not os.path.exists('%s/plane_%d_slip_xy.grd' % (swd, s)):
+                continue
+            p.overlay('%s/plane_%d_slip_xy.grd' % (swd, s), \
+                    '%s/plane.cpt' % (swd), \
+                    transparency = job['transparency'], \
+                    crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s), \
+                    custom_region = srf_data[1][s])
     p.background(PAGE_WIDTH, PAGE_HEIGHT, spacial = False, \
             window = (0.5, 0.5, window_t, max(window_b, scale_p)), \
             x_margin = sx, y_margin = by, colour = 'white@50')
-    p.cpt_scale(PAGE_WIDTH / 2.0 + sx, scale_p + by, '%s/plane.cpt' % (swd), \
-            length = SCALE_WIDTH, align = 'CT', \
-            dy = SCALE_PAD, thickness = SCALE_SIZE, \
-            major = srf_data[2]['cpt_max'] / 5., \
-            minor = srf_data[2]['cpt_max'] / 20., \
-            cross_tick = srf_data[2]['cpt_max'] / 20.)
+    if plot == 'slip':
+        p.cpt_scale(PAGE_WIDTH / 2.0 + sx, scale_p + by, '%s/plane.cpt' % (swd), \
+                length = SCALE_WIDTH, align = 'CT', \
+                dy = SCALE_PAD, thickness = SCALE_SIZE, \
+                major = srf_data[2]['cpt_max'] / 5., \
+                minor = srf_data[2]['cpt_max'] / 20., \
+                cross_tick = srf_data[2]['cpt_max'] / 20.)
+    elif plot == 'sliprate':
+        p.cpt_scale(PAGE_WIDTH / 2.0 + sx, scale_p + by, \
+                '%s/sliprate.cpt' % (meta['wd']), length = SCALE_WIDTH, \
+                align = 'CT', dy = SCALE_PAD, thickness = SCALE_SIZE, \
+                major = meta['sr_cpt_max'] / 5., \
+                minor = meta['sr_cpt_max'] / 20., \
+                cross_tick = meta['sr_cpt_max'] / 20.)
     # middle of scale
     cpt_y = scale_p + by - 0.5 * SCALE_SIZE - SCALE_PAD
     # space before scale starts
@@ -209,10 +224,51 @@ if len(sys.argv) > 1:
             'gmt_bottom':gmt_bottom, 'gmt_top':gmt_top, 'animate':args.animate, \
             'map_region':map_region, 't_frames':int(args.mtime * args.framerate)}
 
+    # TODO: sliprate preparation should be an early task
+    slip_end = srf.srf2llv_py(srf_file, value = 'ttotal')
+    rup_time = max([max(slip_end[p][:, 2]) for p in xrange(len(slip_end))])
+    # internal dt
+    srf_dt = srf.srf_dt(srf_file)
+    # frames per slip rate increment
+    fpdt = 1 / (srf_dt * args.framerate)
+    # decimation of srf slip rate dt to show
+    srf_ddt = max(1, math.floor(fpdt))
+    # desimated dt
+    ddt = srf_ddt * srf_dt
+    ts_sr = int(math.ceil(rup_time / ddt))
+    time_sr = ts_sr / float(args.framerate)
+    # frames containing slip rates
+    frames_sr = int(time_sr * args.framerate)
+    # TODO: possibly interpolate in future
+    spec_sr = 'sliprate-%s-%s' % (ddt, time_sr)
+    slip_pos, slip_rate = srf.srf2llv_py(srf_file, value = spec_sr, depth = True)
+    for plane in xrange(len(slip_pos)):
+        slip_pos[plane].astype(np.float32).tofile( \
+                os.path.join(gmt_temp, 'subfaults_%d.bin' % (plane)))
+        slip_rate[plane].astype(np.float32).tofile( \
+                os.path.join(gmt_temp, 'sliprates_%d.bin' % (plane)))
+    meta['sr_dt'] = ddt
+    meta['sr_len'] = ts_sr
+    # produce cpt
+    # produce the max sliprate array for colour palette and stats
+    sliprate_max = np.array([], dtype = np.float32)
+    for plane in xrange(len(slip_rate)):
+        sliprate_max = np.append(sliprate_max, \
+                np.nanmax(slip_rate[plane], axis = 1))
+    # maximum range to 2 sf
+    cpt_max = np.nanpercentile(sliprate_max, 50)
+    cpt_max = round(cpt_max, 1 - int(floor(log10(abs(cpt_max)))))
+    # colour palette for slip
+    gmt.makecpt('%s/cpt/slip.cpt' % (script_dir), \
+            '%s/sliprate.cpt' % (gmt_temp), 0, cpt_max, \
+            inc = 2, invert = False)
+    meta['sr_cpt_max'] = cpt_max
+
     # tasks
     if not args.animate:
         msg_list = [(timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
-                'scale_t':1, 'seq':None, 'transparency':OVERLAY_T}, meta)]
+                'scale_t':1, 'seq':None, 'transparency':OVERLAY_T, \
+                'sim_time':0}, meta)]
     else:
         msg_list = []
         # stage 1 position in animation
@@ -225,14 +281,23 @@ if len(sys.argv) > 1:
             scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
             tilt = 90 - (i / float(frames - 1)) * (90 - map_tilt)
             msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
-                    'scale_t':scale_t, 'seq':i, 'transparency':OVERLAY_T}, meta])
+                    'scale_t':scale_t, 'seq':i, 'transparency':OVERLAY_T, \
+                    'sim_time':0}, meta])
         # slip fadeout - todo: copy last frame to begin with
         for i in xrange(meta['t_frames']):
             scale_t = 1 - i / (meta['t_frames'] - 1.0)
             over_t = 100 - (100 - OVERLAY_T) * scale_t
             msg_list.append([timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
-                    'scale_t':scale_t, 'seq':frames + i, 'transparency':over_t}, meta])
+                    'scale_t':scale_t, 'seq':frames + i, 'sim_time':0, \
+                    'transparency':over_t}, meta])
         frames += meta['t_frames']
+        # sliprate
+        for i in xrange(frames_sr):
+            scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
+            msg_list.append([timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
+                    'scale_t':scale_t, 'seq':frames + i, 'transparency':OVERLAY_T, \
+                    'sim_time':i * 1.0 / args.framerate}, meta])
+        frames += frames_sr
     nproc = min(len(msg_list), args.nproc)
     # spawn slaves
     comm = MPI.COMM_WORLD.Spawn(
