@@ -481,7 +481,7 @@ if len(sys.argv) > 1:
     from glob import glob
 
     sys.path.insert(0, '.')
-    from shared import get_corners
+    from qcore.shared import get_corners
 
     # copy default params
     script_dir = os.path.abspath(os.path.dirname(__file__))
