@@ -92,9 +92,12 @@ def update_gmt_path(gmt_bin):
     gmtp.wait()
     GMT_MAJOR, GMT_MINOR = map(int, GMT_VERSION.split('.')[:2])
 
-    if GMT_MAJOR != 5:
-        print('This library is only for GMT version 5. You have %s.' \
+    if GMT_MAJOR < 5:
+        print('GMT v%s is too old. Expect nothing to work.' \
                 % (GMT_VERSION))
+        psconvert = 'ps2raster'
+    elif GMT_MAJOR > 5:
+        psconvert = 'psconvert'
     # ps2raster becomes psconvert in GMT 5.2
     elif GMT_MINOR < 2:
         psconvert = 'ps2raster'
@@ -2082,7 +2085,7 @@ class GMTPlot:
         cmd = [GMT, 'psscale', '-C%s' % (cpt), '-K', '-O']
 
         # build command based on parameters
-        if GMT_MINOR < 2:
+        if GMT_MAJOR == 5 and GMT_MINOR < 2:
             pos_spec = '-D%s/%s/%s/%s%s' % \
                     (x + dx, y + dy, length, thickness, 'h' * horiz)
             if arrow_f or arrow_b:
