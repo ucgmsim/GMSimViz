@@ -85,12 +85,38 @@ def timeslice(job, meta):
                 dpu = DPI)
     elif job['sim_time'] > 0:
         plot = 'sliprate'
-        for i in meta['n_plane']:
+        regions_sr = []
+        # TODO: major refactoring, already exists within gmt.srf2map
+        for i in xrange(meta['n_plane']):
+            srt = int(round(job['sim_time'] / meta['sr_dt']))
+            if srt > meta['sr_len']:
+                continue
             # lon, lat, depth
             subfaults = np.fromfile('%s/subfaults_%d.bin' % (meta['wd'], i), \
                     dtype = '3f')
-            sliprates = np.fromfile('%s/sliprates_%d.bin' % (meta['wd'], i, \
-                    dtype = 'f').reshape(len(subfaults), -1)
+            # reproject
+            xyv = np.empty((subfaults.shape[0], 3))
+            xyv[:, :2] = gmt.mapproject_multi(subfaults[:, :2], wd = swd, \
+                    z = '-Jz%s' % (z_scale), p = True)
+            xyv[:, 1] += subfaults[:, 2] \
+                    * z_scale * math.cos(math.radians(job['tilt']))
+            xyv[:, 2] = np.fromfile('%s/sliprates_%d.bin' % (meta['wd'], i), \
+                    dtype = 'f').reshape(len(subfaults), -1)[:, srt]
+            # region
+            x_min, y_min = np.min(xyv[:, :2], axis = 0)
+            x_max, y_max = np.max(xyv[:, :2], axis = 0)
+            regions_sr.append((x_min, x_max, y_min, y_max))
+            # dump as binary
+            xyv.astype(np.float32) \
+                .tofile('%s/sliprate_%d.bin' % (swd, i))
+            rc = gmt.table2grd('%s/sliprate_%d.bin' % (swd, i), \
+                    '%s/sliprate_%d.grd' % (swd, i), \
+                    file_input = True, grd_type = 'nearneighbor', \
+                    region = regions_sr[i], dx = 1.0 / DPI, dy = 1.0 / DPI, \
+                    wd = swd, geo = False, search = 3.0 / DPI)
+            if rc == gmt.STATUS_INVALID \
+                    and os.path.exists('%s/sliprate_%d.grd' % (swd, i)):
+                os.remove('%s/sliprate_%d.grd' % (swd, i))
 
     # slip distribution has been reprojected onto x, y of page area
     p.spacial('X', (0, PAGE_WIDTH + sx, 0, PAGE_HEIGHT + by), \
@@ -104,6 +130,15 @@ def timeslice(job, meta):
                     transparency = job['transparency'], \
                     crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s), \
                     custom_region = srf_data[1][s])
+    elif plot == 'sliprate':
+        for s in xrange(meta['n_plane']):
+            if not os.path.exists('%s/sliprate_%d.grd' % (swd, s)):
+                continue
+            p.overlay('%s/sliprate_%d.grd' % (swd, s), \
+                    '%s/sliprate.cpt' % (meta['wd']), \
+                    transparency = job['transparency'], \
+                    #crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s), \
+                    custom_region = regions_sr[s])
     p.background(PAGE_WIDTH, PAGE_HEIGHT, spacial = False, \
             window = (WINDOW_L, WINDOW_R, WINDOW_T, max(WINDOW_B, scale_p)), \
             x_margin = sx, y_margin = by, colour = 'white@50')
@@ -252,7 +287,7 @@ if len(sys.argv) > 1:
     # desimated dt
     ddt = srf_ddt * srf_dt
     ts_sr = int(math.ceil(rup_time / ddt))
-    time_sr = ts_sr / float(args.framerate)
+    time_sr = ts_sr * ddt
     # frames containing slip rates
     frames_sr = int(time_sr * args.framerate)
     # TODO: possibly interpolate in future
@@ -289,17 +324,17 @@ if len(sys.argv) > 1:
     else:
         msg_list = []
         # stage 1 position in animation
-        frames = 0#int(args.time * args.framerate)
-        #for i in xrange(frames):
-        #    if s_azimuth <= 180:
-        #        azimuth = 180 - (i / float(frames - 1)) * (180 - s_azimuth)
-        #    else:
-        #        azimuth = 180 + (i / float(frames - 1)) * (s_azimuth - 180)
-        #    scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
-        #    tilt = 90 - (i / float(frames - 1)) * (90 - map_tilt)
-        #    msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
-        #            'scale_t':scale_t, 'seq':i, 'transparency':OVERLAY_T, \
-        #            'sim_time':0}, meta])
+        frames = int(args.time * args.framerate)
+        for i in xrange(frames):
+            if s_azimuth <= 180:
+                azimuth = 180 - (i / float(frames - 1)) * (180 - s_azimuth)
+            else:
+                azimuth = 180 + (i / float(frames - 1)) * (s_azimuth - 180)
+            scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
+            tilt = 90 - (i / float(frames - 1)) * (90 - map_tilt)
+            msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
+                    'scale_t':scale_t, 'seq':i, 'transparency':OVERLAY_T, \
+                    'sim_time':0}, meta])
         # slip fadeout - todo: copy last frame to begin with
         for i in xrange(meta['t_frames']):
             scale_t = 1 - i / (meta['t_frames'] - 1.0)
@@ -309,12 +344,12 @@ if len(sys.argv) > 1:
                     'transparency':over_t}, meta])
         frames += meta['t_frames']
         # sliprate
-        for i in xrange(min(frames_sr, 20)):
+        for i in xrange(frames_sr):
             scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
             msg_list.append([timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
                     'scale_t':scale_t, 'seq':frames + i, 'transparency':OVERLAY_T, \
                     'sim_time':i * 1.0 / args.framerate}, meta])
-        frames += min(frames_sr, 20)
+        frames += frames_sr
     nproc = min(len(msg_list), args.nproc)
     # spawn slaves
     comm = MPI.COMM_WORLD.Spawn(

@@ -775,16 +775,25 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
         except (ValueError, AssertionError):
             cmd.append('-bi3f')
         # run command
-        Popen(cmd, cwd = wd).wait()
+        p = Popen(cmd, stderr = PIPE, cwd = wd)
+        e = p.communicate()[1]
+        p.wait()
         # also create radius based mask if wanted
         if automask != None:
             Popen(cmd_mask, cwd = wd).wait()
     else:
-        grdp = Popen(cmd, stdin = PIPE, cwd = wd)
-        grdp.communicate(table_in)
-        grdp.wait()
+        p = Popen(cmd, stdin = PIPE, stderr = PIPE, cwd = wd)
+        e = p.communicate(table_in)[1]
+        p.wait()
 
     write_history(True, wd = wd)
+
+    if len(e) == 0:
+        return STATUS_SUCCESS
+    elif 'No valid values in grid' in e:
+        return STATUS_INVALID
+    else:
+        return STATUS_UNKNOWN
 
 def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
         wd = None, inside = '1', outside = 'NaN', geo = True, mask_dist = None):
