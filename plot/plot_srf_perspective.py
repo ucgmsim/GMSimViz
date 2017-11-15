@@ -13,6 +13,7 @@ import numpy as np
 import geo
 import gmt
 import srf
+import xyts
 
 MASTER = 0
 TILT_MAX = 20
@@ -71,19 +72,23 @@ def timeslice(job, meta):
     p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
             p = '%s/%s/0' % (job['azimuth'], job['tilt']), x_shift = - sx, y_shift = - by)
     p.basemap()
+    # simulation domain
+    if os.path.isfile('%s/xyts.gmt' % (meta['wd'])):
+        p.path('%s/xyts.gmt' % (meta['wd']), close = True, \
+                width = '2p', split = '-')
     p.sites(gmt.sites_major)
     p.rose('C', 'M', '2i', pos = 'rel', \
             dxp = PAGE_WIDTH / 2 - 2, dyp = PAGE_HEIGHT / 2 - 1.8, \
             fill = 'white@80', clearance = '-0.4i/0.2i', pen = 'thick,red')
 
     # load srf plane data
-    if job['sim_time'] == 0:
+    if job['sim_time'] < 0:
         plot = 'slip'
         srf_data = gmt.srf2map(meta['srf_file'], swd, prefix = 'plane', \
                 value = 'slip', cpt_percentile = 95, wd = swd, \
                 xy = True, pz = z_scale * math.cos(math.radians(job['tilt'])), \
                 dpu = DPI)
-    elif job['sim_time'] > 0:
+    elif job['sim_time'] >= 0:
         plot = 'sliprate'
         regions_sr = []
         # TODO: major refactoring, already exists within gmt.srf2map
@@ -217,6 +222,7 @@ if len(sys.argv) > 1:
 
     parser = ArgumentParser()
     parser.add_argument('srf_file', help = 'srf file to plot')
+    parser.add_argument('-x', '--xyts', help = 'xyts file to plot')
     parser.add_argument('-a', '--animate', help = 'create animation', \
             action = 'store_true')
     parser.add_argument('-n', '--nproc', help = 'number of processes to run', \
@@ -235,13 +241,21 @@ if len(sys.argv) > 1:
     if args.mtime > args.time:
         print('Failed constraints (mtime <= time).')
         sys.exit(1)
-    srf_file = os.path.abspath(sys.argv[1])
-    # check file exists
+    # srf check
+    srf_file = os.path.abspath(args.srf_file)
     try:
         assert(os.path.isfile(srf_file))
     except AssertionError:
         print('Could not find SRF: %s' % (srf_file))
         sys.exit(2)
+    # xyts optional
+    if args.xyts != None:
+        xyts_file = os.path.abspath(args.xyts)
+        if not os.path.isfile(xyts_file):
+            print('Could not find XYTS: %s' % (xyts_file))
+            sys.exit(2)
+    else:
+        xyts_file = None
 
     # load plane data
     try:
@@ -316,11 +330,20 @@ if len(sys.argv) > 1:
             inc = 2, invert = False)
     meta['sr_cpt_max'] = cpt_max
 
+    # xyts preparation
+    if xyts_file != None:
+        xfile = xyts.XYTSFile(xyts_file, meta_only = True)
+        xcnrs = xfile.corners(gmt_format = True)
+        with open('%s/xyts.gmt' % (gmt_temp), 'w') as xpath:
+            xpath.write(xcnrs[1])
+        geo.path_from_corners(corners = xcnrs[0], \
+                output = '%s/xyts-hr.gmt' % (gmt_temp))
+
     # tasks
     if not args.animate:
         msg_list = [(timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
                 'scale_t':1, 'seq':None, 'transparency':OVERLAY_T, \
-                'sim_time':0}, meta)]
+                'sim_time':-1}, meta)]
     else:
         msg_list = []
         # stage 1 position in animation
@@ -334,13 +357,13 @@ if len(sys.argv) > 1:
             tilt = 90 - (i / float(frames - 1)) * (90 - map_tilt)
             msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                     'scale_t':scale_t, 'seq':i, 'transparency':OVERLAY_T, \
-                    'sim_time':0}, meta])
+                    'sim_time':-1}, meta])
         # slip fadeout - todo: copy last frame to begin with
         for i in xrange(meta['t_frames']):
             scale_t = 1 - i / (meta['t_frames'] - 1.0)
             over_t = 100 - (100 - OVERLAY_T) * scale_t
             msg_list.append([timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
-                    'scale_t':scale_t, 'seq':frames + i, 'sim_time':0, \
+                    'scale_t':scale_t, 'seq':frames + i, 'sim_time':-1, \
                     'transparency':over_t}, meta])
         frames += meta['t_frames']
         # sliprate
