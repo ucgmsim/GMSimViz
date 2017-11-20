@@ -8,6 +8,6 @@ setup(
     packages=pkgs,
     url="https://github.com/ucgmsim/qcore",
     description="QuakeCoRE Library",
-    package_data={'': ['*.json', '*.sh']},
+    package_data={'': ['*.json', '*.sh', 'cpt/*.cpt']},
     install_requires=['numpy', 'mpi4py', 'scipy'],
 )
