@@ -153,3 +153,8 @@ def acc2vel(timeseries, dt):
     """
     return np.cumsum(timeseries) * dt
 
+def calcMMI(pgv):
+    return np.where(np.log10(pgv) < 0.53,
+                    3.78 + 1.47 * np.log10(pgv),
+                    2.89 + 3.16 * np.log10(pgv))
+
