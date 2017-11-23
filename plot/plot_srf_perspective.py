@@ -24,7 +24,8 @@ SCALE_SIZE = 0.25
 SCALE_PAD = 0.1
 OVERLAY_T = 40
 # 120 for 1920x1080, 16ix9i
-DPI = 120
+# 240 for 3840x2160
+DPI = 240
 # borders on page
 WINDOW_T = 0.8
 WINDOW_B = 0.3
@@ -70,7 +71,8 @@ def timeslice(job, meta):
     # geographic projection
     z_scale = -0.1
     p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
-            p = '%s/%s/0' % (job['azimuth'], job['tilt']), x_shift = - sx, y_shift = - by)
+            p = '%s/%s/0' % (job['azimuth'], job['tilt']), \
+            x_shift = - sx, y_shift = - by)
     p.basemap()
     # simulation domain
     if os.path.isfile('%s/xyts.gmt' % (meta['wd'])):
@@ -114,11 +116,15 @@ def timeslice(job, meta):
             # dump as binary
             xyv.astype(np.float32) \
                 .tofile('%s/sliprate_%d.bin' % (swd, i))
+            # search radius based on diagonal distance
+            p2 = xyv[meta['planes'][i]['nstrike'], :2]
+            search = math.sqrt(abs(xyv[0, 0] - p2[0]) ** 2 \
+                    + abs(xyv[0, 1] - p2[1]) ** 2)
             rc = gmt.table2grd('%s/sliprate_%d.bin' % (swd, i), \
                     '%s/sliprate_%d.grd' % (swd, i), \
                     file_input = True, grd_type = 'nearneighbor', \
                     region = regions_sr[i], dx = 1.0 / DPI, dy = 1.0 / DPI, \
-                    wd = swd, geo = False, search = 3.0 / DPI)
+                    wd = swd, geo = False, search = search, min_sectors = 2)
             if rc == gmt.STATUS_INVALID \
                     and os.path.exists('%s/sliprate_%d.grd' % (swd, i)):
                 os.remove('%s/sliprate_%d.grd' % (swd, i))
@@ -176,6 +182,16 @@ def timeslice(job, meta):
             dy = WINDOW_T / -2.0, dx = - 0.2)
     # sim time
     if job['sim_time'] >= 0:
+        xfile = xyts.XYTSFile(meta['xyts_file'])
+        xpos = int(round(job['sim_time'] / xfile.dt))
+        if xpos < xfile.nt:
+            xfile.tslice_get(xpos, outfile = '%s/gm.bin' % (swd))
+            gmt.table2grd('%s/gm.bin' % (swd), '%s/gm.grd' % (swd), \
+                    grd_type = 'surface', region = meta['xyts_region'], \
+                    dx = meta['xyts_res'], climit = meta['xyts_cpt_max'] * 0.01, \
+                    wd = swd, tension = '1.0')
+            gmt.grdclip('%s/gm.grd' % (swd), '%s/gm.grd' % (swd), \
+                    min_v = meta['xyts_cpt_max'] * 0.03, wd = swd)
         p.text(sx + PAGE_WIDTH - WINDOW_R, by + PAGE_HEIGHT - WINDOW_T, \
                 '%.3fs' % (job['sim_time']), size = '24p', \
                 align = "BR", font = 'Courier', dx = -0.2, dy = 0.1)
@@ -209,6 +225,20 @@ def timeslice(job, meta):
     p.points('%s %s %s\n' % (meta['hlon'], meta['hlat'], meta['hdepth']), \
             is_file = False, shape = 'a', size = 0.35, line = 'blue', \
             line_thickness = '1p', z = True, clip = False)
+    # ground motion
+    if os.path.isfile('%s/gm.grd' % (swd)):
+        #p.overlay('%s/gm.grd' % (swd), '%s/xyts.cpt' % (meta['wd']), \
+        #        transparency = job['transparency'], \
+        #        crop_grd = '%s/xyts-mask.grd' % (meta['wd']), \
+        #        custom_region = meta['xyts_region'])
+        p.overlay3d('%s/gm.grd' % (swd), cpt = '%s/xyts.cpt' % (meta['wd']), \
+                transparency = job['transparency'], dpi = DPI, \
+                crop_grd = '%s/xyts-mask.grd' % (meta['wd']), \
+                z = '-Jz%s' % (1.5 / meta['xyts_cpt_max']))
+        #p.overlay3d('%s/gm.grd' % (swd), \
+        #        transparency = 100, \
+        #        crop_grd = '%s/xyts-mask.grd' % (meta['wd']), \
+        #        z = '-Jz%s' % (1.5 / meta['xyts_cpt_max']))
 
     # finish, clean up
     p.finalise()
@@ -240,6 +270,9 @@ if len(sys.argv) > 1:
     args = parser.parse_args()
     if args.mtime > args.time:
         print('Failed constraints (mtime <= time).')
+        sys.exit(1)
+    if args.framerate < 5:
+        print('Framerate too low: %s' % (args.framerate))
         sys.exit(1)
     # srf check
     srf_file = os.path.abspath(args.srf_file)
@@ -307,6 +340,7 @@ if len(sys.argv) > 1:
     # TODO: possibly interpolate in future
     spec_sr = 'sliprate-%s-%s' % (ddt, time_sr)
     slip_pos, slip_rate = srf.srf2llv_py(srf_file, value = spec_sr, depth = True)
+    meta['planes'] = srf.read_header(srf_file, idx = True)
     for plane in xrange(len(slip_pos)):
         slip_pos[plane].astype(np.float32).tofile( \
                 os.path.join(gmt_temp, 'subfaults_%d.bin' % (plane)))
@@ -318,9 +352,11 @@ if len(sys.argv) > 1:
     # produce cpt
     # produce the max sliprate array for colour palette and stats
     sliprate_max = np.array([], dtype = np.float32)
-    for plane in xrange(len(slip_rate)):
-        sliprate_max = np.append(sliprate_max, \
-                np.nanmax(slip_rate[plane], axis = 1))
+    with np.warnings.catch_warnings():
+        np.warnings.filterwarnings('ignore', r'All-NaN (slice|axis) encountered')
+        for plane in xrange(len(slip_rate)):
+            sliprate_max = np.append(sliprate_max, \
+                    np.nanmax(slip_rate[plane], axis = 1))
     # maximum range to 2 sf
     cpt_max = np.nanpercentile(sliprate_max, 50)
     cpt_max = round(cpt_max, 1 - int(math.floor(math.log10(abs(cpt_max)))))
@@ -332,12 +368,29 @@ if len(sys.argv) > 1:
 
     # xyts preparation
     if xyts_file != None:
-        xfile = xyts.XYTSFile(xyts_file, meta_only = True)
+        xfile = xyts.XYTSFile(xyts_file, meta_only = False)
         xcnrs = xfile.corners(gmt_format = True)
+        xregion = xfile.region(corners = xcnrs[0])
+        xres = '%sk' % (xfile.hh * xfile.dxts * 3.0 / 5.0)
         with open('%s/xyts.gmt' % (gmt_temp), 'w') as xpath:
             xpath.write(xcnrs[1])
-        geo.path_from_corners(corners = xcnrs[0], \
+        geo.path_from_corners(corners = xcnrs[0], min_edge_points = 15, \
                 output = '%s/xyts-hr.gmt' % (gmt_temp))
+        print 'grdmask start'
+        gmt.grd_mask('%s/xyts-hr.gmt' % (gmt_temp), \
+                '%s/xyts-mask.grd' % (gmt_temp), dx = xres, dy = xres, \
+                region = xregion, wd = gmt_temp)
+        print 'grdmask done'
+        print 'pgv'
+        xfile.pgv(pgvout = '%s/xyts-pgv.bin' % (gmt_temp))
+        print 'pgv_done'
+        cpt_max = gmt.xyv_cpt_range('%s/xyts-pgv.bin' % (gmt_temp))[2]
+        gmt.makecpt('hot', '%s/xyts.cpt' % (gmt_temp), 0, cpt_max, \
+                invert = True, wd = gmt_temp, continuing = True)
+        meta['xyts_cpt_max'] = cpt_max
+        meta['xyts_region'] = xregion
+        meta['xyts_res'] = xres
+    meta['xyts_file'] = xyts_file
 
     # tasks
     if not args.animate:
@@ -348,6 +401,7 @@ if len(sys.argv) > 1:
         msg_list = []
         # stage 1 position in animation
         frames = int(args.time * args.framerate)
+        #frames = 0
         for i in xrange(frames):
             if s_azimuth <= 180:
                 azimuth = 180 - (i / float(frames - 1)) * (180 - s_azimuth)

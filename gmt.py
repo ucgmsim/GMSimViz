@@ -599,9 +599,10 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                 # bounds are likely of area = 0, do not procede
                 # caller should check if file below produced
                 # attempted plotting could cause invalid postscript / crash
+                print 'skip'
                 continue
             # search radius based on diagonal distance
-            p2 = xyv_repr[1 + planes[s]['nstrike'], :2]
+            p2 = xyv_repr[planes[s]['nstrike'], :2]
             search = math.sqrt(abs(xyv_repr[0, 0] - p2[0]) ** 2 \
                     + abs(xyv_repr[0, 1] - p2[1]) ** 2)
             # XY grid
@@ -609,7 +610,7 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                     '%s/%s_%s_%s_xy.grd' % (out_dir, prefix, s, value), \
                     file_input = True, grd_type = 'nearneighbor', \
                     region = regions[s], dx = plot_dx, dy = plot_dy, \
-                    wd = wd, geo = False, search = search)
+                    wd = wd, geo = False, search = search, min_sectors = 2)
         else:
             # X Y V files only
             seg_llvs[s].astype(np.float32).tofile('%s/%s_%d_%s.bin' \
@@ -795,6 +796,44 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
     else:
         return STATUS_UNKNOWN
 
+def grdclip(ingrid, outgrid, min_v = None, max_v = None, replace = None, \
+        range_v = None, region = None, new = 'NaN', wd = '.'):
+    """
+    Clip value ranges by changing their values.
+    min_v: clip below this value
+    max_v: clip above this value
+    replace: replace this value
+    range_v: replace values between lower bound (1st value) and upper (2nd)
+    region: limit output region to this subsection
+    new: value to replace selected values
+    """
+    cmd = [GMT, 'grdclip', ingrid, '-G%s' % (outgrid)]
+    # crop minimum/maximum/area values
+    if min_v != None:
+        # values below min_v -> NaN
+        cmd.append('-Sb%s/%s' % (min_v, new))
+    if max_v != None:
+        # values above max_v -> NaN
+        cmd.append('-Sa%s/%s' % (max_v, new))
+    if range_v != None:
+        # values between range_v[0] to range_v[1] -> NaN
+        cmd.append('-Si%s/%s/%s' % (range_v[0], range_v[1], new))
+    if replace != None:
+        cmd.append('-Sr%s/%s' % (replace, new))
+    if region != None:
+        cmd.append('-R%s/%s' % ('/'.join(map(str, region)), new))
+    # ignore stderr: usually because no data in area
+    p = Popen(cmd, stderr = PIPE, cwd = wd)
+    e = p.communicate()[1]
+    p.wait()
+
+    if len(e) == 0:
+        return STATUS_SUCCESS
+    elif 'No valid values in grid' in e:
+        return STATUS_INVALID
+    else:
+        return STATUS_UNKNOWN
+
 def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
         wd = None, inside = '1', outside = 'NaN', geo = True, mask_dist = None):
     """
@@ -850,8 +889,7 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
     else:
         return STATUS_UNKNOWN
 
-def grdmath(expression, region = None, dx = '1k', dy = '1k', \
-        wd = '.'):
+def grdmath(expression, wd = '.'):
     """
     Does operations on input grids and data (values or xyv files) RPN style
     gmt.soest.hawaii.edu/doc/5.1.0/grdmath.html
@@ -875,7 +913,16 @@ def grdmath(expression, region = None, dx = '1k', dy = '1k', \
 
     # required parameters are at the end of the command
     cmd.extend(map(str, expression))
-    Popen(cmd, cwd = wd).wait()
+    p = Popen(cmd, stderr = PIPE, cwd = wd)
+    e = p.communicate()[1]
+    p.wait()
+
+    if len(e) == 0:
+        return STATUS_SUCCESS
+    elif 'No valid values in grid' in e:
+        return STATUS_INVALID
+    else:
+        return STATUS_UNKNOWN
 
 def gmt_defaults(wd = '.', font_annot_primary = 16, \
         map_tick_length_primary = '0.05i', font_label = 16, \
@@ -2196,7 +2243,7 @@ class GMTPlot:
 
         # create surface grid
         # TODO: use separate function
-        if xyv_file[-4:] != '.grd':
+        if os.path.splitext(xyv_file)[-1] not in ['.grd', '.nc']:
             cmd = [GMT, 'surface', xyv_file, '-G%s' % (temp_grd), \
                     '-T0.0', '-I%s/%s' % (dx, dy), \
                     '-C%s' % (climit), region, '-fg']
@@ -2231,8 +2278,10 @@ class GMTPlot:
 
         # crop to path area by grd file
         if crop_grd != None:
-            Popen([GMT, 'grdmath', temp_grd, crop_grd, 'MUL', '=', temp_grd], \
-                    cwd = self.wd).wait()
+            rc = grdmath([temp_grd, crop_grd, 'MUL', '=', temp_grd], \
+                    wd = self.wd)
+            if rc == STATUS_INVALID:
+                return
 
         # crop minimum/maximum/area values
         if min_v != None or max_v != None:
@@ -2256,8 +2305,11 @@ class GMTPlot:
 
         # clip path for land to crop overlay
         if land_crop:
-            Popen([GMT, 'pscoast', '-J', '-R', '-Df', '-Gc', self.z, \
-                    '-K', '-O'], stdout = self.psf, cwd = self.wd).wait()
+            cmd = [GMT, 'pscoast', '-J', '-R', '-Df', '-Gc', self.z, \
+                    '-K', '-O']
+            if self.p:
+                cmd.append('-p')
+            Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
         if cpt != None:
             # cpt may be internal or a file
@@ -2267,6 +2319,8 @@ class GMTPlot:
             # here '-Q' will make NaN transparent
             cmd = [GMT, 'grdimage', temp_grd, '-J', '-R', '-C%s' % (cpt), \
                     '-t%s' % (transparency), '-Q', '-K', '-O', self.z]
+            if self.p:
+                cmd.append('-p')
             # ignore stderr: usually because no data in area
             Popen(cmd, stdout = self.psf, stderr = self.sink, \
                     cwd = self.wd).wait()
@@ -2287,19 +2341,22 @@ class GMTPlot:
                     contour_mindist = '%sp' % \
                             (float(str(font_size).rstrip('cip')) * 3)
                 cmd.append('-Gn%s/%s' % (contour_apl, contour_mindist))
+            if self.p:
+                cmd.append('-p')
             Popen(cmd, stdout = self.psf, stderr = self.sink, \
                     cwd = self.wd).wait()
 
         # apply land clip path
         if land_crop:
-            Popen([GMT, 'pscoast', '-J', '-R', '-Q', '-K', '-O', self.z], \
-                    stdout = self.psf, cwd = self.wd).wait()
+            cmd = [GMT, 'pscoast', '-J', '-R', '-Q', '-K', '-O', self.z]
+            Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
         # grd file not needed anymore, prevent clutter
         os.remove(temp_grd)
 
     def overlay3d(self, xyz_file, drapefile = None, cpt = None, \
-            crop_grd = None, transparency = 40, contours = None, dpi = None):
+            colour = 'darkgreen', crop_grd = None, transparency = 40, \
+            contours = None, dpi = None, z = None, mesh_transparency = 0):
         """
         Plot 3d datasets.
         xyz_file: 3d positioning. x, y, z values
@@ -2312,18 +2369,22 @@ class GMTPlot:
         """
         if crop_grd != None:
             temp_grd = '%s/overlay3d_tmp.grd' % (self.wd)
-            Popen([GMT, 'grdmath', xyz_file, crop_grd, 'MUL', '=', temp_grd], \
-                    cwd = self.wd).wait()
+            rc = grdmath([xyz_file, crop_grd, 'MUL', '=', temp_grd], \
+                    wd = self.wd)
+            if rc == STATUS_INVALID:
+                return
             xyz_file = temp_grd
-        cmd = [GMT, 'grdview', '-K', '-O', '-J', '-R', '-p', self.z, xyz_file, \
+        if z == None:
+            z = self.z
+        cmd = [GMT, 'grdview', '-K', '-O', '-J', '-R', '-p', z, xyz_file, \
                 '-t%s' % (transparency)]
         if drapefile != None:
             cmd.append('-G%s' % (drapefile))
         if cpt != None:
             cmd.append('-C%s' % (cpt))
-            cmd.append('-Qi%s@%s' % (dpi, transparency))
+            cmd.append('-Qsm%s@%s' % (dpi, transparency))
         else:
-            cmd.append('-Qm%s@%s' % ('darkgreen', '50'))
+            cmd.append('-Qm%s@%s' % (colour, transparency))
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def fault(self, in_path, is_srf = False, \
