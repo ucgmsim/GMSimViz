@@ -2356,7 +2356,8 @@ class GMTPlot:
 
     def overlay3d(self, xyz_file, drapefile = None, cpt = None, \
             colour = 'darkgreen', crop_grd = None, transparency = 40, \
-            contours = None, dpi = None, z = None, mesh_transparency = 0):
+            contours = None, dpi = None, z = None, \
+            mesh = False, mesh_pen = None):
         """
         Plot 3d datasets.
         xyz_file: 3d positioning. x, y, z values
@@ -2366,6 +2367,8 @@ class GMTPlot:
         transparency: transparency of entire layer
         contours: not implemented
         dpi: dpi of raster image generation. should match desired output dpi
+        z: set custom Z axis scaling in full form
+        mesh: draw a mesh as well if an image plot is being created
         """
         if crop_grd != None:
             temp_grd = '%s/overlay3d_tmp.grd' % (self.wd)
@@ -2382,9 +2385,11 @@ class GMTPlot:
             cmd.append('-G%s' % (drapefile))
         if cpt != None:
             cmd.append('-C%s' % (cpt))
-            cmd.append('-Qsm%s@%s' % (dpi, transparency))
+            cmd.append('-Qs%s' % ('m' * mesh))
         else:
             cmd.append('-Qm%s@%s' % (colour, transparency))
+        if mesh_pen != None:
+            cmd.append('-Wm%s' % (mesh_pen))
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def fault(self, in_path, is_srf = False, \

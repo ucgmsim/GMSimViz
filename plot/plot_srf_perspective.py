@@ -32,6 +32,43 @@ WINDOW_B = 0.3
 WINDOW_L = 0.5
 WINDOW_R = 0.5
 
+def load_xyts(meta):
+    """
+    Complete time-intensive tasks which aren't needed for beginning frames.
+    """
+    xfile = xyts.XYTSFile(meta['xyts_file'], meta_only = False)
+    # higher res outline needed for mask to follow great circle line
+    # not too high: becomes time intensive
+    geo.path_from_corners(corners = xfile.corners(), min_edge_points = 15, \
+            output = '%s/xyts/corners-hr.gmt' % (meta['wd']))
+    gmt.grd_mask('%s/xyts/corners-hr.gmt' % (meta['wd']), \
+            '%s/xyts/mask.nc' % (meta['wd']), \
+            dx = meta['xyts_res'], dy = meta['xyts_res'], \
+            region = meta['xyts_region'], wd = '%s/xyts' % (meta['wd']))
+    # pgv used to generate cpt scale
+    xfile.pgv(pgvout = '%s/xyts/pgv.bin' % (meta['wd']))
+    cpt_max = gmt.xyv_cpt_range('%s/xyts/pgv.bin' % (meta['wd']))[2]
+    gmt.makecpt('magma', '%s/xyts/gm.cpt' % (meta['wd']), 0, cpt_max, \
+            invert = True, wd = '%s/xyts' % (meta['wd']), continuing = True)
+
+    # preload timeslice overlays
+    # TODO: separate tasks
+    for t in xrange(xyts.nt):
+        ts_prefix = os.path.join(meta['wd'], 'xyts', 'ts%04d' % (meta['wd'])
+        # load binary data
+        xfile.tslice_get(t, outfile = '%s.bin' % (ts_prefix))
+        # store as netCDF
+        gmt.table2grd('%s.bin' % (ts_prefix), '%s.nc' % (ts_prefix), \
+                grd_type = 'surface', region = meta['xyts_region'], \
+                dx = meta['xyts_res'], climit = cpt_max * 0.01, \
+                wd = meta['wd'], tension = '1.0')
+        # don't show insignificant ground motion
+        gmt.grdclip('%s.nc' % (ts_prefix), '%s.nc' % (ts_prefix), \
+                min_v = cpt_max * 0.03, wd = '%s/xyts' % (meta['wd']))
+
+    # just get master to read this from the cpt or something
+    meta['xyts_cpt_max'] = cpt_max
+
 def timeslice(job, meta):
 
     if job['seq'] == None:
@@ -39,11 +76,8 @@ def timeslice(job, meta):
     else:
         i = job['seq']
     # working directory for current image
-    swd = mkdtemp(prefix = '_%.4d_' % (i), dir = meta['wd'])
-    #copy(os.path.join(meta['wd'], gmt.GMT_CONF), \
-    #        os.path.join(swd, gmt.GMT_CONF))
-    #copy(os.path.join(meta['wd'], gmt.GMT_HISTORY), \
-    #        os.path.join(swd, gmt.GMT_HISTORY))
+    swd = os.path.join(meta['wd'], '_%.4d_' % (i))
+    os.makedirs(swd)
     gmt_ps = os.path.join(swd, '%s_perspective%s.ps' \
         % (os.path.splitext(os.path.basename(meta['srf_file']))[0], \
         '_%.4d' % (i) * (job['seq'] != None)))
@@ -83,6 +117,14 @@ def timeslice(job, meta):
             dxp = PAGE_WIDTH / 2 - 2, dyp = PAGE_HEIGHT / 2 - 1.8, \
             fill = 'white@80', clearance = '-0.4i/0.2i', pen = 'thick,red')
 
+    # srf outline: underground, surface, hypocentre
+    p.path(meta['gmt_bottom'], is_file = False, colour = 'blue', width = '1p', \
+            split = '-', close = True, z = True)
+    p.path(meta['gmt_top'], is_file = False, colour = 'blue', width = '2p', \
+            z = True)
+    p.points('%s %s %s\n' % (meta['hlon'], meta['hlat'], meta['hdepth']), \
+            is_file = False, shape = 'a', size = 0.35, line = 'blue', \
+            line_thickness = '1p', z = True, clip = False)
     # load srf plane data
     if job['sim_time'] < 0:
         plot = 'slip'
@@ -128,6 +170,15 @@ def timeslice(job, meta):
             if rc == gmt.STATUS_INVALID \
                     and os.path.exists('%s/sliprate_%d.grd' % (swd, i)):
                 os.remove('%s/sliprate_%d.grd' % (swd, i))
+        # ground motion
+        xfile = xyts.XYTSFile(meta['xyts_file'])
+        xpos = int(round(job['sim_time'] / xfile.dt))
+        if os.path.isfile('%s/gm.grd' % (swd)):
+            p.overlay3d('%s/gm.grd' % (swd), cpt = '%s/xyts.cpt' % (meta['wd']), \
+                    transparency = job['transparency'], dpi = DPI, \
+                    crop_grd = '%s/xyts-mask.grd' % (meta['wd']), \
+                    z = '-Jz%s' % (1.5 / meta['xyts_cpt_max']), \
+                    mesh = True, mesh_pen = '0.1p')
 
     # slip distribution has been reprojected onto x, y of page area
     p.spacial('X', (0, PAGE_WIDTH + sx, 0, PAGE_HEIGHT + by), \
@@ -182,16 +233,6 @@ def timeslice(job, meta):
             dy = WINDOW_T / -2.0, dx = - 0.2)
     # sim time
     if job['sim_time'] >= 0:
-        xfile = xyts.XYTSFile(meta['xyts_file'])
-        xpos = int(round(job['sim_time'] / xfile.dt))
-        if xpos < xfile.nt:
-            xfile.tslice_get(xpos, outfile = '%s/gm.bin' % (swd))
-            gmt.table2grd('%s/gm.bin' % (swd), '%s/gm.grd' % (swd), \
-                    grd_type = 'surface', region = meta['xyts_region'], \
-                    dx = meta['xyts_res'], climit = meta['xyts_cpt_max'] * 0.01, \
-                    wd = swd, tension = '1.0')
-            gmt.grdclip('%s/gm.grd' % (swd), '%s/gm.grd' % (swd), \
-                    min_v = meta['xyts_cpt_max'] * 0.03, wd = swd)
         p.text(sx + PAGE_WIDTH - WINDOW_R, by + PAGE_HEIGHT - WINDOW_T, \
                 '%.3fs' % (job['sim_time']), size = '24p', \
                 align = "BR", font = 'Courier', dx = -0.2, dy = 0.1)
@@ -214,35 +255,15 @@ def timeslice(job, meta):
         p.text(max_x, cpt_y, '%.1f' % (srf_data[2]['max']), size = '16p', \
                 align = 'LM', dx = SCALE_PAD)
 
-    # place outlines on top of slip distribution
-    p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
-            p = '%s/%s/0' % (job['azimuth'], job['tilt']))
-    # srf outline: underground, surface, hypocentre
-    p.path(meta['gmt_bottom'], is_file = False, colour = 'blue', width = '1p', \
-            split = '-', close = True, z = True)
-    p.path(meta['gmt_top'], is_file = False, colour = 'blue', width = '2p', \
-            z = True)
-    p.points('%s %s %s\n' % (meta['hlon'], meta['hlat'], meta['hdepth']), \
-            is_file = False, shape = 'a', size = 0.35, line = 'blue', \
-            line_thickness = '1p', z = True, clip = False)
-    # ground motion
-    if os.path.isfile('%s/gm.grd' % (swd)):
-        #p.overlay('%s/gm.grd' % (swd), '%s/xyts.cpt' % (meta['wd']), \
-        #        transparency = job['transparency'], \
-        #        crop_grd = '%s/xyts-mask.grd' % (meta['wd']), \
-        #        custom_region = meta['xyts_region'])
-        p.overlay3d('%s/gm.grd' % (swd), cpt = '%s/xyts.cpt' % (meta['wd']), \
-                transparency = job['transparency'], dpi = DPI, \
-                crop_grd = '%s/xyts-mask.grd' % (meta['wd']), \
-                z = '-Jz%s' % (1.5 / meta['xyts_cpt_max']))
-        #p.overlay3d('%s/gm.grd' % (swd), \
-        #        transparency = 100, \
-        #        crop_grd = '%s/xyts-mask.grd' % (meta['wd']), \
-        #        z = '-Jz%s' % (1.5 / meta['xyts_cpt_max']))
+    #
+    #p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
+    #        p = '%s/%s/0' % (job['azimuth'], job['tilt']))
 
     # finish, clean up
     p.finalise()
     p.png(dpi = DPI, clip = False, out_dir = meta['wd'])
+    # temporary storage can get very large
+    rmtree(swd)
 
 ###
 ### MASTER
@@ -289,6 +310,9 @@ if len(sys.argv) > 1:
             sys.exit(2)
     else:
         xyts_file = None
+
+    # list of work for slaves to do
+    msgs = []
 
     # load plane data
     try:
@@ -366,28 +390,15 @@ if len(sys.argv) > 1:
             inc = 2, invert = False)
     meta['sr_cpt_max'] = cpt_max
 
-    # xyts preparation
+    # xyts quick preparation
     if xyts_file != None:
-        xfile = xyts.XYTSFile(xyts_file, meta_only = False)
+        os.makedirs(os.path.join(gmt_temp, 'xyts'))
+        xfile = xyts.XYTSFile(xyts_file, meta_only = True)
         xcnrs = xfile.corners(gmt_format = True)
         xregion = xfile.region(corners = xcnrs[0])
         xres = '%sk' % (xfile.hh * xfile.dxts * 3.0 / 5.0)
-        with open('%s/xyts.gmt' % (gmt_temp), 'w') as xpath:
+        with open('%s/xyts/corners.gmt' % (gmt_temp), 'w') as xpath:
             xpath.write(xcnrs[1])
-        geo.path_from_corners(corners = xcnrs[0], min_edge_points = 15, \
-                output = '%s/xyts-hr.gmt' % (gmt_temp))
-        print 'grdmask start'
-        gmt.grd_mask('%s/xyts-hr.gmt' % (gmt_temp), \
-                '%s/xyts-mask.grd' % (gmt_temp), dx = xres, dy = xres, \
-                region = xregion, wd = gmt_temp)
-        print 'grdmask done'
-        print 'pgv'
-        xfile.pgv(pgvout = '%s/xyts-pgv.bin' % (gmt_temp))
-        print 'pgv_done'
-        cpt_max = gmt.xyv_cpt_range('%s/xyts-pgv.bin' % (gmt_temp))[2]
-        gmt.makecpt('hot', '%s/xyts.cpt' % (gmt_temp), 0, cpt_max, \
-                invert = True, wd = gmt_temp, continuing = True)
-        meta['xyts_cpt_max'] = cpt_max
         meta['xyts_region'] = xregion
         meta['xyts_res'] = xres
     meta['xyts_file'] = xyts_file
@@ -401,7 +412,6 @@ if len(sys.argv) > 1:
         msg_list = []
         # stage 1 position in animation
         frames = int(args.time * args.framerate)
-        #frames = 0
         for i in xrange(frames):
             if s_azimuth <= 180:
                 azimuth = 180 - (i / float(frames - 1)) * (180 - s_azimuth)
@@ -507,6 +517,8 @@ else:
         if task == None:
             sleep(1)
             logbook.append(('sleep', time() - t0))
+        elif task[0] is load_xyts:
+            load_xyts(task[1])
         elif task[0] is timeslice:
             timeslice(task[1], task[2])
             logbook.append(('timeslice', task[1], time() - t0))
