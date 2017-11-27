@@ -51,25 +51,45 @@ def load_xyts(meta):
     gmt.makecpt('magma', '%s/xyts/gm.cpt' % (meta['wd']), 0, cpt_max, \
             invert = True, wd = '%s/xyts' % (meta['wd']), continuing = True)
 
+def load_xyts_ts(meta, job):
+    """
+    Prepare xyts timeslice overlays.
+    dependencies: xyts_cpt_max is available
+    """
+    # prevent gmt.conf clashes with unique working directory
+    tmp = os.path.join(meta['wd'], 'xyts', '_%03d_' % (job['start']))
+    os.makedirs(tmp)
+
+    xfile = xyts.XYTSFile(meta['xyts_file'], meta_only = False)
+    crop_grd = os.path.join(meta['wd'], 'xyts', 'mask.nc')
     # preload timeslice overlays
-    # TODO: separate tasks
-    for t in xrange(xyts.nt):
-        ts_prefix = os.path.join(meta['wd'], 'xyts', 'ts%04d' % (meta['wd'])
+    for t in xrange(job['start'], xfile.nt, job['inc']):
+        ts_prefix = os.path.join(meta['wd'], 'xyts', 'ts%04d' % (t))
         # load binary data
         xfile.tslice_get(t, outfile = '%s.bin' % (ts_prefix))
         # store as netCDF
         gmt.table2grd('%s.bin' % (ts_prefix), '%s.nc' % (ts_prefix), \
                 grd_type = 'surface', region = meta['xyts_region'], \
-                dx = meta['xyts_res'], climit = cpt_max * 0.01, \
-                wd = meta['wd'], tension = '1.0')
+                dx = meta['xyts_res'], climit = meta['xyts_cpt_max'] * 0.01, \
+                wd = tmp, tension = '1.0')
+        os.remove('%s.bin' % (ts_prefix))
+        # crop values outside sim domain
+        rc = gmt.grdmath(['%s.nc' % (ts_prefix), crop_grd, 'MUL', \
+                '=', '%s.nc' % (ts_prefix)], wd = tmp)
         # don't show insignificant ground motion
-        gmt.grdclip('%s.nc' % (ts_prefix), '%s.nc' % (ts_prefix), \
-                min_v = cpt_max * 0.03, wd = '%s/xyts' % (meta['wd']))
+        rc = gmt.grdclip('%s.nc' % (ts_prefix), '%s.nc' % (ts_prefix), \
+                min_v = meta['xyts_cpt_max'] * 0.03, wd = tmp)
+        # nothing to display
+        if rc == gmt.STATUS_INVALID:
+            os.remove('%s.nc' % (ts_prefix))
 
-    # just get master to read this from the cpt or something
-    meta['xyts_cpt_max'] = cpt_max
+    # clean up
+    rmtree(tmp)
 
 def timeslice(job, meta):
+    """
+    Render image in animation.
+    """
 
     if job['seq'] == None:
         i = 0
@@ -109,8 +129,8 @@ def timeslice(job, meta):
             x_shift = - sx, y_shift = - by)
     p.basemap()
     # simulation domain
-    if os.path.isfile('%s/xyts.gmt' % (meta['wd'])):
-        p.path('%s/xyts.gmt' % (meta['wd']), close = True, \
+    if os.path.isfile('%s/xyts/corners.gmt' % (meta['wd'])):
+        p.path('%s/xyts/corners.gmt' % (meta['wd']), close = True, \
                 width = '2p', split = '-')
     p.sites(gmt.sites_major)
     p.rose('C', 'M', '2i', pos = 'rel', \
@@ -173,10 +193,10 @@ def timeslice(job, meta):
         # ground motion
         xfile = xyts.XYTSFile(meta['xyts_file'])
         xpos = int(round(job['sim_time'] / xfile.dt))
-        if os.path.isfile('%s/gm.grd' % (swd)):
-            p.overlay3d('%s/gm.grd' % (swd), cpt = '%s/xyts.cpt' % (meta['wd']), \
+        gm_file = os.path.join(meta['wd'], 'xyts', 'ts%04d.nc' % (xpos))
+        if os.path.isfile(gm_file):
+            p.overlay3d(gm_file, cpt = '%s/xyts/gm.cpt' % (meta['wd']), \
                     transparency = job['transparency'], dpi = DPI, \
-                    crop_grd = '%s/xyts-mask.grd' % (meta['wd']), \
                     z = '-Jz%s' % (1.5 / meta['xyts_cpt_max']), \
                     mesh = True, mesh_pen = '0.1p')
 
@@ -255,10 +275,6 @@ def timeslice(job, meta):
         p.text(max_x, cpt_y, '%.1f' % (srf_data[2]['max']), size = '16p', \
                 align = 'LM', dx = SCALE_PAD)
 
-    #
-    #p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
-    #        p = '%s/%s/0' % (job['azimuth'], job['tilt']))
-
     # finish, clean up
     p.finalise()
     p.png(dpi = DPI, clip = False, out_dir = meta['wd'])
@@ -295,6 +311,7 @@ if len(sys.argv) > 1:
     if args.framerate < 5:
         print('Framerate too low: %s' % (args.framerate))
         sys.exit(1)
+    nproc = args.nproc
     # srf check
     srf_file = os.path.abspath(args.srf_file)
     try:
@@ -312,7 +329,9 @@ if len(sys.argv) > 1:
         xyts_file = None
 
     # list of work for slaves to do
-    msgs = []
+    msg_list = []
+    # dependencies for tasks yet to be added
+    msg_deps = 0
 
     # load plane data
     try:
@@ -390,6 +409,7 @@ if len(sys.argv) > 1:
             inc = 2, invert = False)
     meta['sr_cpt_max'] = cpt_max
 
+    meta['xyts_file'] = xyts_file
     # xyts quick preparation
     if xyts_file != None:
         os.makedirs(os.path.join(gmt_temp, 'xyts'))
@@ -401,7 +421,9 @@ if len(sys.argv) > 1:
             xpath.write(xcnrs[1])
         meta['xyts_region'] = xregion
         meta['xyts_res'] = xres
-    meta['xyts_file'] = xyts_file
+        if args.animate:
+            msg_list.append([load_xyts, meta])
+            msg_deps += 1
 
     # tasks
     if not args.animate:
@@ -409,7 +431,6 @@ if len(sys.argv) > 1:
                 'scale_t':1, 'seq':None, 'transparency':OVERLAY_T, \
                 'sim_time':-1}, meta)]
     else:
-        msg_list = []
         # stage 1 position in animation
         frames = int(args.time * args.framerate)
         for i in xrange(frames):
@@ -430,14 +451,6 @@ if len(sys.argv) > 1:
                     'scale_t':scale_t, 'seq':frames + i, 'sim_time':-1, \
                     'transparency':over_t}, meta])
         frames += meta['t_frames']
-        # sliprate
-        for i in xrange(frames_sr):
-            scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
-            msg_list.append([timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
-                    'scale_t':scale_t, 'seq':frames + i, 'transparency':OVERLAY_T, \
-                    'sim_time':i * 1.0 / args.framerate}, meta])
-        frames += frames_sr
-    nproc = min(len(msg_list), args.nproc)
     # spawn slaves
     comm = MPI.COMM_WORLD.Spawn(
         sys.executable, args = [sys.argv[0]], maxprocs = nproc)
@@ -451,10 +464,40 @@ if len(sys.argv) > 1:
         slave_id = status.Get_source()
         finished = in_progress[slave_id]
 
+        # dependency tracking
+        if finished == None:
+            pass
+
+        elif finished[0] == load_xyts:
+            meta['xyts_cpt_max'] = gmt.xyv_cpt_range('%s/xyts/pgv.bin' % (gmt_temp))[2]
+            msg_deps -= 1
+
+            # load xyts overlays
+            for i in xrange(nproc):
+                msg_list.append([load_xyts_ts, meta, {'start':i, 'inc':nproc}])
+            msg_deps += nproc
+
+        elif finished[0] == load_xyts_ts:
+            ready = range(finished[2]['start'], xfile.nt, nproc)
+            for i in xrange(frames_sr):
+                sim_time = i * 1.0 / args.framerate
+                xpos = int(round(sim_time / xfile.dt))
+                if xpos in ready:
+                    scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
+                    msg_list.append([timeslice, {'azimuth':s_azimuth, \
+                            'tilt':map_tilt, 'scale_t':scale_t, \
+                            'seq':frames + i, 'transparency':OVERLAY_T, \
+                            'sim_time':sim_time}, meta])
+            msg_deps -= 1
+
         if len(msg_list) == 0:
-            # all jobs complete, kill off slaves
-            msg_list.append(StopIteration)
-            nproc -= 1
+            if msg_deps == 0:
+                # all jobs complete, kill off slaves
+                msg_list.append(StopIteration)
+                nproc -= 1
+            else:
+                # waiting for dependencies
+                msg_list.append(None)
 
         # next job
         msg = msg_list[0]
@@ -467,6 +510,8 @@ if len(sys.argv) > 1:
     # stop mpi
     comm.Disconnect()
 
+    # add dynamic frames to counter
+    frames += frames_sr
     basename = os.path.splitext(os.path.basename(meta['srf_file']))[0]
     if args.animate:
         # copy last frame
@@ -508,6 +553,9 @@ else:
         print('Alternatively MPI cannot connect to parent.')
         exit(1)
 
+    # have to sleep if waiting for dependencies
+    from time import sleep
+
     # ask for work until stop sentinel
     logbook = []
     for task in iter(lambda: comm.sendrecv(None, dest = MASTER), StopIteration):
@@ -519,6 +567,8 @@ else:
             logbook.append(('sleep', time() - t0))
         elif task[0] is load_xyts:
             load_xyts(task[1])
+        elif task[0] is load_xyts_ts:
+            load_xyts_ts(task[1], task[2])
         elif task[0] is timeslice:
             timeslice(task[1], task[2])
             logbook.append(('timeslice', task[1], time() - t0))
