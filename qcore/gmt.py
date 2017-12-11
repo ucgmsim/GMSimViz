@@ -70,8 +70,7 @@ TOPO_HIGH = os.path.join(GMT_DATA, 'Topo/srtm_all_filt_nz.grd')
 TOPO_LOW = os.path.join(GMT_DATA, 'Topo/nztopo.grd')
 CHCH_WATER = os.path.join(GMT_DATA, 'Paths/water_network/water.gmt')
 # CPT DATA
-CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), \
-        os.pardir, 'plot', 'cpt')
+CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plot', 'cpt')
 CPTS = {
     'nztopo-green-brown':os.path.join(CPT_DIR, 'palm_springs_nz_topo.cpt'),
     'nztopo-grey1':os.path.join(CPT_DIR, 'nz_topo_grey1.cpt'),
@@ -93,9 +92,12 @@ def update_gmt_path(gmt_bin):
     gmtp.wait()
     GMT_MAJOR, GMT_MINOR = map(int, GMT_VERSION.split('.')[:2])
 
-    if GMT_MAJOR != 5:
-        print('This library is only for GMT version 5. You have %s.' \
+    if GMT_MAJOR < 5:
+        print('GMT v%s is too old. Expect nothing to work.' \
                 % (GMT_VERSION))
+        psconvert = 'ps2raster'
+    elif GMT_MAJOR > 5:
+        psconvert = 'psconvert'
     # ps2raster becomes psconvert in GMT 5.2
     elif GMT_MINOR < 2:
         psconvert = 'ps2raster'
@@ -599,15 +601,15 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                 # attempted plotting could cause invalid postscript / crash
                 continue
             # search radius based on diagonal distance
-            p2 = xyv_repr[1 + planes[s]['nstrike'], :2]
+            p2 = xyv_repr[planes[s]['nstrike'], :2]
             search = math.sqrt(abs(xyv_repr[0, 0] - p2[0]) ** 2 \
-                    + abs(xyv_repr[0, 1] - p2[1]) ** 2)
+                    + abs(xyv_repr[0, 1] - p2[1]) ** 2) * 3
             # XY grid
             table2grd('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%s_%s_xy.grd' % (out_dir, prefix, s, value), \
                     file_input = True, grd_type = 'nearneighbor', \
                     region = regions[s], dx = plot_dx, dy = plot_dy, \
-                    wd = wd, geo = False, search = search)
+                    wd = wd, geo = False, search = search, min_sectors = 2)
         else:
             # X Y V files only
             seg_llvs[s].astype(np.float32).tofile('%s/%s_%d_%s.bin' \
@@ -675,6 +677,48 @@ def makecpt(source, output, low, high, inc = None, invert = False, \
     with open(output, 'w') as cptf:
         Popen(cmd, stdout = cptf, cwd = wd).wait()
     backup_history(restore = True, wd = wd)
+
+def table2block(table_in, table_out, block = 'blockmean', centre = True, \
+            dx = '1k', dy = None, region = None, geo = True, header = 0, \
+            cols = None, wd = None):
+    """
+    
+    """
+    # determine working directory
+    if wd == None:
+        wd = os.path.dirname(table_in)
+        if wd == '':
+            wd = '.'
+
+    # should not affect history in wd
+    write_history(False, wd = wd)
+
+    # prepare parameters
+    if region == None:
+        region = '-R'
+    else:
+        region = '-R%s/%s/%s/%s' % region
+    if dy == None:
+        dy = dx
+
+    # create surface grid
+    cmd = [GMT, block, os.path.abspath(table_in), \
+            '-I%s/%s' % (dx, dy), region]
+
+    if geo:
+        cmd.append('-fg')
+    if header > 0:
+        cmd.append('-hi%d' % (header))
+    if cols != None:
+        cmd.append('-i%s' % (cols))
+
+    # run command
+    with open(table_out, 'w') as o:
+        Popen(cmd, stdout = o, cwd = wd).wait()
+    #e = p.communicate()[1]
+    #p.wait()
+
+    write_history(True, wd = wd)
 
 def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
         region = None, dx = '1k', dy = None, climit = 1, wd = None, \
@@ -773,16 +817,63 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
         except (ValueError, AssertionError):
             cmd.append('-bi3f')
         # run command
-        Popen(cmd, cwd = wd).wait()
+        p = Popen(cmd, stderr = PIPE, cwd = wd)
+        e = p.communicate()[1]
+        p.wait()
         # also create radius based mask if wanted
         if automask != None:
             Popen(cmd_mask, cwd = wd).wait()
     else:
-        grdp = Popen(cmd, stdin = PIPE, cwd = wd)
-        grdp.communicate(table_in)
-        grdp.wait()
+        p = Popen(cmd, stdin = PIPE, stderr = PIPE, cwd = wd)
+        e = p.communicate(table_in)[1]
+        p.wait()
 
     write_history(True, wd = wd)
+
+    if len(e) == 0:
+        return STATUS_SUCCESS
+    elif 'No valid values in grid' in e:
+        return STATUS_INVALID
+    else:
+        return STATUS_UNKNOWN
+
+def grdclip(ingrid, outgrid, min_v = None, max_v = None, replace = None, \
+        range_v = None, region = None, new = 'NaN', wd = '.'):
+    """
+    Clip value ranges by changing their values.
+    min_v: clip below this value
+    max_v: clip above this value
+    replace: replace this value
+    range_v: replace values between lower bound (1st value) and upper (2nd)
+    region: limit output region to this subsection
+    new: value to replace selected values
+    """
+    cmd = [GMT, 'grdclip', ingrid, '-G%s' % (outgrid)]
+    # crop minimum/maximum/area values
+    if min_v != None:
+        # values below min_v -> NaN
+        cmd.append('-Sb%s/%s' % (min_v, new))
+    if max_v != None:
+        # values above max_v -> NaN
+        cmd.append('-Sa%s/%s' % (max_v, new))
+    if range_v != None:
+        # values between range_v[0] to range_v[1] -> NaN
+        cmd.append('-Si%s/%s/%s' % (range_v[0], range_v[1], new))
+    if replace != None:
+        cmd.append('-Sr%s/%s' % (replace, new))
+    if region != None:
+        cmd.append('-R%s/%s' % ('/'.join(map(str, region)), new))
+    # ignore stderr: usually because no data in area
+    p = Popen(cmd, stderr = PIPE, cwd = wd)
+    e = p.communicate()[1]
+    p.wait()
+
+    if len(e) == 0:
+        return STATUS_SUCCESS
+    elif 'No valid values in grid' in e:
+        return STATUS_INVALID
+    else:
+        return STATUS_UNKNOWN
 
 def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
         wd = None, inside = '1', outside = 'NaN', geo = True, mask_dist = None):
@@ -839,8 +930,7 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
     else:
         return STATUS_UNKNOWN
 
-def grdmath(expression, region = None, dx = '1k', dy = '1k', \
-        wd = '.'):
+def grdmath(expression, wd = '.'):
     """
     Does operations on input grids and data (values or xyv files) RPN style
     gmt.soest.hawaii.edu/doc/5.1.0/grdmath.html
@@ -864,7 +954,16 @@ def grdmath(expression, region = None, dx = '1k', dy = '1k', \
 
     # required parameters are at the end of the command
     cmd.extend(map(str, expression))
-    Popen(cmd, cwd = wd).wait()
+    p = Popen(cmd, stderr = PIPE, cwd = wd)
+    e = p.communicate()[1]
+    p.wait()
+
+    if len(e) == 0:
+        return STATUS_SUCCESS
+    elif 'No valid values in grid' in e:
+        return STATUS_INVALID
+    else:
+        return STATUS_UNKNOWN
 
 def gmt_defaults(wd = '.', font_annot_primary = 16, \
         map_tick_length_primary = '0.05i', font_label = 16, \
@@ -2083,7 +2182,7 @@ class GMTPlot:
         cmd = [GMT, 'psscale', '-C%s' % (cpt), '-K', '-O']
 
         # build command based on parameters
-        if GMT_MINOR < 2:
+        if GMT_MAJOR == 5 and GMT_MINOR < 2:
             pos_spec = '-D%s/%s/%s/%s%s' % \
                     (x + dx, y + dy, length, thickness, 'h' * horiz)
             if arrow_f or arrow_b:
@@ -2185,7 +2284,7 @@ class GMTPlot:
 
         # create surface grid
         # TODO: use separate function
-        if xyv_file[-4:] != '.grd':
+        if os.path.splitext(xyv_file)[-1] not in ['.grd', '.nc']:
             cmd = [GMT, 'surface', xyv_file, '-G%s' % (temp_grd), \
                     '-T0.0', '-I%s/%s' % (dx, dy), \
                     '-C%s' % (climit), region, '-fg']
@@ -2220,8 +2319,10 @@ class GMTPlot:
 
         # crop to path area by grd file
         if crop_grd != None:
-            Popen([GMT, 'grdmath', temp_grd, crop_grd, 'MUL', '=', temp_grd], \
-                    cwd = self.wd).wait()
+            rc = grdmath([temp_grd, crop_grd, 'MUL', '=', temp_grd], \
+                    wd = self.wd)
+            if rc == STATUS_INVALID:
+                return
 
         # crop minimum/maximum/area values
         if min_v != None or max_v != None:
@@ -2245,8 +2346,11 @@ class GMTPlot:
 
         # clip path for land to crop overlay
         if land_crop:
-            Popen([GMT, 'pscoast', '-J', '-R', '-Df', '-Gc', self.z, \
-                    '-K', '-O'], stdout = self.psf, cwd = self.wd).wait()
+            cmd = [GMT, 'pscoast', '-J', '-R', '-Df', '-Gc', self.z, \
+                    '-K', '-O']
+            if self.p:
+                cmd.append('-p')
+            Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
         if cpt != None:
             # cpt may be internal or a file
@@ -2256,6 +2360,8 @@ class GMTPlot:
             # here '-Q' will make NaN transparent
             cmd = [GMT, 'grdimage', temp_grd, '-J', '-R', '-C%s' % (cpt), \
                     '-t%s' % (transparency), '-Q', '-K', '-O', self.z]
+            if self.p:
+                cmd.append('-p')
             # ignore stderr: usually because no data in area
             Popen(cmd, stdout = self.psf, stderr = self.sink, \
                     cwd = self.wd).wait()
@@ -2276,19 +2382,23 @@ class GMTPlot:
                     contour_mindist = '%sp' % \
                             (float(str(font_size).rstrip('cip')) * 3)
                 cmd.append('-Gn%s/%s' % (contour_apl, contour_mindist))
+            if self.p:
+                cmd.append('-p')
             Popen(cmd, stdout = self.psf, stderr = self.sink, \
                     cwd = self.wd).wait()
 
         # apply land clip path
         if land_crop:
-            Popen([GMT, 'pscoast', '-J', '-R', '-Q', '-K', '-O', self.z], \
-                    stdout = self.psf, cwd = self.wd).wait()
+            cmd = [GMT, 'pscoast', '-J', '-R', '-Q', '-K', '-O', self.z]
+            Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
         # grd file not needed anymore, prevent clutter
         os.remove(temp_grd)
 
     def overlay3d(self, xyz_file, drapefile = None, cpt = None, \
-            crop_grd = None, transparency = 40, contours = None, dpi = None):
+            colour = 'darkgreen', crop_grd = None, transparency = 40, \
+            contours = None, dpi = None, z = None, \
+            mesh = False, mesh_pen = None):
         """
         Plot 3d datasets.
         xyz_file: 3d positioning. x, y, z values
@@ -2298,21 +2408,29 @@ class GMTPlot:
         transparency: transparency of entire layer
         contours: not implemented
         dpi: dpi of raster image generation. should match desired output dpi
+        z: set custom Z axis scaling in full form
+        mesh: draw a mesh as well if an image plot is being created
         """
         if crop_grd != None:
             temp_grd = '%s/overlay3d_tmp.grd' % (self.wd)
-            Popen([GMT, 'grdmath', xyz_file, crop_grd, 'MUL', '=', temp_grd], \
-                    cwd = self.wd).wait()
+            rc = grdmath([xyz_file, crop_grd, 'MUL', '=', temp_grd], \
+                    wd = self.wd)
+            if rc == STATUS_INVALID:
+                return
             xyz_file = temp_grd
-        cmd = [GMT, 'grdview', '-K', '-O', '-J', '-R', '-p', self.z, xyz_file, \
+        if z == None:
+            z = self.z
+        cmd = [GMT, 'grdview', '-K', '-O', '-J', '-R', '-p', z, xyz_file, \
                 '-t%s' % (transparency)]
         if drapefile != None:
             cmd.append('-G%s' % (drapefile))
         if cpt != None:
             cmd.append('-C%s' % (cpt))
-            cmd.append('-Qi%s@%s' % (dpi, transparency))
+            cmd.append('-Qs%s' % ('m' * mesh))
         else:
-            cmd.append('-Qm%s@%s' % ('darkgreen', '50'))
+            cmd.append('-Qm%s@%s' % (colour, transparency))
+        if mesh_pen != None:
+            cmd.append('-Wm%s' % (mesh_pen))
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def fault(self, in_path, is_srf = False, \

@@ -44,9 +44,10 @@ from time import time, sleep
 from mpi4py import MPI
 import numpy as np
 
-import qcore.gmt as gmt
-import qcore.geo as geo
-from qcore.srf import srf2corners
+import qcore_path
+import gmt
+import geo
+from srf import srf2corners
 
 MASTER = 0
 
@@ -371,12 +372,23 @@ def column_overlay(n, station_file, meta, plot):
             mask = col_mask
         else:
             col_mask = None
+        if meta['grid'] == 'surface':
+            station_tmp = '%s/blocked.xyz' % (swd)
+            gmt.table2block(station_file, station_tmp, header = 6, \
+                    dx = meta['stat_size'], region = plot['region'], wd = swd, \
+                    cols = '0,1,%d' % (n + 2))
+            station_file = station_tmp
+            n_header = 0
+            cols = None
+        else:
+            n_header = 6
+            cols = '0,1,%d' % (n + 2)
         gmt.table2grd(station_file, grd_file, file_input = True, \
                 grd_type = meta['grid'], region = plot['region'], \
                 dx = meta['stat_size'], climit = meta['cpt_inc'][n] * 0.5, \
                 wd = swd, geo = True, sectors = 4, min_sectors = 1, \
-                search = meta['nn_search'], cols = '0,1,%d' % (n + 2), \
-                header = 6, automask = col_mask, \
+                search = meta['nn_search'], cols = cols, \
+                header = n_header, automask = col_mask, \
                 mask_dist = meta['grd_mask_dist'])
         if meta['landmask']:
             # start clip - TODO: allow different resolutions including GSHHG
@@ -481,7 +493,7 @@ if len(sys.argv) > 1:
     from glob import glob
 
     sys.path.insert(0, '.')
-    from qcore.shared import get_corners
+    from shared import get_corners
 
     # copy default params
     script_dir = os.path.abspath(os.path.dirname(__file__))
