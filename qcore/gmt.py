@@ -70,7 +70,8 @@ TOPO_HIGH = os.path.join(GMT_DATA, 'Topo/srtm_all_filt_nz.grd')
 TOPO_LOW = os.path.join(GMT_DATA, 'Topo/nztopo.grd')
 CHCH_WATER = os.path.join(GMT_DATA, 'Paths/water_network/water.gmt')
 # CPT DATA
-CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plot', 'cpt')
+CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), \
+        os.pardir, 'plot', 'cpt')
 CPTS = {
     'nztopo-green-brown':os.path.join(CPT_DIR, 'palm_springs_nz_topo.cpt'),
     'nztopo-grey1':os.path.join(CPT_DIR, 'nz_topo_grey1.cpt'),
