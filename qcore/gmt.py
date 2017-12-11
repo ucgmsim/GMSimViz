@@ -723,7 +723,7 @@ def table2block(table_in, table_out, block = 'blockmean', centre = True, \
 
 def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
         region = None, dx = '1k', dy = None, climit = 1, wd = None, \
-        geo = True, sectors = 4, min_sectors = 2, search = '1k', header = 0, \
+        geo = True, sectors = 4, min_sectors = 2, search = None, header = 0, \
         cols = None, tension = '0.0', \
         automask = None, mask_dist = '1k', outside = 'NaN'):
     """
@@ -743,7 +743,8 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
     sectors: for nearneighbour, split radius in eg = 4 (quadrants)
         takes average of closest point per sector
     min_sectors: for nearneighbour, min sectors to contain values, else nan
-    search: for nearneighbour, search radius
+    search: for nearneighbour, search radius, suffixes can also be distances
+            for surface: larger distance for better smoothing, suffixes only m|s
     header: number of lines to skip at beginning of input file
     cols: gmt column definition, eg: '0,1,2'
     automask: filename to store mask generated with mask_search option below
@@ -796,6 +797,8 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
     if grd_type == 'surface':
         cmd.append('-T%s' % (tension))
         cmd.append('-C%s' % (climit))
+        if search != None:
+            cmd.append('-S%s' % (search))
     elif grd_type == 'xyz2grd':
         cmd.append('-r')
     elif grd_type == 'nearneighbor':
@@ -803,6 +806,8 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
         if min_sectors != None:
             nspec = '%s/%s' % (nspec, min_sectors)
         cmd.append(nspec)
+        if search == None:
+            search = '1k'
         cmd.append('-S%s' % (search))
 
     if file_input:
