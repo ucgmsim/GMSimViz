@@ -374,7 +374,7 @@ def column_overlay(n, station_file, meta, plot):
         if meta['grid'] == 'surface':
             station_tmp = '%s/blocked.xyz' % (swd)
             gmt.table2block(station_file, station_tmp, header = 6, \
-                    dx = meta['stat_size'], region = plot['region'], wd = swd, \
+                    dx = '0.1k', region = plot['region'], wd = swd, \
                     cols = '0,1,%d' % (n + 2))
             station_file = station_tmp
             n_header = 0
