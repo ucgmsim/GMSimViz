@@ -203,10 +203,14 @@ def get_lonlat(sf, value = None, depth = False):
     # skip rest of point data
     # or return the time series
     values = sum(map(int, h2[2::2]))
-    if type(value).__name__ != 'str' or value[:8] != 'sliprate':
+    if type(value).__name__ != 'str' or (value[:8] != 'sliprate' \
+            and value[:6] != 'slipts'):
         for _ in xrange(int(ceil(values / VPL))):
             sf.readline()
     else:
+        cumulative = False
+        if value[:6] == 'slipts':
+            cumulative = True
         # store rest of point data
         srate = []
         for _ in xrange(int(ceil(values / VPL))):
@@ -220,10 +224,13 @@ def get_lonlat(sf, value = None, depth = False):
         value = np.empty(int(round(float(t) / float(dt))))
         value.fill(np.nan)
         # fill with values during rupture period at this subfault
+        i = 0
         for r in xrange(int(h2[2])):
             # time index as decimated
             i = int(floor((tinit + r * srfdt) / float(dt)))
-            if np.isnan(value[i]):
+            if cumulative:
+                value[i] = sum(srate[:r + 1]) * srfdt
+            elif np.isnan(value[i]):
                 # first value at this point
                 value[i] = srate[r]
                 # repeating factor for averaging
@@ -232,6 +239,9 @@ def get_lonlat(sf, value = None, depth = False):
                 x += 1.
                 # average of all values up to now
                 value[i] += (srate[r] - value[i]) / x
+        if cumulative:
+            # copy total sum to end
+            value[i:] = value[i]
 
     if type(value).__name__ == 'NoneType':
         if depth:
@@ -468,7 +478,7 @@ def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, depth = False, \
         # storage
         values = []
         # if each subfault will return more than one value
-        multi = value[:8] == 'sliprate'
+        multi = value[:8] == 'sliprate' or value[:6] == 'slipts'
         if multi:
             # separate series to keep array dimentions equal
             series = []

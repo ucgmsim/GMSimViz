@@ -599,12 +599,11 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                 # bounds are likely of area = 0, do not procede
                 # caller should check if file below produced
                 # attempted plotting could cause invalid postscript / crash
-                print 'skip'
                 continue
             # search radius based on diagonal distance
             p2 = xyv_repr[planes[s]['nstrike'], :2]
             search = math.sqrt(abs(xyv_repr[0, 0] - p2[0]) ** 2 \
-                    + abs(xyv_repr[0, 1] - p2[1]) ** 2)
+                    + abs(xyv_repr[0, 1] - p2[1]) ** 2) * 3
             # XY grid
             table2grd('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%s_%s_xy.grd' % (out_dir, prefix, s, value), \
@@ -679,9 +678,51 @@ def makecpt(source, output, low, high, inc = None, invert = False, \
         Popen(cmd, stdout = cptf, cwd = wd).wait()
     backup_history(restore = True, wd = wd)
 
+def table2block(table_in, table_out, block = 'blockmean', centre = True, \
+            dx = '1k', dy = None, region = None, geo = True, header = 0, \
+            cols = None, wd = None):
+    """
+    
+    """
+    # determine working directory
+    if wd == None:
+        wd = os.path.dirname(table_in)
+        if wd == '':
+            wd = '.'
+
+    # should not affect history in wd
+    write_history(False, wd = wd)
+
+    # prepare parameters
+    if region == None:
+        region = '-R'
+    else:
+        region = '-R%s/%s/%s/%s' % region
+    if dy == None:
+        dy = dx
+
+    # create surface grid
+    cmd = [GMT, block, os.path.abspath(table_in), \
+            '-I%s/%s' % (dx, dy), region]
+
+    if geo:
+        cmd.append('-fg')
+    if header > 0:
+        cmd.append('-hi%d' % (header))
+    if cols != None:
+        cmd.append('-i%s' % (cols))
+
+    # run command
+    with open(table_out, 'w') as o:
+        Popen(cmd, stdout = o, cwd = wd).wait()
+    #e = p.communicate()[1]
+    #p.wait()
+
+    write_history(True, wd = wd)
+
 def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
         region = None, dx = '1k', dy = None, climit = 1, wd = None, \
-        geo = True, sectors = 4, min_sectors = 2, search = '1k', header = 0, \
+        geo = True, sectors = 4, min_sectors = 2, search = None, header = 0, \
         cols = None, tension = '0.0', \
         automask = None, mask_dist = '1k', outside = 'NaN'):
     """
@@ -701,7 +742,8 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
     sectors: for nearneighbour, split radius in eg = 4 (quadrants)
         takes average of closest point per sector
     min_sectors: for nearneighbour, min sectors to contain values, else nan
-    search: for nearneighbour, search radius
+    search: for nearneighbour, search radius, suffixes can also be distances
+            for surface: larger distance for better smoothing, suffixes only m|s
     header: number of lines to skip at beginning of input file
     cols: gmt column definition, eg: '0,1,2'
     automask: filename to store mask generated with mask_search option below
@@ -754,6 +796,8 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
     if grd_type == 'surface':
         cmd.append('-T%s' % (tension))
         cmd.append('-C%s' % (climit))
+        if search != None:
+            cmd.append('-S%s' % (search))
     elif grd_type == 'xyz2grd':
         cmd.append('-r')
     elif grd_type == 'nearneighbor':
@@ -761,6 +805,8 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
         if min_sectors != None:
             nspec = '%s/%s' % (nspec, min_sectors)
         cmd.append(nspec)
+        if search == None:
+            search = '1k'
         cmd.append('-S%s' % (search))
 
     if file_input:
@@ -2390,6 +2436,7 @@ class GMTPlot:
             cmd.append('-Qm%s@%s' % (colour, transparency))
         if mesh_pen != None:
             cmd.append('-Wm%s' % (mesh_pen))
+        print ' '.join(cmd)
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def fault(self, in_path, is_srf = False, \

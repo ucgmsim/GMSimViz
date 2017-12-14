@@ -108,8 +108,10 @@ def load_file(station_file):
             cpt_properties = []
         if len(cpt_info) > 1:
             stat_size = cpt_info[1].split(':')[0]
-            # also default nearneighbor search distance
-            nn_search = stat_size
+            # also default search radius
+            search = stat_size
+            # stat size can be in km but surface search can only be in min|sec
+            user_search = False
             # default properties
             shape = 't'
             grid = None
@@ -123,13 +125,16 @@ def load_file(station_file):
                     elif p[:2] == 'g-':
                         grid = p[2:]
                     elif p[:4] == 'nns-':
-                        nn_search = p[4:]
+                        search = p[4:]
+                        user_search = True
                     elif p[:6] == 'gmask-':
                         grd_mask_dist = p[6:]
                     elif p[:8] == 'landmask':
                         landmask = True
             except IndexError:
                 stat_properties = []
+        if not user_search and grid == 'surface':
+            search = None
 
         # 4th line - cpt description 2
         # cpt_min, cpt_max, cpt_inc, cpt_tick
@@ -181,7 +186,7 @@ def load_file(station_file):
             exit(1)
 
     return {'title':title, 'legend':legend, 'stat_size':stat_size, \
-            'nn_search':nn_search, 'shape':shape, 'grid':grid, \
+            'search':search, 'shape':shape, 'grid':grid, \
             'grd_mask_dist':grd_mask_dist, 'cpt':cpt, 'cpt_fg':cpt_fg, \
             'cpt_bg':cpt_bg, 'cpt_min':cpt_min, 'cpt_max':cpt_max, \
             'cpt_inc':cpt_inc, 'cpt_tick':cpt_tick, 'cpt_properties':cpt_properties, \
@@ -347,7 +352,7 @@ def column_overlay(n, station_file, meta, plot):
                 meta['cpt_max'][n], inc = meta['cpt_inc'][n], \
                 invert = 'invert' in meta['cpt_properties'], \
                 fg = meta['cpt_fg'], bg = meta['cpt_bg'], \
-                transparency = meta['transparency'])
+                transparency = meta['transparency'], wd = swd)
 
     # common title
     if len(meta['title']):
@@ -372,12 +377,23 @@ def column_overlay(n, station_file, meta, plot):
             mask = col_mask
         else:
             col_mask = None
+        if meta['grid'] == 'surface':
+            station_tmp = '%s/blocked.xyz' % (swd)
+            gmt.table2block(station_file, station_tmp, header = 6, \
+                    dx = meta['stat_size'], region = plot['region'], wd = swd, \
+                    cols = '0,1,%d' % (n + 2))
+            station_file = station_tmp
+            n_header = 1
+            cols = None
+        else:
+            n_header = 6
+            cols = '0,1,%d' % (n + 2)
         gmt.table2grd(station_file, grd_file, file_input = True, \
                 grd_type = meta['grid'], region = plot['region'], \
                 dx = meta['stat_size'], climit = meta['cpt_inc'][n] * 0.5, \
                 wd = swd, geo = True, sectors = 4, min_sectors = 1, \
-                search = meta['nn_search'], cols = '0,1,%d' % (n + 2), \
-                header = 6, automask = col_mask, \
+                search = meta['search'], cols = cols, \
+                header = n_header, automask = col_mask, \
                 mask_dist = meta['grd_mask_dist'])
         if meta['landmask']:
             # start clip - TODO: allow different resolutions including GSHHG
