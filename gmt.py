@@ -79,9 +79,10 @@ CPTS = {
     'trise':os.path.join(CPT_DIR, 'trise.cpt')
 }
 
-def update_gmt_path(gmt_bin):
+def update_gmt_path(gmt_bin, wd = None):
     """
     Allow changing GMT binary location.
+    wd: also try to fix GMT_HISTORY in this dir
     """
     global GMT, GMT_VERSION, GMT_MAJOR, GMT_MINOR, psconvert
 
@@ -103,6 +104,12 @@ def update_gmt_path(gmt_bin):
         psconvert = 'ps2raster'
     else:
         psconvert = 'psconvert'
+
+    if wd != None:
+        if os.path.exists(os.path.join(wd, GMT_HISTORY)):
+            Popen(['sed', '-i', 's/BEGIN GMT .*/BEGIN GMT %s/g' % (GMT_VERSION), \
+                    GMT_HISTORY], cwd = wd).wait()
+
 update_gmt_path(GMT)
 
 ###
@@ -997,8 +1004,80 @@ def gmt_defaults(wd = '.', font_annot_primary = 16, \
     cmd.extend(map(str, extra))
     Popen(cmd, cwd = wd).wait()
 
+def gmt_set(settings, wd = '.'):
+    """
+    Like gmt_defaults but doesn't start with our general defaults.
+    Useful for changing only specifics midway through plotting.
+    settings: list of key values in a single dimention
+    """
+    cmd = [GMT, 'set']
+    cmd.extend(map(str, settings))
+    Popen(cmd, cwd = wd).wait()
+
+def map_dimentions(projection = None, region = None, region_units = '', \
+        unit = None, width = True, height = True, wd = '.'):
+    """
+    Returns width and height of given region and projection combination.
+    """
+    # custom inputs should not be stored
+    write_history(False, wd = wd)
+
+    cmd = [GMT, 'mapproject']
+    if width and height:
+        cmd.append('-W')
+    elif not width:
+        cmd.append('-Wh')
+    else:
+        cmd.append('-Ww')
+
+    if projection == None:
+        cmd.append('-J')
+    else:
+        cmd.append('-J%s' % (projection))
+    if region == None:
+        cmd.append('-R')
+    else:
+        cmd.append('-R%s%s' % (region_units, '/'.join(map(str, region))))
+    if unit != None:
+        cmd.append('-D%s' % (unit))
+
+    projp = Popen(cmd, stdout = PIPE, cwd = wd)
+    result = projp.communicate()[0]
+    projp.wait()
+
+    # restore default behaviour
+    write_history(True, wd = wd)
+
+    return map(float, result.split())
+
+def map_corners(projection = None, region = None, region_units = '', \
+        wd = '.', return_region = False):
+    """
+    Returns width and height of given region and projection combination.
+    """
+
+    width, height = map_dimentions(projection = projection, \
+            region = region, region_units = region_units, wd = wd)
+
+    # custom inputs should not be stored
+    corners = mapproject_multi([[0, height], [width, height], \
+            [width, 0], [0, 0]], wd = wd, projection = projection, \
+            region = region, region_units = region_units, inverse = True)
+
+    if return_region == 'minmax':
+        xmin, ymin = np.min(corners, axis = 0)
+        xmax, ymax = np.max(corners, axis = 0)
+        new_region = tuple(map(str, (xmin, xmax, ymin, ymax)))
+    elif return_region == 'llur':
+        new_region = (str(corners[3][0]), str(corners[3][1]), \
+                str(corners[1][0]), '%sr' % (corners[1][1]))
+
+    if not return_region:
+        return corners
+    return corners, new_region
+
 def mapproject_multi(points, wd = '.', projection = None, region = None, \
-    inverse = False, unit = None, z = None, p = False):
+    region_units = '', inverse = False, unit = None, z = None, p = False):
     """
     Project coordinates to get position or get coordinates from position.
     NOTE: if projection specifies units of length,
@@ -1021,7 +1100,7 @@ def mapproject_multi(points, wd = '.', projection = None, region = None, \
     if region == None:
         cmd.append('-R')
     else:
-        cmd.append('-R%s' % ('/'.join(map(str, region))))
+        cmd.append('-R%s%s' % (region_units, '/'.join(map(str, region))))
     if inverse:
         cmd.append('-I')
     if unit != None:
@@ -1150,7 +1229,7 @@ def adjust_latitude(projection, width, height, region, wd = '.', \
 def fill_space(space_x, space_y, region, dpi, proj = 'M', wd = '.'):
     """
     Given minimal region, extend vertically or horizontally to fit avaliable space.
-    Only works with perpendicular north, east projections.
+    Only works with perpendicular north, east region projections.
     Will return exact dimentions and extended region.
     """
     # scale image size to fit and extend to prevent letterboxing
@@ -1179,6 +1258,31 @@ def fill_space(space_x, space_y, region, dpi, proj = 'M', wd = '.'):
                 abs_diff = True, accuracy = 0.4 / float(dpi))
 
     return space_x, space_y, region
+
+def fill_space_oblique(lon0, lat0, space_x, space_y, region, region_units, \
+        proj, dpi, wd = '.'):
+    """
+    Modified fill space for oblique mercator and offset based region.
+    """
+    region = list(region)
+    letterbox_width, letterbox_height = \
+            map_dimentions(projection = proj, region = region, \
+            region_units = region_units, wd = wd)
+
+    # case for adding horizontally to the region
+    if letterbox_height > space_y:
+        xdiff = ((region[1] - region[0]) * (letterbox_height / space_y) \
+                - (region[1] - region[0])) / 2.0
+        region[1] += xdiff
+        region[0] -= xdiff
+    # case for adding vertically to the region
+    else:
+        ydiff = ((region[3] - region[2]) * (space_y / letterbox_height) \
+                - (region[3] - region[2])) / 2.0
+        region[3] += ydiff
+        region[2] -= ydiff
+
+    return tuple(region)
 
 def fill_margins(region, width, dpi, proj = 'M', wd = '.', \
             left = 0, right = 0, top = 0, bottom = 0):
@@ -1527,7 +1631,7 @@ class GMTPlot:
         if window != None:
             self.clip(n = 1)
 
-    def spacial(self, proj, region, z = 'z1', \
+    def spacial(self, proj, region, region_units = '', z = 'z1', \
             lon0 = None, lat0 = None, sizing = 1, \
             x_shift = 0, y_shift = 0, fill = None, p = None):
         """
@@ -1560,7 +1664,7 @@ class GMTPlot:
 
         cmd = [GMT, 'psxy', gmt_proj, '-X%s' % (x_shift), \
                 '-Y%s' % (y_shift), '-K', self.z, \
-                '-R%s' % ('/'.join(map(str, region)))]
+                '-R%s%s' % (region_units, '/'.join(map(str, region)))]
         # one of the functions that can be run on a blank file
         # as such, '-O' flag needs to be taken care of
         if self.new:
@@ -1828,10 +1932,25 @@ class GMTPlot:
         road_colour: colour of road paths
         """
         # auto sizing factor calculation
-        region = map(float, self.history('R').split('/'))
-        km = geo.ll_dist(region[0], region[2], region[1], region[3])
-        size = mapproject(region[1], region[3], wd = self.wd, \
-                unit = 'inch', z = self.z)
+        try:
+            region = map(float, self.history('R').split('/'))
+            km = geo.ll_dist(region[0], region[2], region[1], region[3])
+            size = mapproject(region[1], region[3], wd = self.wd, \
+                    unit = 'inch', z = self.z)
+        except ValueError:
+            # could start with units or end with 'r'
+            region = self.history('R').split('/')
+            if region[-1][-1] == 'r':
+                region[-1] = region[-1][:-1]
+                region = map(float, region)
+                km = geo.ll_dist(region[0], region[1], region[2], region[3])
+                size = mapproject(region[2], region[3], wd = self.wd, \
+                        unit = 'inch', z = self.z)
+            elif region[0][0] in ['d', 'm', 's', 'e', 'f', 'k', 'M', 'n', 'u']:
+                print('Cannot use unit based region in basemap.')
+                raise
+            else:
+                raise
         inch = math.sqrt(sum(np.power(size, 2)))
         refs = inch / (km * 0.618)
 
@@ -2436,7 +2555,6 @@ class GMTPlot:
             cmd.append('-Qm%s@%s' % (colour, transparency))
         if mesh_pen != None:
             cmd.append('-Wm%s' % (mesh_pen))
-        print ' '.join(cmd)
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
     def fault(self, in_path, is_srf = False, \
