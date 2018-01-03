@@ -780,6 +780,10 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
     cmd = [GMT, grd_type, \
             '-G%s' % (os.path.abspath(grd_file)), \
             '-I%s/%s' % (dx, dy), region]
+    # increased verbosity required in GMT6 to show 'No valid values in grid'
+    if GMT_MAJOR > 5:
+        cmd.append('-Vl')
+
     # second command for optionally creating a mask
     # input for grdmask cannot be stdin as at GMT 5.3
     if file_input and automask != None:
@@ -861,6 +865,10 @@ def grdclip(ingrid, outgrid, min_v = None, max_v = None, replace = None, \
     new: value to replace selected values
     """
     cmd = [GMT, 'grdclip', ingrid, '-G%s' % (outgrid)]
+    # increased verbosity required in GMT6 to show 'No valid values in grid'
+    if GMT_MAJOR > 5:
+        cmd.append('-Vl')
+
     # crop minimum/maximum/area values
     if min_v != None:
         # values below min_v -> NaN
@@ -919,6 +927,10 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
                 '-N%s/%s/%s' % (outside, inside, inside)]
     cmd.extend(['-G%s' % (os.path.abspath(out_file)), '-I%s/%s' % (dx, dy)])
 
+    # increased verbosity required in GMT6 to show 'No valid values in grid'
+    if GMT_MAJOR > 5:
+        cmd.append('-Vl')
+
     if geo and not land:
         cmd.append('-fg')
     if mask_dist != None:
@@ -961,6 +973,9 @@ def grdmath(expression, wd = '.'):
     """
 
     cmd = [GMT, 'grdmath']
+    # increased verbosity required in GMT6 to show 'No valid values in grid'
+    if GMT_MAJOR > 5:
+        cmd.append('-Vl')
     # append optional arguments
     # TODO:...
 
