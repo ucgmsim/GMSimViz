@@ -295,8 +295,9 @@ def timeslice(job, meta):
                 cross_tick = meta['slip_cpt_max'] / 20., \
                 label = 'Slip (cm)')
     # cpt label
-    p.text(scale_margin, cpt_y, \
-            cpt_label, align = 'RM', dx = - SCALE_PAD, size = 16)
+    if cpt_label != '':
+        p.text(scale_margin, cpt_y, \
+                cpt_label, align = 'RM', dx = - SCALE_PAD, size = 16)
     # title
     p.text(PAGE_WIDTH / 2.0, PAGE_HEIGHT, \
             os.path.basename(meta['srf_file']), align = 'RM', size = 26, \
