@@ -106,8 +106,20 @@ def timeslice(job, meta):
     # 
     map_region = meta['map_region']
     map_region2 = (-50, 50, -30, 30)
-    lon0 = sum(map_region[:2]) / 2.0
-    lat0 = sum(map_region[2:4]) / 2.0
+    points = []
+    for plane in meta['srf_bounds']:
+        for point in plane:
+            points.append(point)
+    lon0, lat0, dlon, dlat = \
+            gmt.region_fit_oblique(points, 90, wd = swd)
+    # leave space around edges
+    dlon *= 1.618
+    dlat *= 1.618
+    if job['sim_time'] < 0:
+        progress = 1 - (job['tilt'] - meta['map_tilt']) / (90 - meta['map_tilt'])
+        dlon += dlon * (1 - progress)
+        dlat += dlon * (1 - progress)
+    map_region2 = (-dlon, dlon, -dlat, dlat)
     projection = 'OA%s/%s/%s/%s' % (lon0, lat0, job['azimuth'] - 90, PAGE_WIDTH)
     map_region2 = gmt.fill_space_oblique(lon0, lat0, PAGE_WIDTH, \
             PAGE_HEIGHT / math.sin(math.radians(job['tilt'])), \
@@ -139,9 +151,6 @@ def timeslice(job, meta):
         p.path('%s/xyts/corners.gmt' % (meta['wd']), close = True, \
                 width = '2p', split = '-', colour = '60/60/60')
     p.sites(gmt.sites_major)
-    p.rose('C', 'M', '1.8i', pos = 'rel', dxp = PAGE_WIDTH / 2.0 - 1.8, \
-            dyp = PAGE_HEIGHT / 2.0 - 2.2, \
-            fill = 'white@80', clearance = '0.2i', pen = 'thick,red')
 
     # srf outline: underground, surface, hypocentre
     p.path(meta['gmt_bottom'], is_file = False, colour = 'black@30', width = '1p', \
@@ -232,6 +241,9 @@ def timeslice(job, meta):
                 transparency = job['transparency'], dpi = DPI, \
                 z = '-Jz%s' % (1.5 / meta['xyts_cpt_max']), \
                 mesh = True, mesh_pen = '0.1p')
+    p.rose('C', 'M', '1.8i', pos = 'rel', dxp = PAGE_WIDTH / 2.0 - 1.8, \
+            dyp = PAGE_HEIGHT / 2.0 - 2.2, \
+            fill = 'white@80', clearance = '0.2i', pen = 'thick,red')
 
     # calculate inner region for map ticks
     # manually adjusted y as mapproject -I not compatible with -p
@@ -427,7 +439,8 @@ if len(sys.argv) > 1:
     meta = {'wd':gmt_temp, 'srf_file':srf_file, 's_azimuth':s_azimuth, \
             'map_tilt':map_tilt, 'hlon':hlon, 'hlat':hlat, 'hdepth':hdepth, \
             'gmt_bottom':gmt_bottom, 'gmt_top':gmt_top, 'animate':args.animate, \
-            'map_region':map_region, 't_frames':int(args.mtime * args.framerate)}
+            'map_region':map_region, 't_frames':int(args.mtime * args.framerate), \
+            'srf_bounds':bounds}
 
     # TODO: sliprate preparation should be an early task
     slip_end = srf.srf2llv_py(srf_file, value = 'ttotal')
