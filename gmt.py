@@ -1241,6 +1241,42 @@ def adjust_latitude(projection, width, height, region, wd = '.', \
 
     return new_height, region + z_region
 
+def region_fit_oblique(points, azimuth, wd = '.'):
+    """
+    Given points and azimuth, return centre and minimum offsets.
+    points: lon, lat pairs
+    azimuth: left direction (east) angle
+    """
+
+    # determine centre
+    lon_min, lat_min = np.min(points, axis = 0)[:2]
+    lon_max, lat_max = np.max(points, axis = 0)[:2]
+    lon0 = sum((lon_min, lon_max)) / 2.0
+    lat0 = sum((lat_min, lat_max)) / 2.0
+
+    # work in arbitrary cartesian coordinates
+    points_xy = mapproject_multi(points, wd = wd, \
+            projection = 'OA%s/%s/%s/1i' % (lon0, lat0, azimuth), \
+            region = (0, 10, 0, 10), region_units = 'k')
+
+    # find furthest cartesian points
+    i_xy = np.argmax(np.abs(points_xy), axis = 0)
+
+    # move points to centre of edges for centre based km offsets
+    # alternatively could move to corners to give llur format geo region
+    points_xy_max = [[points_xy[i_xy[0]][0], 0], [0, points_xy[i_xy[1]][1]]]
+
+    # convert back to geographic coordinates
+    points_ll_edge = mapproject_multi(points_xy_max, wd = wd, \
+            projection = 'OA%s/%s/%s/1i' % (lon0, lat0, azimuth), \
+            region = (0, 10, 0, 10), region_units = 'k', inverse = True)
+
+    # determine km offsets
+    dlon = geo.ll_dist(lon0, lat0, points_ll_edge[0][0], points_ll_edge[0][1])
+    dlat = geo.ll_dist(lon0, lat0, points_ll_edge[1][0], points_ll_edge[1][1])
+
+    return lon0, lat0, dlon, dlat
+
 def fill_space(space_x, space_y, region, dpi, proj = 'M', wd = '.'):
     """
     Given minimal region, extend vertically or horizontally to fit avaliable space.
