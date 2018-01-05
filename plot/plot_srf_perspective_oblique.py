@@ -26,7 +26,7 @@ OVERLAY_T = 40
 # 100 for 1600x900
 # 120 for 1920x1080, 16ix9i
 # 240 for 3840x2160
-DPI = 100
+DPI = 240
 # borders on page
 WINDOW_T = 0.8
 WINDOW_B = 0.3
@@ -105,7 +105,6 @@ def timeslice(job, meta):
 
     # 
     map_region = meta['map_region']
-    map_region2 = (-50, 50, -30, 30)
     points = []
     for plane in meta['srf_bounds']:
         for point in plane:
@@ -116,16 +115,39 @@ def timeslice(job, meta):
     dlon *= 1.618
     dlat *= 1.618
     if job['sim_time'] < 0:
+        # zoom in using expanded srf region as start point
         progress = 1 - (job['tilt'] - meta['map_tilt']) / (90 - meta['map_tilt'])
         dlon += dlon * (1 - progress)
         dlat += dlon * (1 - progress)
-    map_region2 = (-dlon, dlon, -dlat, dlat)
+    elif meta['xyts_file'] != None:
+        # zoom is based on xyts region
+        lon0x, lat0x, dlonx, dlatx = \
+                gmt.region_fit_oblique(meta['xyts_corners'], 90, wd = swd)
+        dlonx *= 1.2
+        dlatx *= 1.2
+        # zoom out at the rate we can expect ground motion to travel
+        dlon0, dlat0 = dlon, dlat
+        dlon += job['sim_time'] * 2.0
+        dlat += job['sim_time'] * 2.0
+        # progression
+        plon = min(1.0, (dlon - dlon0) / (dlonx - dlon0))
+        plat = min(1.0, (dlat - dlat0) / (dlatx - dlat0))
+        # cap zoom
+        if plon >= 1:
+            dlon = dlonx
+        if plat >= 1:
+            dlat = dlatx
+        # adjust centre
+        lon0 += (lon0x - lon0) * plon
+        lat0 += (lat0x - lat0) * plat
+    km_region = (-dlon, dlon, -dlat, dlat)
     projection = 'OA%s/%s/%s/%s' % (lon0, lat0, job['azimuth'] - 90, PAGE_WIDTH)
-    map_region2 = gmt.fill_space_oblique(lon0, lat0, PAGE_WIDTH, \
+    km_region = gmt.fill_space_oblique(lon0, lat0, PAGE_WIDTH, \
             PAGE_HEIGHT / math.sin(math.radians(job['tilt'])), \
-            map_region2, 'k', projection, DPI, swd)
+            km_region, 'k', projection, \
+            DPI / math.sin(math.radians(job['tilt'])), swd)
     corners, llur = gmt.map_corners(projection = projection, \
-            region = map_region2, region_units = 'k', return_region = 'llur', \
+            region = km_region, region_units = 'k', return_region = 'llur', \
             wd = swd)
 
     p = gmt.GMTPlot(gmt_ps)
@@ -192,11 +214,31 @@ def timeslice(job, meta):
             x_min, y_min = np.min(xyv[:, :2], axis = 0)
             x_max, y_max = np.max(xyv[:, :2], axis = 0)
             regions_sr.append((x_min, x_max, y_min, y_max))
+            # XY bounds
+            bounds = []
+            bounds_idx = [0, meta['planes'][i]['nstrike'] - 1, \
+                    meta['planes'][i]['ndip'] * meta['planes'][i]['nstrike'] - 1, \
+                    (meta['planes'][i]['ndip'] - 1) * meta['planes'][i]['nstrike']]
+            for idx in bounds_idx:
+                bounds.append(xyv[idx, :2])
+            with open('%s/plane_%d_bounds.xy' % (swd, i), 'w') as bounds_f:
+                for point in bounds:
+                    bounds_f.write('%s %s\n' % tuple(point))
+            # XY mask grid
+            rc = gmt.grd_mask('%s/plane_%d_bounds.xy' % (swd, i), \
+                    '%s/plane_%d_mask_xy.grd' % (swd, i), \
+                    geo = False, dx = 1.0 / DPI, dy = 1.0 / DPI, \
+                    region = regions_sr[i], wd = swd)
+            if rc == gmt.STATUS_INVALID:
+                # bounds are likely of area = 0, do not procede
+                # caller should check if file below produced
+                # attempted plotting could cause invalid postscript / crash
+                continue
             # dump as binary
             xyv.astype(np.float32) \
                 .tofile('%s/slip_%d.bin' % (swd, i))
             # search radius based on diagonal distance
-            p2 = xyv[meta['planes'][i]['nstrike'], :2]
+            p2 = xyv[meta['planes'][i]['nstrike'] + 1, :2]
             search = math.sqrt(abs(xyv[0, 0] - p2[0]) ** 2 \
                     + abs(xyv[0, 1] - p2[1]) ** 2) * 1.1
             rc = gmt.table2grd('%s/slip_%d.bin' % (swd, i), \
@@ -218,7 +260,6 @@ def timeslice(job, meta):
                     '%s/slip.cpt' % (meta['srf_wd']), \
                     transparency = job['transparency'], \
                     crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s))
-                    #custom_region = srf_data[1][s])
     elif plot == 'timeseries':
         for s in xrange(meta['n_plane']):
             if not os.path.exists('%s/slip_%d.grd' % (swd, s)):
@@ -226,8 +267,7 @@ def timeslice(job, meta):
             p.overlay('%s/slip_%d.grd' % (swd, s), \
                     '%s/slip.cpt' % (meta['srf_wd']), \
                     transparency = job['transparency'], \
-                    #crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s), \
-                    custom_region = regions_sr[s])
+                    crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s))
     # ground motion must be in geographic projection due to 3D Z scaling
     proj(True)
     try:
@@ -500,6 +540,7 @@ if len(sys.argv) > 1:
         xres = '%sk' % (xfile.hh * xfile.dxts * 3.0 / 5.0)
         with open('%s/xyts/corners.gmt' % (gmt_temp), 'w') as xpath:
             xpath.write(xcnrs[1])
+        meta['xyts_corners'] = xcnrs[0]
         meta['xyts_region'] = xregion
         meta['xyts_res'] = xres
         meta['xyts_dt'] = xfile.dt

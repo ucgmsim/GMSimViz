@@ -608,9 +608,9 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                 # attempted plotting could cause invalid postscript / crash
                 continue
             # search radius based on diagonal distance
-            p2 = xyv_repr[planes[s]['nstrike'], :2]
+            p2 = xyv_repr[planes[s]['nstrike'] + 1, :2]
             search = math.sqrt(abs(xyv_repr[0, 0] - p2[0]) ** 2 \
-                    + abs(xyv_repr[0, 1] - p2[1]) ** 2) * 3
+                    + abs(xyv_repr[0, 1] - p2[1]) ** 2) * 1.2
             # XY grid
             table2grd('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%s_%s_xy.grd' % (out_dir, prefix, s, value), \
@@ -1245,7 +1245,7 @@ def region_fit_oblique(points, azimuth, wd = '.'):
     """
     Given points and azimuth, return centre and minimum offsets.
     points: lon, lat pairs
-    azimuth: left direction (east) angle
+    azimuth: right direction angle
     """
 
     # determine centre
@@ -1311,9 +1311,10 @@ def fill_space(space_x, space_y, region, dpi, proj = 'M', wd = '.'):
     return space_x, space_y, region
 
 def fill_space_oblique(lon0, lat0, space_x, space_y, region, region_units, \
-        proj, dpi, wd = '.'):
+        proj, dpi, wd = '.', recursion = 0):
     """
     Modified fill space for oblique mercator and offset based region.
+    dpi: target output dpi, should be adjusted for tilt angle and/or space units
     """
     region = list(region)
     letterbox_width, letterbox_height = \
@@ -1332,6 +1333,20 @@ def fill_space_oblique(lon0, lat0, space_x, space_y, region, region_units, \
                 - (region[3] - region[2])) / 2.0
         region[3] += ydiff
         region[2] -= ydiff
+
+    # verify accuracy
+    real_width, real_height = map_dimentions(projection = proj, \
+            region = region, region_units = region_units, wd = wd)
+    if abs(space_x - real_width) > 0.4 / dpi or \
+            abs(space_y - real_height) > 0.4 / dpi:
+        # hasn't shown up before, need to verify if verification is required
+        print('[qcore.gmt.fill_space_oblique] accuracy anomaly detected (%d)' \
+                % (recursion))
+        if recursion >= 49:
+            print('[qcore.gmt.fill_space_oblique] FAILED')
+            return tuple(region)
+        return fill_space_oblique(lon0, lat0, space_x, space_y, region, \
+                region_units, proj, dpi, wd = wd, recursion = recursion + 1)
 
     return tuple(region)
 
