@@ -149,12 +149,21 @@ def timeslice(job, meta):
     corners, llur = gmt.map_corners(projection = projection, \
             region = km_region, region_units = 'k', return_region = 'llur', \
             wd = swd)
+    # determine km per inch near centre of page for Z axis scaling
+    mid_x = PAGE_WIDTH / 2.0
+    mid_y1 = (PAGE_HEIGHT / 2.0 - 0.5) / math.sin(math.radians(job['tilt']))
+    mid_y2 = (PAGE_HEIGHT / 2.0 + 0.5) / math.sin(math.radians(job['tilt']))
+    mid_lls = gmt.mapproject_multi([[mid_x, mid_y1], [mid_x, mid_y2]], \
+            wd = swd, projection = projection, region = llur, \
+            inverse = True)
+    km_inch = geo.ll_dist(mid_lls[0, 0], mid_lls[0, 1], \
+            mid_lls[1, 0], mid_lls[1, 1])
+    z_scale = -1.0 /  km_inch * math.sin(math.radians(job['tilt']))
 
     p = gmt.GMTPlot(gmt_ps)
     # use custom page size
     gmt.gmt_defaults(wd = swd, \
             ps_media = 'Custom_%six%si' % (PAGE_WIDTH, PAGE_HEIGHT))
-    z_scale = -0.1
     def proj(projected):
         if projected:
             p.spacial('OA', llur, lon0 = lon0, lat0 = lat0, \
@@ -166,7 +175,7 @@ def timeslice(job, meta):
                     sizing = '%s/%s' % (PAGE_WIDTH, PAGE_HEIGHT))
 
     proj(True)
-    p.basemap(topo = None, road = None)
+    p.basemap()
 
     # simulation domain
     if os.path.isfile('%s/xyts/corners.gmt' % (meta['wd'])):
@@ -279,7 +288,7 @@ def timeslice(job, meta):
     if os.path.isfile(gm_file):
         p.overlay3d(gm_file, cpt = '%s/xyts/gm.cpt' % (meta['wd']), \
                 transparency = job['transparency'], dpi = DPI, \
-                z = '-Jz%s' % (1.5 / meta['xyts_cpt_max']), \
+                z = '-Jz%s' % ((-80 * z_scale) / meta['xyts_cpt_max']), \
                 mesh = True, mesh_pen = '0.1p')
     p.rose('C', 'M', '1.8i', pos = 'rel', dxp = PAGE_WIDTH / 2.0 - 1.8, \
             dyp = PAGE_HEIGHT / 2.0 - 2.2, \
