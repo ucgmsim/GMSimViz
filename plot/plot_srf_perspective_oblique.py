@@ -539,6 +539,7 @@ if len(sys.argv) > 1:
 
     meta['xyts_file'] = xyts_file
     frames_gm = 0
+    final_azimuth = 180
     # xyts quick preparation
     if xyts_file != None:
         os.makedirs(os.path.join(gmt_temp, 'xyts'))
@@ -557,6 +558,28 @@ if len(sys.argv) > 1:
             msg_list.append([load_xyts, meta])
             msg_deps += 1
             frames_gm = int(xfile.dt * (xfile.nt - 0.6) * args.framerate)
+        # final view angle based on longer region size
+        if geo.ll_dist(xcnrs[0][0][0], xcnrs[0][0][1], \
+                xcnrs[0][1][0], xcnrs[0][1][1]) \
+                > geo.ll_dist(xcnrs[0][1][0], xcnrs[0][1][1], \
+                xcnrs[0][2][0], xcnrs[0][2][1]):
+            bearing_xl = geo.ll_bearing(xcnrs[0][0][0], xcnrs[0][0][1], \
+                    xcnrs[0][1][0], xcnrs[0][1][1], midpoint = True) + 90
+        else:
+            bearing_xl = geo.ll_bearing(xcnrs[0][1][0], xcnrs[0][1][1], \
+                    xcnrs[0][2][0], xcnrs[0][2][1], midpoint = True) + 90
+        if abs(geo.angle_diff(s_azimuth, bearing_xl)) > 90:
+            final_azimuth = (bearing_xl + 180) % 360
+        else:
+            final_azimuth = bearing_xl % 360
+    # transform over longer direction
+    diff_azimuth = geo.angle_diff(s_azimuth, final_azimuth)
+    if diff_azimuth < 0:
+        diff_azimuth += 360
+    else:
+        diff_azimuth -= 360
+    frames_azimuth = int(max(frames_sr, frames_gm) * 0.85)
+    diff_azimuth /= frames_azimuth
 
     # tasks
     if not args.animate:
@@ -617,8 +640,12 @@ if len(sys.argv) > 1:
                 sim_time = float(i) / args.framerate
                 xpos = int(round(sim_time / xfile.dt))
                 if xpos in ready:
+                    if i >= frames_azimuth:
+                        azimuth = final_azimuth
+                    else:
+                        azimuth = s_azimuth + i * diff_azimuth
                     scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
-                    msg_list.append([timeslice, {'azimuth':s_azimuth, \
+                    msg_list.append([timeslice, {'azimuth':azimuth, \
                             'tilt':map_tilt, 'scale_t':scale_t, 'scale_x':0.0, \
                             'seq':frames + i, 'transparency':OVERLAY_T, \
                             'sim_time':sim_time}, meta])
@@ -629,7 +656,11 @@ if len(sys.argv) > 1:
                 scale_x = min(float(i - frames_sr), meta['t_frames']) \
                         / meta['t_frames']
                 if xpos in ready:
-                    msg_list.append([timeslice, {'azimuth':s_azimuth, \
+                    if i >= frames_azimuth:
+                        azimuth = final_azimuth
+                    else:
+                        azimuth = s_azimuth + i * diff_azimuth
+                    msg_list.append([timeslice, {'azimuth':azimuth, \
                             'tilt':map_tilt, 'scale_t':1.0, 'scale_x':scale_x, \
                             'seq':frames + i, 'transparency':OVERLAY_T, \
                             'sim_time':sim_time}, meta])
