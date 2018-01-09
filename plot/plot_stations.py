@@ -44,10 +44,9 @@ from time import time, sleep
 from mpi4py import MPI
 import numpy as np
 
-import qcore_path
-import gmt
-import geo
-from srf import srf2corners
+import qcore.gmt as gmt
+import qcore.geo as geo
+from qcore.srf import srf2corners
 
 MASTER = 0
 
@@ -498,7 +497,7 @@ if len(sys.argv) > 1:
     from glob import glob
 
     sys.path.insert(0, '.')
-    from shared import get_corners
+    from qcore.shared import get_corners
 
     # copy default params
     script_dir = os.path.abspath(os.path.dirname(__file__))

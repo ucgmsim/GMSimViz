@@ -9,9 +9,8 @@ sys.path.insert(0, '.')
 
 import numpy as np
 
-import qcore_path
-import gmt
-import srf
+import qcore.gmt as gmt
+import qcore.srf as srf
 
 script_dir = os.path.abspath(os.path.dirname(__file__))
 if not os.path.exists('params_plot.py'):

@@ -27,10 +27,9 @@ from tempfile import mkdtemp
 
 import numpy as np
 
-import qcore_path
-import gmt
-import srf
-import geo
+import qcore.geo as geo
+import qcore.gmt as gmt
+import qcore.srf as srf
 
 faults = '/nesi/projects/nesi00213/PlottingData/Paths/faults/FAULTS_20161219.ll'
 cpt = os.path.join(os.path.dirname(os.path.abspath(__file__)), \

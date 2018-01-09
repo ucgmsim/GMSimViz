@@ -7,8 +7,7 @@ Plot faults that have been studied by QuakeCoRE
 
 import os
 
-import qcore_path
-import gmt
+import qcore.gmt as gmt
 print gmt.sites_major
 exit()
 

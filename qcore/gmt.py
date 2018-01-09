@@ -70,7 +70,8 @@ TOPO_HIGH = os.path.join(GMT_DATA, 'Topo/srtm_all_filt_nz.grd')
 TOPO_LOW = os.path.join(GMT_DATA, 'Topo/nztopo.grd')
 CHCH_WATER = os.path.join(GMT_DATA, 'Paths/water_network/water.gmt')
 # CPT DATA
-CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plot', 'cpt')
+CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), \
+        os.pardir, 'plot', 'cpt')
 CPTS = {
     'nztopo-green-brown':os.path.join(CPT_DIR, 'palm_springs_nz_topo.cpt'),
     'nztopo-grey1':os.path.join(CPT_DIR, 'nz_topo_grey1.cpt'),
@@ -610,7 +611,7 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
             # search radius based on diagonal distance
             p2 = xyv_repr[planes[s]['nstrike'] + 1, :2]
             search = math.sqrt(abs(xyv_repr[0, 0] - p2[0]) ** 2 \
-                    + abs(xyv_repr[0, 1] - p2[1]) ** 2) * 1.2
+                    + abs(xyv_repr[0, 1] - p2[1]) ** 2) * 1.5
             # XY grid
             table2grd('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%s_%s_xy.grd' % (out_dir, prefix, s, value), \

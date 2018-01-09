@@ -10,10 +10,10 @@ from time import time
 from mpi4py import MPI
 import numpy as np
 
-import geo
-import gmt
-import srf
-import xyts
+import qcore.geo as geo
+import qcore.gmt as gmt
+import qcore.srf as srf
+import qcore.xyts as xyts
 
 MASTER = 0
 TILT_MAX = 20
