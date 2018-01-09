@@ -23,6 +23,7 @@ SCALE_WIDTH = PAGE_WIDTH / 1.618
 SCALE_SIZE = 0.25
 SCALE_PAD = 0.1
 OVERLAY_T = 40
+# 100 for 1600x900
 # 120 for 1920x1080, 16ix9i
 # 240 for 3840x2160
 DPI = 240
@@ -102,37 +103,85 @@ def timeslice(job, meta):
         % (os.path.splitext(os.path.basename(meta['srf_file']))[0], \
         '_%.4d' % (i) * (job['seq'] != None)))
 
-    # smallest size to fill page
-    gmt_x_size, gmt_y_size, sx, by = gmt.perspective_fill( \
-            PAGE_WIDTH, PAGE_HEIGHT, view = job['azimuth'], tilt = job['tilt'])
-    # oblique mercator 'O' would be ideal but doesn't seem to work with 3D
-    new_y_size, map_region = gmt.adjust_latitude('M', gmt_x_size, gmt_y_size, \
-            meta['map_region'], wd = swd, abs_diff = True, \
-            accuracy = 0.4 * 1. / DPI, reference = 'left', top = True, \
-            bottom = True)
+    # 
+    map_region = meta['map_region']
+    points = []
+    for plane in meta['srf_bounds']:
+        for point in plane:
+            points.append(point)
+    lon0, lat0, dlon, dlat = \
+            gmt.region_fit_oblique(points, 90, wd = swd)
+    # leave space around edges
+    dlon *= 1.618
+    dlat *= 1.618
+    if job['sim_time'] < 0:
+        # zoom in using expanded srf region as start point
+        progress = 1 - (job['tilt'] - meta['map_tilt']) / (90 - meta['map_tilt'])
+        dlon += dlon * (1 - progress)
+        dlat += dlon * (1 - progress)
+    elif meta['xyts_file'] != None:
+        # zoom is based on xyts region
+        lon0x, lat0x, dlonx, dlatx = \
+                gmt.region_fit_oblique(meta['xyts_corners'], 90, wd = swd)
+        dlonx *= 1.2
+        dlatx *= 1.2
+        # zoom out at the rate we can expect ground motion to travel
+        dlon0, dlat0 = dlon, dlat
+        dlon += job['sim_time'] * 2.0
+        dlat += job['sim_time'] * 2.0
+        # progression
+        plon = min(1.0, (dlon - dlon0) / (dlonx - dlon0))
+        plat = min(1.0, (dlat - dlat0) / (dlatx - dlat0))
+        # cap zoom
+        if plon >= 1:
+            dlon = dlonx
+        if plat >= 1:
+            dlat = dlatx
+        # adjust centre
+        lon0 += (lon0x - lon0) * plon
+        lat0 += (lat0x - lat0) * plat
+    km_region = (-dlon, dlon, -dlat, dlat)
+    projection = 'OA%s/%s/%s/%s' % (lon0, lat0, job['azimuth'] - 90, PAGE_WIDTH)
+    km_region = gmt.fill_space_oblique(lon0, lat0, PAGE_WIDTH, \
+            PAGE_HEIGHT / math.sin(math.radians(job['tilt'])), \
+            km_region, 'k', projection, \
+            DPI / math.sin(math.radians(job['tilt'])), swd)
+    corners, llur = gmt.map_corners(projection = projection, \
+            region = km_region, region_units = 'k', return_region = 'llur', \
+            wd = swd)
+    # determine km per inch near centre of page for Z axis scaling
+    mid_x = PAGE_WIDTH / 2.0
+    mid_y1 = (PAGE_HEIGHT / 2.0 - 0.5) / math.sin(math.radians(job['tilt']))
+    mid_y2 = (PAGE_HEIGHT / 2.0 + 0.5) / math.sin(math.radians(job['tilt']))
+    mid_lls = gmt.mapproject_multi([[mid_x, mid_y1], [mid_x, mid_y2]], \
+            wd = swd, projection = projection, region = llur, \
+            inverse = True)
+    km_inch = geo.ll_dist(mid_lls[0, 0], mid_lls[0, 1], \
+            mid_lls[1, 0], mid_lls[1, 1])
+    z_scale = -1.0 /  km_inch * math.sin(math.radians(job['tilt']))
 
     p = gmt.GMTPlot(gmt_ps)
     # use custom page size
     gmt.gmt_defaults(wd = swd, \
             ps_media = 'Custom_%six%si' % (PAGE_WIDTH, PAGE_HEIGHT))
-    # page background
-    p.spacial('X', (0, 1, 0, 1), sizing = '%s/%s' % (PAGE_WIDTH, PAGE_HEIGHT))
-    p.path('0 0\n0 1\n1 1\n1 0', is_file = False, close = True, \
-            fill = 'white', width = None)
-    # geographic projection
-    z_scale = -0.1
-    p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
-            p = '%s/%s/0' % (job['azimuth'], job['tilt']), \
-            x_shift = - sx, y_shift = - by)
+    def proj(projected):
+        if projected:
+            p.spacial('OA', llur, lon0 = lon0, lat0 = lat0, \
+                    z = 'z%s' % (z_scale), \
+                    sizing = '%s/%s' % (job['azimuth'] - 90, PAGE_WIDTH), \
+                    p = '180/%s/0' % (job['tilt']))
+        else:
+            p.spacial('X', (0, PAGE_WIDTH, 0, PAGE_HEIGHT), \
+                    sizing = '%s/%s' % (PAGE_WIDTH, PAGE_HEIGHT))
+
+    proj(True)
     p.basemap()
+
     # simulation domain
     if os.path.isfile('%s/xyts/corners.gmt' % (meta['wd'])):
         p.path('%s/xyts/corners.gmt' % (meta['wd']), close = True, \
                 width = '2p', split = '-', colour = '60/60/60')
     p.sites(gmt.sites_major)
-    p.rose('C', 'M', '2i', pos = 'rel', \
-            dxp = PAGE_WIDTH / 2 - 2, dyp = PAGE_HEIGHT / 2 - 1.8, \
-            fill = 'white@80', clearance = '-0.4i/0.2i', pen = 'thick,red')
 
     # srf outline: underground, surface, hypocentre
     p.path(meta['gmt_bottom'], is_file = False, colour = 'black@30', width = '1p', \
@@ -174,11 +223,31 @@ def timeslice(job, meta):
             x_min, y_min = np.min(xyv[:, :2], axis = 0)
             x_max, y_max = np.max(xyv[:, :2], axis = 0)
             regions_sr.append((x_min, x_max, y_min, y_max))
+            # XY bounds
+            bounds = []
+            bounds_idx = [0, meta['planes'][i]['nstrike'] - 1, \
+                    meta['planes'][i]['ndip'] * meta['planes'][i]['nstrike'] - 1, \
+                    (meta['planes'][i]['ndip'] - 1) * meta['planes'][i]['nstrike']]
+            for idx in bounds_idx:
+                bounds.append(xyv[idx, :2])
+            with open('%s/plane_%d_bounds.xy' % (swd, i), 'w') as bounds_f:
+                for point in bounds:
+                    bounds_f.write('%s %s\n' % tuple(point))
+            # XY mask grid
+            rc = gmt.grd_mask('%s/plane_%d_bounds.xy' % (swd, i), \
+                    '%s/plane_%d_mask_xy.grd' % (swd, i), \
+                    geo = False, dx = 1.0 / DPI, dy = 1.0 / DPI, \
+                    region = regions_sr[i], wd = swd)
+            if rc == gmt.STATUS_INVALID:
+                # bounds are likely of area = 0, do not procede
+                # caller should check if file below produced
+                # attempted plotting could cause invalid postscript / crash
+                continue
             # dump as binary
             xyv.astype(np.float32) \
                 .tofile('%s/slip_%d.bin' % (swd, i))
             # search radius based on diagonal distance
-            p2 = xyv[meta['planes'][i]['nstrike'], :2]
+            p2 = xyv[meta['planes'][i]['nstrike'] + 1, :2]
             search = math.sqrt(abs(xyv[0, 0] - p2[0]) ** 2 \
                     + abs(xyv[0, 1] - p2[1]) ** 2) * 1.1
             rc = gmt.table2grd('%s/slip_%d.bin' % (swd, i), \
@@ -191,8 +260,7 @@ def timeslice(job, meta):
                 os.remove('%s/slip_%d.grd' % (swd, i))
 
     # slip distribution has been reprojected onto x, y of page area
-    p.spacial('X', (0, PAGE_WIDTH + sx, 0, PAGE_HEIGHT + by), \
-            sizing = '%s/%s' % (PAGE_WIDTH + sx, PAGE_HEIGHT + by))
+    proj(False)
     if plot == 'slip':
         for s in xrange(len(srf_data[1])):
             if not os.path.exists('%s/plane_%d_slip_xy.grd' % (swd, s)):
@@ -200,8 +268,7 @@ def timeslice(job, meta):
             p.overlay('%s/plane_%d_slip_xy.grd' % (swd, s), \
                     '%s/slip.cpt' % (meta['srf_wd']), \
                     transparency = job['transparency'], \
-                    crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s), \
-                    custom_region = srf_data[1][s])
+                    crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s))
     elif plot == 'timeseries':
         for s in xrange(meta['n_plane']):
             if not os.path.exists('%s/slip_%d.grd' % (swd, s)):
@@ -209,11 +276,9 @@ def timeslice(job, meta):
             p.overlay('%s/slip_%d.grd' % (swd, s), \
                     '%s/slip.cpt' % (meta['srf_wd']), \
                     transparency = job['transparency'], \
-                    #crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s), \
-                    custom_region = regions_sr[s])
+                    crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s))
     # ground motion must be in geographic projection due to 3D Z scaling
-    p.spacial('M', map_region, z = 'z%s' % (z_scale), sizing = gmt_x_size, \
-            p = '%s/%s/0' % (job['azimuth'], job['tilt']))
+    proj(True)
     try:
         xpos = int(round(job['sim_time'] / meta['xyts_dt']))
     except KeyError:
@@ -223,25 +288,39 @@ def timeslice(job, meta):
     if os.path.isfile(gm_file):
         p.overlay3d(gm_file, cpt = '%s/xyts/gm.cpt' % (meta['wd']), \
                 transparency = job['transparency'], dpi = DPI, \
-                z = '-Jz%s' % (1.5 / meta['xyts_cpt_max']), \
+                z = '-Jz%s' % ((-80 * z_scale) / meta['xyts_cpt_max']), \
                 mesh = True, mesh_pen = '0.1p')
+    p.rose('C', 'M', '1.8i', pos = 'rel', dxp = PAGE_WIDTH / 2.0 - 1.8, \
+            dyp = PAGE_HEIGHT / 2.0 - 2.2, \
+            fill = 'white@80', clearance = '0.2i', pen = 'thick,red')
+
+    # calculate inner region for map ticks
+    # manually adjusted y as mapproject -I not compatible with -p
+    scale_p = job['scale_t'] * scale_p_final
+    window_b = max(WINDOW_B, scale_p)
+    # also include lr for better auto tick increment calculation
+    llur_i = gmt.mapproject_multi([ \
+            [WINDOW_L, window_b / math.sin(math.radians(job['tilt']))], \
+            [PAGE_WIDTH - WINDOW_R, \
+            (PAGE_HEIGHT - WINDOW_T) / math.sin(math.radians(job['tilt']))], \
+            [PAGE_WIDTH - WINDOW_R, \
+            window_b / math.sin(math.radians(job['tilt']))]], \
+            inverse = True, wd = swd)
 
     ###
     ### map overlay border, labels, legends etc...
     ###
-    p.spacial('X', (0, PAGE_WIDTH + sx, 0, PAGE_HEIGHT + by), \
-            sizing = '%s/%s' % (PAGE_WIDTH + sx, PAGE_HEIGHT + by))
-    scale_p = job['scale_t'] * scale_p_final
+    proj(False)
     p.background(PAGE_WIDTH, PAGE_HEIGHT, spacial = False, \
-            window = (WINDOW_L, WINDOW_R, WINDOW_T, max(WINDOW_B, scale_p)), \
-            x_margin = sx, y_margin = by, colour = 'white@50')
+            window = (WINDOW_L, WINDOW_R, WINDOW_T, window_b), \
+            colour = 'white@50')
     # middle of scale
-    cpt_y = scale_p + by - 0.5 * SCALE_SIZE - SCALE_PAD
+    cpt_y = scale_p - 0.5 * SCALE_SIZE - SCALE_PAD
     # space before scale starts
     scale_margin = (PAGE_WIDTH - SCALE_WIDTH) / 2.0
     if plot == 'slip':
         cpt_label = 'Slip (cm)'
-        p.cpt_scale(PAGE_WIDTH / 2.0 + sx, scale_p + by, \
+        p.cpt_scale(PAGE_WIDTH / 2.0, scale_p, \
                 '%s/slip.cpt' % (meta['srf_wd']), length = SCALE_WIDTH, \
                 align = 'CT', dy = SCALE_PAD, thickness = SCALE_SIZE, \
                 major = meta['slip_cpt_max'] / 5., \
@@ -249,10 +328,10 @@ def timeslice(job, meta):
                 cross_tick = meta['slip_cpt_max'] / 20.)
     elif plot == 'timeseries':
         cpt_label = ''
-        y = scale_p + by
+        y = scale_p
         if meta['xyts_file'] != None:
-            x0 = sx + WINDOW_L * 2.0
-            x1 = sx + scale_margin
+            x0 = WINDOW_L * 2.0
+            x1 = scale_margin
             diff = x1 - x0
             x = x0 + diff * job['scale_x']
             length0 = PAGE_WIDTH / 2.0 - WINDOW_L * 3
@@ -267,7 +346,7 @@ def timeslice(job, meta):
                 cross_tick = meta['xyts_cpt_max'] / 20., label = 'Ground motion (cm/s)')
             x += length + WINDOW_L * 2 + scale_margin * job['scale_x']
         else:
-            x = sx + scale_margin
+            x = scale_margin
             length = SCALE_WIDTH
         p.cpt_scale(x, y, \
                 '%s/slip.cpt' % (meta['srf_wd']), length = length, \
@@ -277,21 +356,22 @@ def timeslice(job, meta):
                 cross_tick = meta['slip_cpt_max'] / 20., \
                 label = 'Slip (cm)')
     # cpt label
-    p.text(scale_margin + sx, cpt_y, \
-            cpt_label, align = 'RM', dx = - SCALE_PAD, size = 16)
+    if cpt_label != '':
+        p.text(scale_margin, cpt_y, \
+                cpt_label, align = 'RM', dx = - SCALE_PAD, size = 16)
     # title
-    p.text(sx + PAGE_WIDTH / 2.0, by + PAGE_HEIGHT, \
+    p.text(PAGE_WIDTH / 2.0, PAGE_HEIGHT, \
             os.path.basename(meta['srf_file']), align = 'RM', size = 26, \
             dy = WINDOW_T / -2.0, dx = - 0.2)
     # sim time
     if job['sim_time'] >= 0:
-        p.text(sx + PAGE_WIDTH - WINDOW_R, by + PAGE_HEIGHT - WINDOW_T, \
+        p.text(PAGE_WIDTH - WINDOW_R, PAGE_HEIGHT - WINDOW_T, \
                 '%.3fs' % (job['sim_time']), size = '24p', \
                 align = "BR", font = 'Courier', dx = -0.2, dy = 0.1)
 
     if plot == 'slip':
         # box-and-whisker slip distribution
-        scale_start = sx + scale_margin
+        scale_start = scale_margin
         scale_factor = 1.0 / meta['slip_cpt_max'] * SCALE_WIDTH
         # max point should not be off the page, leave space for label
         max_x = scale_start \
@@ -306,6 +386,17 @@ def timeslice(job, meta):
         # label max
         p.text(max_x, cpt_y, '%.1f' % (srf_data[2]['max']), size = '16p', \
                 align = 'LM', dx = SCALE_PAD)
+
+    # final projection of the inner area to draw map ticks
+    p.spacial('OA%s/%s/%s/' % (lon0, lat0, job['azimuth'] - 90), \
+            (str(llur_i[0][0]), str(llur_i[0][1]), \
+            str(llur_i[1][0]), '%sr' % (llur_i[1][1])), \
+            sizing = PAGE_WIDTH - WINDOW_L - WINDOW_R, \
+            p = '180/%s/0' % (job['tilt']), \
+            x_shift = WINDOW_L, y_shift = window_b)
+    # MAP_FRAME_TYPE also changes cpt scales so cannot be globally set
+    gmt.gmt_set(['MAP_FRAME_TYPE', 'inside', 'MAP_TICK_LENGTH_PRIMARY', '0.1i', 'MAP_ANNOT_OBLIQUE', '1'], wd = swd)
+    p.ticks(major = '1d', minor = '0.2d')
 
     # finish, clean up
     p.finalise()
@@ -378,6 +469,8 @@ if len(sys.argv) > 1:
     map_tilt = max(90 - avg_dip, TILT_MAX)
     # plane domains
     bounds = srf.get_bounds(srf_file, depth = True)
+    #print np.min(bounds, axis = 0)
+    #exit()
     hlon, hlat, hdepth = srf.get_hypo(srf_file, depth = True)
     top_left = bounds[0][0]
     top_right = bounds[-1][1]
@@ -395,7 +488,8 @@ if len(sys.argv) > 1:
     meta = {'wd':gmt_temp, 'srf_file':srf_file, 's_azimuth':s_azimuth, \
             'map_tilt':map_tilt, 'hlon':hlon, 'hlat':hlat, 'hdepth':hdepth, \
             'gmt_bottom':gmt_bottom, 'gmt_top':gmt_top, 'animate':args.animate, \
-            'map_region':map_region, 't_frames':int(args.mtime * args.framerate)}
+            'map_region':map_region, 't_frames':int(args.mtime * args.framerate), \
+            'srf_bounds':bounds}
 
     # TODO: sliprate preparation should be an early task
     slip_end = srf.srf2llv_py(srf_file, value = 'ttotal')
@@ -445,6 +539,7 @@ if len(sys.argv) > 1:
 
     meta['xyts_file'] = xyts_file
     frames_gm = 0
+    final_azimuth = 180
     # xyts quick preparation
     if xyts_file != None:
         os.makedirs(os.path.join(gmt_temp, 'xyts'))
@@ -455,6 +550,7 @@ if len(sys.argv) > 1:
         xres = '%sk' % (xfile.hh * xfile.dxts * 3.0 / 5.0)
         with open('%s/xyts/corners.gmt' % (gmt_temp), 'w') as xpath:
             xpath.write(xcnrs[1])
+        meta['xyts_corners'] = xcnrs[0]
         meta['xyts_region'] = xregion
         meta['xyts_res'] = xres
         meta['xyts_dt'] = xfile.dt
@@ -462,6 +558,28 @@ if len(sys.argv) > 1:
             msg_list.append([load_xyts, meta])
             msg_deps += 1
             frames_gm = int(xfile.dt * (xfile.nt - 0.6) * args.framerate)
+        # final view angle based on longer region size
+        if geo.ll_dist(xcnrs[0][0][0], xcnrs[0][0][1], \
+                xcnrs[0][1][0], xcnrs[0][1][1]) \
+                > geo.ll_dist(xcnrs[0][1][0], xcnrs[0][1][1], \
+                xcnrs[0][2][0], xcnrs[0][2][1]):
+            bearing_xl = geo.ll_bearing(xcnrs[0][0][0], xcnrs[0][0][1], \
+                    xcnrs[0][1][0], xcnrs[0][1][1], midpoint = True) + 90
+        else:
+            bearing_xl = geo.ll_bearing(xcnrs[0][1][0], xcnrs[0][1][1], \
+                    xcnrs[0][2][0], xcnrs[0][2][1], midpoint = True) + 90
+        if abs(geo.angle_diff(s_azimuth, bearing_xl)) > 90:
+            final_azimuth = (bearing_xl + 180) % 360
+        else:
+            final_azimuth = bearing_xl % 360
+    # transform over longer direction
+    diff_azimuth = geo.angle_diff(s_azimuth, final_azimuth)
+    if diff_azimuth < 0:
+        diff_azimuth += 360
+    else:
+        diff_azimuth -= 360
+    frames_azimuth = int(max(frames_sr, frames_gm) * 0.85)
+    diff_azimuth /= frames_azimuth
 
     # tasks
     if not args.animate:
@@ -497,7 +615,6 @@ if len(sys.argv) > 1:
     # distribute work to slaves who ask
     status = MPI.Status()
     while nproc:
-        print msg_deps
         # previous job
         comm.recv(source = MPI.ANY_SOURCE, status = status)
         slave_id = status.Get_source()
@@ -523,8 +640,12 @@ if len(sys.argv) > 1:
                 sim_time = float(i) / args.framerate
                 xpos = int(round(sim_time / xfile.dt))
                 if xpos in ready:
+                    if i >= frames_azimuth:
+                        azimuth = final_azimuth
+                    else:
+                        azimuth = s_azimuth + i * diff_azimuth
                     scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
-                    msg_list.append([timeslice, {'azimuth':s_azimuth, \
+                    msg_list.append([timeslice, {'azimuth':azimuth, \
                             'tilt':map_tilt, 'scale_t':scale_t, 'scale_x':0.0, \
                             'seq':frames + i, 'transparency':OVERLAY_T, \
                             'sim_time':sim_time}, meta])
@@ -535,7 +656,11 @@ if len(sys.argv) > 1:
                 scale_x = min(float(i - frames_sr), meta['t_frames']) \
                         / meta['t_frames']
                 if xpos in ready:
-                    msg_list.append([timeslice, {'azimuth':s_azimuth, \
+                    if i >= frames_azimuth:
+                        azimuth = final_azimuth
+                    else:
+                        azimuth = s_azimuth + i * diff_azimuth
+                    msg_list.append([timeslice, {'azimuth':azimuth, \
                             'tilt':map_tilt, 'scale_t':1.0, 'scale_x':scale_x, \
                             'seq':frames + i, 'transparency':OVERLAY_T, \
                             'sim_time':sim_time}, meta])
@@ -561,10 +686,10 @@ if len(sys.argv) > 1:
     # stop mpi
     comm.Disconnect()
 
-    # add dynamic frames to counter
-    frames += max(frames_sr, frames_gm)
     basename = os.path.splitext(os.path.basename(meta['srf_file']))[0]
     if args.animate:
+        # add dynamic frames to counter
+        frames += max(frames_sr, frames_gm)
         # copy last frame
         frames_end = int(args.end * args.framerate)
         frames_start = int(args.delay * args.framerate)
@@ -611,7 +736,6 @@ else:
     logbook = []
     for task in iter(lambda: comm.sendrecv(None, dest = MASTER), StopIteration):
 
-        print task
         t0 = time()
         # no jobs available yet
         if task == None:
