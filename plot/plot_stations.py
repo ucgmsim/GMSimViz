@@ -351,7 +351,7 @@ def column_overlay(n, station_file, meta, plot):
                 meta['cpt_max'][n], inc = meta['cpt_inc'][n], \
                 invert = 'invert' in meta['cpt_properties'], \
                 fg = meta['cpt_fg'], bg = meta['cpt_bg'], \
-                transparency = meta['transparency'])
+                transparency = meta['transparency'], wd = swd)
 
     # common title
     if len(meta['title']):

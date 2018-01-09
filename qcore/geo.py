@@ -174,15 +174,26 @@ def ll_dist(lon1, lat1, lon2, lat2):
     a = sin(dlat / 2.0) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2.0) ** 2
     return R_EARTH * 2.0 * atan2(sqrt(a), sqrt(1 - a))
 
-def ll_bearing(lon1, lat1, lon2, lat2):
+def ll_bearing(lon1, lat1, lon2, lat2, midpoint = False):
     """
     Initial bearing when traveling from 1 -> 2.
     Direction facing from point 1 when looking at point 2.
     """
+    if midpoint:
+        lon1, lat1 = ll_mid(lon1, lat1, lon2, lat2)
     lat1, lat2, lon_diff = map(radians, [lat1, lat2, (lon2 - lon1)])
     return degrees(atan2(cos(lat2) * sin(lon_diff), \
             cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon_diff))) \
             % 360
+
+def angle_diff(b1, b2):
+    """
+    Return smallest difference (clockwise, -180 -> 180) from b1 to b2.
+    """
+    r = (b2 - b1) % 360
+    if (r > 180):
+      return r - 360
+    return r
 
 def avg_wbearing(angles):
     """

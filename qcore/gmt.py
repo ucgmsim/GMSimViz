@@ -80,9 +80,10 @@ CPTS = {
     'trise':os.path.join(CPT_DIR, 'trise.cpt')
 }
 
-def update_gmt_path(gmt_bin):
+def update_gmt_path(gmt_bin, wd = None):
     """
     Allow changing GMT binary location.
+    wd: also try to fix GMT_HISTORY in this dir
     """
     global GMT, GMT_VERSION, GMT_MAJOR, GMT_MINOR, psconvert
 
@@ -104,6 +105,12 @@ def update_gmt_path(gmt_bin):
         psconvert = 'ps2raster'
     else:
         psconvert = 'psconvert'
+
+    if wd != None:
+        if os.path.exists(os.path.join(wd, GMT_HISTORY)):
+            Popen(['sed', '-i', 's/BEGIN GMT .*/BEGIN GMT %s/g' % (GMT_VERSION), \
+                    GMT_HISTORY], cwd = wd).wait()
+
 update_gmt_path(GMT)
 
 ###
@@ -602,9 +609,9 @@ def srf2map(srf_file, out_dir, prefix = 'plane', value = 'slip', \
                 # attempted plotting could cause invalid postscript / crash
                 continue
             # search radius based on diagonal distance
-            p2 = xyv_repr[planes[s]['nstrike'], :2]
+            p2 = xyv_repr[planes[s]['nstrike'] + 1, :2]
             search = math.sqrt(abs(xyv_repr[0, 0] - p2[0]) ** 2 \
-                    + abs(xyv_repr[0, 1] - p2[1]) ** 2) * 3
+                    + abs(xyv_repr[0, 1] - p2[1]) ** 2) * 1.5
             # XY grid
             table2grd('%s/%s_%d_%s_xy.bin' % (out_dir, prefix, s, value), \
                     '%s/%s_%s_%s_xy.grd' % (out_dir, prefix, s, value), \
@@ -774,6 +781,10 @@ def table2grd(table_in, grd_file, file_input = True, grd_type = 'surface', \
     cmd = [GMT, grd_type, \
             '-G%s' % (os.path.abspath(grd_file)), \
             '-I%s/%s' % (dx, dy), region]
+    # increased verbosity required in GMT6 to show 'No valid values in grid'
+    if GMT_MAJOR > 5:
+        cmd.append('-Vl')
+
     # second command for optionally creating a mask
     # input for grdmask cannot be stdin as at GMT 5.3
     if file_input and automask != None:
@@ -855,6 +866,10 @@ def grdclip(ingrid, outgrid, min_v = None, max_v = None, replace = None, \
     new: value to replace selected values
     """
     cmd = [GMT, 'grdclip', ingrid, '-G%s' % (outgrid)]
+    # increased verbosity required in GMT6 to show 'No valid values in grid'
+    if GMT_MAJOR > 5:
+        cmd.append('-Vl')
+
     # crop minimum/maximum/area values
     if min_v != None:
         # values below min_v -> NaN
@@ -913,6 +928,10 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
                 '-N%s/%s/%s' % (outside, inside, inside)]
     cmd.extend(['-G%s' % (os.path.abspath(out_file)), '-I%s/%s' % (dx, dy)])
 
+    # increased verbosity required in GMT6 to show 'No valid values in grid'
+    if GMT_MAJOR > 5:
+        cmd.append('-Vl')
+
     if geo and not land:
         cmd.append('-fg')
     if mask_dist != None:
@@ -955,6 +974,9 @@ def grdmath(expression, wd = '.'):
     """
 
     cmd = [GMT, 'grdmath']
+    # increased verbosity required in GMT6 to show 'No valid values in grid'
+    if GMT_MAJOR > 5:
+        cmd.append('-Vl')
     # append optional arguments
     # TODO:...
 
@@ -998,8 +1020,80 @@ def gmt_defaults(wd = '.', font_annot_primary = 16, \
     cmd.extend(map(str, extra))
     Popen(cmd, cwd = wd).wait()
 
+def gmt_set(settings, wd = '.'):
+    """
+    Like gmt_defaults but doesn't start with our general defaults.
+    Useful for changing only specifics midway through plotting.
+    settings: list of key values in a single dimention
+    """
+    cmd = [GMT, 'set']
+    cmd.extend(map(str, settings))
+    Popen(cmd, cwd = wd).wait()
+
+def map_dimentions(projection = None, region = None, region_units = '', \
+        unit = None, width = True, height = True, wd = '.'):
+    """
+    Returns width and height of given region and projection combination.
+    """
+    # custom inputs should not be stored
+    write_history(False, wd = wd)
+
+    cmd = [GMT, 'mapproject']
+    if width and height:
+        cmd.append('-W')
+    elif not width:
+        cmd.append('-Wh')
+    else:
+        cmd.append('-Ww')
+
+    if projection == None:
+        cmd.append('-J')
+    else:
+        cmd.append('-J%s' % (projection))
+    if region == None:
+        cmd.append('-R')
+    else:
+        cmd.append('-R%s%s' % (region_units, '/'.join(map(str, region))))
+    if unit != None:
+        cmd.append('-D%s' % (unit))
+
+    projp = Popen(cmd, stdout = PIPE, cwd = wd)
+    result = projp.communicate()[0]
+    projp.wait()
+
+    # restore default behaviour
+    write_history(True, wd = wd)
+
+    return map(float, result.split())
+
+def map_corners(projection = None, region = None, region_units = '', \
+        wd = '.', return_region = False):
+    """
+    Returns width and height of given region and projection combination.
+    """
+
+    width, height = map_dimentions(projection = projection, \
+            region = region, region_units = region_units, wd = wd)
+
+    # custom inputs should not be stored
+    corners = mapproject_multi([[0, height], [width, height], \
+            [width, 0], [0, 0]], wd = wd, projection = projection, \
+            region = region, region_units = region_units, inverse = True)
+
+    if return_region == 'minmax':
+        xmin, ymin = np.min(corners, axis = 0)
+        xmax, ymax = np.max(corners, axis = 0)
+        new_region = tuple(map(str, (xmin, xmax, ymin, ymax)))
+    elif return_region == 'llur':
+        new_region = (str(corners[3][0]), str(corners[3][1]), \
+                str(corners[1][0]), '%sr' % (corners[1][1]))
+
+    if not return_region:
+        return corners
+    return corners, new_region
+
 def mapproject_multi(points, wd = '.', projection = None, region = None, \
-    inverse = False, unit = None, z = None, p = False):
+    region_units = '', inverse = False, unit = None, z = None, p = False):
     """
     Project coordinates to get position or get coordinates from position.
     NOTE: if projection specifies units of length,
@@ -1022,7 +1116,7 @@ def mapproject_multi(points, wd = '.', projection = None, region = None, \
     if region == None:
         cmd.append('-R')
     else:
-        cmd.append('-R%s' % ('/'.join(map(str, region))))
+        cmd.append('-R%s%s' % (region_units, '/'.join(map(str, region))))
     if inverse:
         cmd.append('-I')
     if unit != None:
@@ -1148,10 +1242,46 @@ def adjust_latitude(projection, width, height, region, wd = '.', \
 
     return new_height, region + z_region
 
+def region_fit_oblique(points, azimuth, wd = '.'):
+    """
+    Given points and azimuth, return centre and minimum offsets.
+    points: lon, lat pairs
+    azimuth: right direction angle
+    """
+
+    # determine centre
+    lon_min, lat_min = np.min(points, axis = 0)[:2]
+    lon_max, lat_max = np.max(points, axis = 0)[:2]
+    lon0 = sum((lon_min, lon_max)) / 2.0
+    lat0 = sum((lat_min, lat_max)) / 2.0
+
+    # work in arbitrary cartesian coordinates
+    points_xy = mapproject_multi(points, wd = wd, \
+            projection = 'OA%s/%s/%s/1i' % (lon0, lat0, azimuth), \
+            region = (0, 10, 0, 10), region_units = 'k')
+
+    # find furthest cartesian points
+    i_xy = np.argmax(np.abs(points_xy), axis = 0)
+
+    # move points to centre of edges for centre based km offsets
+    # alternatively could move to corners to give llur format geo region
+    points_xy_max = [[points_xy[i_xy[0]][0], 0], [0, points_xy[i_xy[1]][1]]]
+
+    # convert back to geographic coordinates
+    points_ll_edge = mapproject_multi(points_xy_max, wd = wd, \
+            projection = 'OA%s/%s/%s/1i' % (lon0, lat0, azimuth), \
+            region = (0, 10, 0, 10), region_units = 'k', inverse = True)
+
+    # determine km offsets
+    dlon = geo.ll_dist(lon0, lat0, points_ll_edge[0][0], points_ll_edge[0][1])
+    dlat = geo.ll_dist(lon0, lat0, points_ll_edge[1][0], points_ll_edge[1][1])
+
+    return lon0, lat0, dlon, dlat
+
 def fill_space(space_x, space_y, region, dpi, proj = 'M', wd = '.'):
     """
     Given minimal region, extend vertically or horizontally to fit avaliable space.
-    Only works with perpendicular north, east projections.
+    Only works with perpendicular north, east region projections.
     Will return exact dimentions and extended region.
     """
     # scale image size to fit and extend to prevent letterboxing
@@ -1180,6 +1310,46 @@ def fill_space(space_x, space_y, region, dpi, proj = 'M', wd = '.'):
                 abs_diff = True, accuracy = 0.4 / float(dpi))
 
     return space_x, space_y, region
+
+def fill_space_oblique(lon0, lat0, space_x, space_y, region, region_units, \
+        proj, dpi, wd = '.', recursion = 0):
+    """
+    Modified fill space for oblique mercator and offset based region.
+    dpi: target output dpi, should be adjusted for tilt angle and/or space units
+    """
+    region = list(region)
+    letterbox_width, letterbox_height = \
+            map_dimentions(projection = proj, region = region, \
+            region_units = region_units, wd = wd)
+
+    # case for adding horizontally to the region
+    if letterbox_height > space_y:
+        xdiff = ((region[1] - region[0]) * (letterbox_height / space_y) \
+                - (region[1] - region[0])) / 2.0
+        region[1] += xdiff
+        region[0] -= xdiff
+    # case for adding vertically to the region
+    else:
+        ydiff = ((region[3] - region[2]) * (space_y / letterbox_height) \
+                - (region[3] - region[2])) / 2.0
+        region[3] += ydiff
+        region[2] -= ydiff
+
+    # verify accuracy
+    real_width, real_height = map_dimentions(projection = proj, \
+            region = region, region_units = region_units, wd = wd)
+    if abs(space_x - real_width) > 0.4 / dpi or \
+            abs(space_y - real_height) > 0.4 / dpi:
+        # hasn't shown up before, need to verify if verification is required
+        print('[qcore.gmt.fill_space_oblique] accuracy anomaly detected (%d)' \
+                % (recursion))
+        if recursion >= 49:
+            print('[qcore.gmt.fill_space_oblique] FAILED')
+            return tuple(region)
+        return fill_space_oblique(lon0, lat0, space_x, space_y, region, \
+                region_units, proj, dpi, wd = wd, recursion = recursion + 1)
+
+    return tuple(region)
 
 def fill_margins(region, width, dpi, proj = 'M', wd = '.', \
             left = 0, right = 0, top = 0, bottom = 0):
@@ -1528,7 +1698,7 @@ class GMTPlot:
         if window != None:
             self.clip(n = 1)
 
-    def spacial(self, proj, region, z = 'z1', \
+    def spacial(self, proj, region, region_units = '', z = 'z1', \
             lon0 = None, lat0 = None, sizing = 1, \
             x_shift = 0, y_shift = 0, fill = None, p = None):
         """
@@ -1561,7 +1731,7 @@ class GMTPlot:
 
         cmd = [GMT, 'psxy', gmt_proj, '-X%s' % (x_shift), \
                 '-Y%s' % (y_shift), '-K', self.z, \
-                '-R%s' % ('/'.join(map(str, region)))]
+                '-R%s%s' % (region_units, '/'.join(map(str, region)))]
         # one of the functions that can be run on a blank file
         # as such, '-O' flag needs to be taken care of
         if self.new:
@@ -1829,10 +1999,25 @@ class GMTPlot:
         road_colour: colour of road paths
         """
         # auto sizing factor calculation
-        region = map(float, self.history('R').split('/'))
-        km = geo.ll_dist(region[0], region[2], region[1], region[3])
-        size = mapproject(region[1], region[3], wd = self.wd, \
-                unit = 'inch', z = self.z)
+        try:
+            region = map(float, self.history('R').split('/'))
+            km = geo.ll_dist(region[0], region[2], region[1], region[3])
+            size = mapproject(region[1], region[3], wd = self.wd, \
+                    unit = 'inch', z = self.z)
+        except ValueError:
+            # could start with units or end with 'r'
+            region = self.history('R').split('/')
+            if region[-1][-1] == 'r':
+                region[-1] = region[-1][:-1]
+                region = map(float, region)
+                km = geo.ll_dist(region[0], region[1], region[2], region[3])
+                size = mapproject(region[2], region[3], wd = self.wd, \
+                        unit = 'inch', z = self.z)
+            elif region[0][0] in ['d', 'm', 's', 'e', 'f', 'k', 'M', 'n', 'u']:
+                print('Cannot use unit based region in basemap.')
+                raise
+            else:
+                raise
         inch = math.sqrt(sum(np.power(size, 2)))
         refs = inch / (km * 0.618)
 
