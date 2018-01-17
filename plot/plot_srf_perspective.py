@@ -17,6 +17,7 @@ import qcore.xyts as xyts
 
 MASTER = 0
 TILT_MAX = 20
+TILT_DIP = 1
 PAGE_WIDTH = 16
 PAGE_HEIGHT = 9
 SCALE_WIDTH = PAGE_WIDTH / 1.618
@@ -116,7 +117,8 @@ def timeslice(job, meta):
     dlat *= 1.618
     if job['sim_time'] < 0:
         # zoom in using expanded srf region as start point
-        progress = 1 - (job['tilt'] - meta['map_tilt']) / (90 - meta['map_tilt'])
+        progress = 1 - (max(job['tilt'], meta['map_tilt']) - meta['map_tilt']) \
+                / (90 - meta['map_tilt'])
         dlon += dlon * (1 - progress)
         dlat += dlon * (1 - progress)
     elif meta['xyts_file'] != None:
@@ -143,36 +145,60 @@ def timeslice(job, meta):
     km_region = (-dlon, dlon, -dlat, dlat)
     projection = 'OA%s/%s/%s/%s' % (lon0, lat0, job['azimuth'] - 90, PAGE_WIDTH)
     km_region = gmt.fill_space_oblique(lon0, lat0, PAGE_WIDTH, \
-            PAGE_HEIGHT / math.sin(math.radians(job['tilt'])), \
+            PAGE_HEIGHT / math.sin(math.radians(max(job['tilt'], meta['map_tilt']))), \
             km_region, 'k', projection, \
-            DPI / math.sin(math.radians(job['tilt'])), swd)
+            DPI / math.sin(math.radians(max(job['tilt'], meta['map_tilt']))), swd)
     corners, llur = gmt.map_corners(projection = projection, \
             region = km_region, region_units = 'k', return_region = 'llur', \
             wd = swd)
+    map_width, map_height = gmt.map_dimentions(projection = projection, \
+            region = llur, wd = swd)
+    map_height *= math.sin(math.radians(job['tilt']))
     # determine km per inch near centre of page for Z axis scaling
     mid_x = PAGE_WIDTH / 2.0
-    mid_y1 = (PAGE_HEIGHT / 2.0 - 0.5) / math.sin(math.radians(job['tilt']))
-    mid_y2 = (PAGE_HEIGHT / 2.0 + 0.5) / math.sin(math.radians(job['tilt']))
+    mid_y1 = (PAGE_HEIGHT / 2.0 - 0.5) / math.sin(math.radians(max(job['tilt'], meta['map_tilt'])))
+    mid_y2 = (PAGE_HEIGHT / 2.0 + 0.5) / math.sin(math.radians(max(job['tilt'], meta['map_tilt'])))
     mid_lls = gmt.mapproject_multi([[mid_x, mid_y1], [mid_x, mid_y2]], \
             wd = swd, projection = projection, region = llur, \
             inverse = True)
     km_inch = geo.ll_dist(mid_lls[0, 0], mid_lls[0, 1], \
             mid_lls[1, 0], mid_lls[1, 1])
-    z_scale = -1.0 /  km_inch * math.sin(math.radians(job['tilt']))
+    z_scale = -1.0 /  km_inch \
+            * math.sin(math.radians(max(job['tilt'], meta['map_tilt'])))
+    if job['tilt'] < meta['map_tilt']:
+            # virtual tilt
+            v_tilt = math.asin(job['tilt'] / meta['map_tilt'])
+            a_tilt = math.sin(math.radians(meta['map_tilt']))
+            z_scale = -1.0 / km_inch * (a_tilt + (1 - a_tilt) * math.cos(v_tilt))
 
     p = gmt.GMTPlot(gmt_ps)
     # use custom page size
     gmt.gmt_defaults(wd = swd, \
             ps_media = 'Custom_%six%si' % (PAGE_WIDTH, PAGE_HEIGHT))
-    def proj(projected):
+    def proj(projected, shift = True):
         if projected:
             p.spacial('OA', llur, lon0 = lon0, lat0 = lat0, \
                     z = 'z%s' % (z_scale), \
                     sizing = '%s/%s' % (job['azimuth'] - 90, PAGE_WIDTH), \
-                    p = '180/%s/0' % (job['tilt']))
+                    p = '180/%s/0' % (job['tilt']), \
+                    y_shift = (not shift) * PAGE_HEIGHT \
+                        + shift * (PAGE_HEIGHT - map_height) / 2.0)
         else:
-            p.spacial('X', (0, PAGE_WIDTH, 0, PAGE_HEIGHT), \
-                    sizing = '%s/%s' % (PAGE_WIDTH, PAGE_HEIGHT))
+            p.spacial('X', \
+                    (0, PAGE_WIDTH, (not shift) * -PAGE_HEIGHT, PAGE_HEIGHT), \
+                    sizing = '%s/%s' % (PAGE_WIDTH, \
+                        PAGE_HEIGHT + (not shift) * PAGE_HEIGHT), \
+                    y_shift = (not shift) * -PAGE_HEIGHT \
+                            + shift * (map_height - PAGE_HEIGHT) / 2.0)
+
+    # draw sky and earth if map tilted beyond page filling point
+    if job['tilt'] < meta['map_tilt']:
+        p.spacial('X', (0, 1, -1, 1), \
+                sizing = '%s/%s' % (PAGE_WIDTH, PAGE_HEIGHT))
+        p.path('0 0\n1 0\n1 1\n0 1', is_file = False, close = True, \
+                width = None, fill = 'p50+bskyblue+fwhite+r%s' % (DPI))
+        p.path('0 0\n1 0\n1 -1\n0 -1', is_file = False, close = True, \
+                width = None, fill = 'p30+bdarkbrown+fblack+r%s' % (DPI))
 
     proj(True)
     p.basemap()
@@ -260,7 +286,7 @@ def timeslice(job, meta):
                 os.remove('%s/slip_%d.grd' % (swd, i))
 
     # slip distribution has been reprojected onto x, y of page area
-    proj(False)
+    proj(False, shift = False)
     if plot == 'slip':
         for s in xrange(len(srf_data[1])):
             if not os.path.exists('%s/plane_%d_slip_xy.grd' % (swd, s)):
@@ -278,7 +304,7 @@ def timeslice(job, meta):
                     transparency = job['transparency'], \
                     crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s))
     # ground motion must be in geographic projection due to 3D Z scaling
-    proj(True)
+    proj(True, shift = False)
     try:
         xpos = int(round(job['sim_time'] / meta['xyts_dt']))
     except KeyError:
@@ -288,10 +314,11 @@ def timeslice(job, meta):
     if os.path.isfile(gm_file):
         p.overlay3d(gm_file, cpt = '%s/xyts/gm.cpt' % (meta['wd']), \
                 transparency = job['transparency'], dpi = DPI, \
-                z = '-Jz%s' % ((-80 * z_scale) / meta['xyts_cpt_max']), \
+                z = '-Jz%s' \
+                % ((meta['gm_z_km'] * -z_scale) / meta['xyts_cpt_max']), \
                 mesh = True, mesh_pen = '0.1p')
     p.rose('C', 'M', '1.8i', pos = 'rel', dxp = PAGE_WIDTH / 2.0 - 1.8, \
-            dyp = PAGE_HEIGHT / 2.0 - 2.2, \
+            dyp = map_height / 2.0 - 2.2 * (map_height / PAGE_HEIGHT), \
             fill = 'white@80', clearance = '0.2i', pen = 'thick,red')
 
     # calculate inner region for map ticks
@@ -396,7 +423,11 @@ def timeslice(job, meta):
             x_shift = WINDOW_L, y_shift = window_b)
     # MAP_FRAME_TYPE also changes cpt scales so cannot be globally set
     gmt.gmt_set(['MAP_FRAME_TYPE', 'inside', 'MAP_TICK_LENGTH_PRIMARY', '0.1i', 'MAP_ANNOT_OBLIQUE', '1'], wd = swd)
-    p.ticks(major = '1d', minor = '0.2d')
+    if job['tilt'] < meta['map_tilt']:
+        # don't show tick marks but still draw border line
+        p.ticks(major = 0, minor = 0)
+    else:
+        p.ticks(major = '1d', minor = '0.2d')
 
     # finish, clean up
     p.finalise()
@@ -555,14 +586,20 @@ if len(sys.argv) > 1:
         meta['xyts_res'] = xres
         meta['xyts_dt'] = xfile.dt
         if args.animate:
-            msg_list.append([load_xyts, meta])
-            msg_deps += 1
-            frames_gm = int(xfile.dt * (xfile.nt - 0.6) * args.framerate)
+            #msg_list.append([load_xyts, meta])
+            #msg_deps += 1
+            #frames_gm = int(xfile.dt * (xfile.nt - 0.6) * args.framerate)
+            pass
+        # ground motion 3D Z extent based on sim domain size
+        # final size also depends on map tilt angle
+        xlen1 = geo.ll_dist(xcnrs[0][0][0], xcnrs[0][0][1], \
+                xcnrs[0][1][0], xcnrs[0][1][1])
+        xlen2 = geo.ll_dist(xcnrs[0][1][0], xcnrs[0][1][1], \
+                xcnrs[0][2][0], xcnrs[0][2][1])
+        meta['gm_z_km'] = max(xlen1, xlen2) \
+                * math.sin(math.radians(meta['map_tilt']))
         # final view angle based on longer region size
-        if geo.ll_dist(xcnrs[0][0][0], xcnrs[0][0][1], \
-                xcnrs[0][1][0], xcnrs[0][1][1]) \
-                > geo.ll_dist(xcnrs[0][1][0], xcnrs[0][1][1], \
-                xcnrs[0][2][0], xcnrs[0][2][1]):
+        if xlen1 > xlen2:
             bearing_xl = geo.ll_bearing(xcnrs[0][0][0], xcnrs[0][0][1], \
                     xcnrs[0][1][0], xcnrs[0][1][1], midpoint = True) + 90
         else:
@@ -587,26 +624,54 @@ if len(sys.argv) > 1:
                 'scale_t':1, 'seq':None, 'transparency':OVERLAY_T, \
                 'sim_time':-1}, meta)]
     else:
-        # stage 1 position in animation
-        frames = int(args.time * args.framerate)
-        for i in xrange(frames):
+        # stage 1 face slip
+        frames_slip = int(args.time * args.framerate)
+        for i in xrange(frames_slip):
             if s_azimuth <= 180:
-                azimuth = 180 - (i / float(frames - 1)) * (180 - s_azimuth)
+                azimuth = 180 - (i / float(frames_slip - 1)) * (180 - s_azimuth)
             else:
-                azimuth = 180 + (i / float(frames - 1)) * (s_azimuth - 180)
+                azimuth = 180 + (i / float(frames_slip - 1)) * (s_azimuth - 180)
             scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
-            tilt = 90 - (i / float(frames - 1)) * (90 - map_tilt)
+            tilt = 90 - (i / float(frames_slip - 1)) * (90 - map_tilt)
             msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                     'scale_t':scale_t, 'seq':i, 'transparency':OVERLAY_T, \
                     'sim_time':-1}, meta])
-        # slip fadeout - todo: copy last frame to begin with
-        for i in xrange(meta['t_frames']):
-            scale_t = 1 - i / (meta['t_frames'] - 1.0)
+        frames = frames_slip
+
+        # stage 2 dip below surface
+        frames_dip = meta['t_frames'] * 4
+        for i in xrange(frames_dip):
+            tilt2 = 90 - (90 - TILT_DIP) * (i + 1.0) / frames_dip
+            tiltv = math.sin(math.radians(tilt2)) * map_tilt
+            msg_list.append([timeslice, {'azimuth':s_azimuth, 'tilt':tiltv, \
+                    'scale_t':1, 'seq':frames + i, 'sim_time':-1, \
+                    'transparency':OVERLAY_T}, meta])
+        # frames will be duplicated in reverse and paused
+        frames += frames_dip * 3
+
+        # stage 3 slip fadeout
+        frames_fade = meta['t_frames']
+        for i in xrange(frames_fade):
+            scale_t = 1 - i / (frames_fade - 1.0)
             over_t = 100 - (100 - OVERLAY_T) * scale_t
             msg_list.append([timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
                     'scale_t':scale_t, 'seq':frames + i, 'sim_time':-1, \
                     'transparency':over_t}, meta])
-        frames += meta['t_frames']
+        frames += frames_fade
+
+        # stage 4 slip animation if no xyts 
+        for i in xrange(frames_sr * (frames_gm == 0)):
+            sim_time = float(i) / args.framerate
+            if i >= frames_azimuth:
+                azimuth = final_azimuth
+            else:
+                azimuth = s_azimuth + i * diff_azimuth
+            scale_t = min(float(i), meta['t_frames']) / meta['t_frames']
+            msg_list.append([timeslice, {'azimuth':azimuth, \
+                    'tilt':map_tilt, 'scale_t':scale_t, \
+                    'seq':frames + i, 'transparency':OVERLAY_T, \
+                    'sim_time':sim_time}, meta])
+
     # spawn slaves
     comm = MPI.COMM_WORLD.Spawn(
         sys.executable, args = [sys.argv[0]], maxprocs = nproc)
@@ -690,6 +755,17 @@ if len(sys.argv) > 1:
     if args.animate:
         # add dynamic frames to counter
         frames += max(frames_sr, frames_gm)
+        # duplicate dip sequence to reverse
+        increment = (x for x in xrange(frames_dip * 3 - 1, 0, -2))
+        for i in xrange(frames_slip, frames_slip + frames_dip):
+            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i), \
+                    '%s/%s_perspective_%.4d.png' \
+                    % (gmt_temp, basename, i + increment.next()))
+        # duplicate dip end sequence to pause
+        for i in xrange(frames_slip + frames_dip, frames_slip + frames_dip * 2):
+            copy('%s/%s_perspective_%.4d.png' \
+                    % (gmt_temp, basename, frames_slip + frames_dip - 1), \
+                    '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i))
         # copy last frame
         frames_end = int(args.end * args.framerate)
         frames_start = int(args.delay * args.framerate)
