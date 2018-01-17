@@ -586,9 +586,9 @@ if len(sys.argv) > 1:
         meta['xyts_res'] = xres
         meta['xyts_dt'] = xfile.dt
         if args.animate:
-            #msg_list.append([load_xyts, meta])
-            #msg_deps += 1
-            #frames_gm = int(xfile.dt * (xfile.nt - 0.6) * args.framerate)
+            msg_list.append([load_xyts, meta])
+            msg_deps += 1
+            frames_gm = int(xfile.dt * (xfile.nt - 0.6) * args.framerate)
             pass
         # ground motion 3D Z extent based on sim domain size
         # final size also depends on map tilt angle
