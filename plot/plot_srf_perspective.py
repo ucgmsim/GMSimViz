@@ -27,7 +27,7 @@ OVERLAY_T = 40
 # 100 for 1600x900
 # 120 for 1920x1080, 16ix9i
 # 240 for 3840x2160
-DPI = 240
+DPI = 120
 # borders on page
 WINDOW_T = 0.8
 WINDOW_B = 0.3
@@ -104,8 +104,11 @@ def timeslice(job, meta):
         % (os.path.splitext(os.path.basename(meta['srf_file']))[0], \
         '_%.4d' % (i) * (job['seq'] != None)))
 
+    # allow fixed rotation (north azimuth)
+    if meta['rot'] != 1000.0:
+        job['azimuth'] = (meta['rot'] + 180) % 360
+
     # 
-    map_region = meta['map_region']
     points = []
     for plane in meta['srf_bounds']:
         for point in plane:
@@ -209,14 +212,11 @@ def timeslice(job, meta):
                 width = '2p', split = '-', colour = '60/60/60')
     p.sites(gmt.sites_major)
 
-    # srf outline: underground, surface, hypocentre
+    # srf outline: underground, surface, hypocentre should be on top of slip
     p.path(meta['gmt_bottom'], is_file = False, colour = 'black@30', width = '1p', \
             split = '-', close = True, z = True)
     p.path(meta['gmt_top'], is_file = False, colour = 'black', width = '2p', \
             z = True)
-    p.points('%s %s %s\n' % (meta['hlon'], meta['hlat'], meta['hdepth']), \
-            is_file = False, shape = 'a', size = 0.35, line = 'black', \
-            line_thickness = '1p', z = True, clip = False)
     # load srf plane data
     if job['sim_time'] < 0:
         plot = 'slip'
@@ -243,8 +243,8 @@ def timeslice(job, meta):
                     z = '-Jz%s' % (z_scale), p = True)
             xyv[:, 1] += subfaults[:, 2] \
                     * z_scale * math.cos(math.radians(job['tilt']))
-            xyv[:, 2] = np.fromfile('%s/sliptss_%d.bin' % (meta['wd'], i), \
-                    dtype = 'f').reshape(len(subfaults), -1)[:, srt]
+            xyv[:, 2] = np.memmap('%s/sliptss_%d.bin' % (meta['wd'], i), \
+                    dtype = 'f', shape = (len(subfaults), meta['sr_len']))[:, srt]
             # region
             x_min, y_min = np.min(xyv[:, :2], axis = 0)
             x_max, y_max = np.max(xyv[:, :2], axis = 0)
@@ -305,6 +305,10 @@ def timeslice(job, meta):
                     crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s))
     # ground motion must be in geographic projection due to 3D Z scaling
     proj(True, shift = False)
+    # srf hypocentre above slip, below ground motion
+    p.points('%s %s %s\n' % (meta['hlon'], meta['hlat'], meta['hdepth']), \
+            is_file = False, shape = 'a', size = 0.35, line = 'black', \
+            line_thickness = '1p', z = True, clip = False)
     try:
         xpos = int(round(job['sim_time'] / meta['xyts_dt']))
     except KeyError:
@@ -458,6 +462,8 @@ if len(sys.argv) > 1:
             type = float, default = 1.5)
     parser.add_argument('-e', '--end', help = 'animation end delay (s)', \
             type = float, default = 3.0)
+    parser.add_argument('-r', '--rot', help = 'fixed rotation (north deg)', \
+            type = float, default = 1000.0)
     args = parser.parse_args()
     if args.mtime > args.time:
         print('Failed constraints (mtime <= time).')
@@ -510,7 +516,6 @@ if len(sys.argv) > 1:
             for b in p]) for p in bounds])
     gmt_top = '\n>\n'.join(['\n'.join([' '.join(map(str, b)) \
             for b in p[:2]]) for p in bounds])
-    map_region = (top_mid[0] - 2, top_mid[0] + 2, top_mid[1] - 0.5, top_mid[1] + 0.4, -8, 0)
 
     # working directory
     gmt_temp = mkdtemp(prefix = '_GMT_WD_PERSPECTIVE_', \
@@ -519,8 +524,8 @@ if len(sys.argv) > 1:
     meta = {'wd':gmt_temp, 'srf_file':srf_file, 's_azimuth':s_azimuth, \
             'map_tilt':map_tilt, 'hlon':hlon, 'hlat':hlat, 'hdepth':hdepth, \
             'gmt_bottom':gmt_bottom, 'gmt_top':gmt_top, 'animate':args.animate, \
-            'map_region':map_region, 't_frames':int(args.mtime * args.framerate), \
-            'srf_bounds':bounds}
+            't_frames':int(args.mtime * args.framerate), 'srf_bounds':bounds, \
+            'rot':args.rot}
 
     # TODO: sliprate preparation should be an early task
     slip_end = srf.srf2llv_py(srf_file, value = 'ttotal')
@@ -589,7 +594,6 @@ if len(sys.argv) > 1:
             msg_list.append([load_xyts, meta])
             msg_deps += 1
             frames_gm = int(xfile.dt * (xfile.nt - 0.6) * args.framerate)
-            pass
         # ground motion 3D Z extent based on sim domain size
         # final size also depends on map tilt angle
         xlen1 = geo.ll_dist(xcnrs[0][0][0], xcnrs[0][0][1], \
