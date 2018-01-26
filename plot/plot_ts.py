@@ -347,7 +347,7 @@ print('AVERAGE TIMESLICE TIME %.2fs' % \
 
 # images -> animation
 gmt.make_movie('%s/ts%%04d.png' % (png_dir), \
-        os.path.join(base_dir, 'animation.mov'), fps = 20)
+        os.path.join(base_dir, 'animation.m4v'), fps = 20, codec = 'libx264')
 
 # temporary files can be quite large
 rmtree(gmt_temp)
