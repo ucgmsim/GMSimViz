@@ -1137,7 +1137,13 @@ def mapproject_multi(points, wd = '.', projection = None, region = None, \
     # re-enable history file
     write_history(True, wd = wd)
 
-    return np.loadtxt(result.split('\n'), dtype = 'f')
+    try:
+        # x y
+        return np.loadtxt(result.split('\n'), dtype = 'f')
+    except ValueError:
+        # x y <arbitrary text>
+        return [[r[0], r[1], ' '.join(r[2:])] \
+                for r in map(str.split, result.split('\n')[:-1])]
 
 def mapproject(x, y, wd = '.', projection = None, region = None, \
     inverse = False, unit = None, z = None, p = False):
