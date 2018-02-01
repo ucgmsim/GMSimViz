@@ -243,7 +243,7 @@ def perspective_fill(width, height, view = 180, tilt = 90, zlevel = 0):
 
     return gmt_x_size, gmt_y_size, sx, by
 
-def make_seismo(out_file, timeseries, x0, y0, xfac, yfac, \
+def make_seismo(out_file, timeseries, x0, y0, xfac, yfac, dx = 0, dy = 0, \
             pos = 'simple', fmt = 'inc', append = True, title = None):
     """
     Make seismogram files to plot with GMT.
@@ -253,6 +253,8 @@ def make_seismo(out_file, timeseries, x0, y0, xfac, yfac, \
     y0: origin y position
     xfac: x increment per step in timeseries
     yfac: y values are the product of yfac with timeseries values
+    dx: extend start of seismogram in x direction
+    dy: extend start of seismogram in y direction
     pos: 'simple' x0, y0 are geo coords,
             movement is linear but with geo coords
             works OK with rectangular projections
@@ -285,9 +287,11 @@ def make_seismo(out_file, timeseries, x0, y0, xfac, yfac, \
 
     if fmt == 'inc':
         # adjust amplitude, baseline
-        tsy = tsy * yfac + y0 - yfac * tsy[0]
+        tsy = tsy * yfac + y0 - yfac * tsy[0] + dy
+        tsy = np.insert(tsy, 0, y0)
         # corresponding x values
-        tsx = np.arange(len(tsy)) * xfac + x0
+        tsx = np.arange(len(tsy)) * xfac + x0 + dx
+        tsx[0] -= dx
         # store
         np.savetxt(out, np.dstack((tsx, tsy))[0], fmt = '%s', \
                 header = '> %s' % (title), comments = '')
@@ -1142,7 +1146,7 @@ def mapproject_multi(points, wd = '.', projection = None, region = None, \
         return np.loadtxt(result.split('\n'), dtype = 'f')
     except ValueError:
         # x y <arbitrary text>
-        return [[r[0], r[1], ' '.join(r[2:])] \
+        return [[float(r[0]), float(r[1]), ' '.join(r[2:])] \
                 for r in map(str.split, result.split('\n')[:-1])]
 
 def mapproject(x, y, wd = '.', projection = None, region = None, \
