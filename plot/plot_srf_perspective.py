@@ -9,6 +9,11 @@ from time import time
 
 from mpi4py import MPI
 import numpy as np
+try:
+    from h5py import File as h5open
+except ImportError:
+    print('Missing h5py module.')
+    print('Will not be able to plot liquefaction or landslide.')
 
 import qcore.geo as geo
 import qcore.gmt as gmt
@@ -88,6 +93,50 @@ def load_xyts_ts(meta, job):
     # clean up
     rmtree(tmp)
 
+def load_hdf5(h5file, basename):
+    """
+    Specific to liquefaction and landslide HDF5 files.
+    """
+    if not os.path.isdir(os.path.dirname(basename)):
+        try:
+            os.makedirs(os.path.dirname(basename))
+        except IOError:
+            pass
+
+    # reformat data
+    with h5open(h5file, 'r') as h:
+        ylen, xlen = h['model'].shape
+        data = np.empty((xlen, ylen, 3))
+        data[:, :, 0] = np.repeat(h['x'], ylen).reshape(xlen, ylen)
+        data[:, :, 1] = np.tile(h['y'][...][::-1], xlen).reshape(xlen, ylen)
+        data[:, :, 2] = h['model'][...].T
+
+    # calculate metadata
+    x0, y0 = data[0, 0, :2]
+    x1, y1 = data[1, 1, :2]
+    dx = '%.2fk' % (geo.ll_dist(x0, y0, x1, y0) * 0.6)
+    dy = '%.2fk' % (geo.ll_dist(x0, y0, x0, y1) * 0.6)
+    region = (np.min(data[:, :, 0]), np.max(data[:, :, 0]), \
+            np.min(data[:, :, 1]), np.max(data[:, :, 1]))
+
+    # store data
+    data.astype(np.float32).tofile('%s.bin' % (basename))
+    gmt.table2grd('%s.bin' % (basename), '%s.nc' % (basename), \
+            region = region, dx = dx, dy = dy, \
+            climit = np.nanpercentile(data[:, :, 2], 10))
+
+    # cpt - liquefaction up to 0.6, landslide up to 0.4
+    # assuming fixed file names
+    if os.path.basename(basename) == 'liquefaction':
+        cpt_max = 0.6
+    elif os.path.basename(basename) == 'landslide':
+        cpt_max = 0.4
+    else:
+        raise ValueError('Not implemented.')
+    gmt.makecpt('hot', '%s.cpt' % (basename), 0, cpt_max, invert = True)
+
+    return region
+
 def timeslice(job, meta):
     """
     Render image in animation.
@@ -118,8 +167,8 @@ def timeslice(job, meta):
     # leave space around edges
     dlon *= 1.618
     dlat *= 1.618
-    if job['sim_time'] < 0:
-        # zoom in using expanded srf region as start point
+    if job['sim_time'] < 0 or job['transparency'] > 0:
+        # zoom in/out using expanded srf region as start point
         progress = 1 - (max(job['tilt'], meta['map_tilt']) - meta['map_tilt']) \
                 / (90 - meta['map_tilt'])
         dlon += dlon * (1 - progress)
@@ -201,10 +250,10 @@ def timeslice(job, meta):
         p.path('0 0\n1 0\n1 1\n0 1', is_file = False, close = True, \
                 width = None, fill = 'p50+bskyblue+fwhite+r%s' % (DPI))
         p.path('0 0\n1 0\n1 -1\n0 -1', is_file = False, close = True, \
-                width = None, fill = 'p30+bdarkbrown+fblack+r%s' % (DPI))
+                width = None, fill = 'p30+bdarkbrown+fbrown+r%s' % (DPI))
 
     proj(True)
-    p.basemap()
+    p.basemap(topo = None, road = None)
 
     # simulation domain
     if os.path.isfile('%s/xyts/corners.gmt' % (meta['wd'])):
@@ -217,14 +266,23 @@ def timeslice(job, meta):
             split = '-', close = True, z = True)
     p.path(meta['gmt_top'], is_file = False, colour = 'black', width = '2p', \
             z = True)
+    # plain surface plot for liquefaction and landslide data
+    if job['sim_time'] == -2:
+        plot = 'surface'
+        scale_p_final = 1.0
+        p.overlay('%s/overlay/%s.nc' % (meta['wd'], job['overlay']), \
+                '%s/overlay/%s.cpt' % (meta['wd'], job['overlay']), \
+                transparency = job['transparency'], \
+                custom_region = job['region'])
     # load srf plane data
-    if job['sim_time'] < 0:
+    elif job['sim_time'] == - 1:
         plot = 'slip'
         scale_p_final = 0.7
-        srf_data = gmt.srf2map(meta['srf_file'], swd, prefix = 'plane', \
-                value = 'slip', cpt_percentile = 95, wd = swd, \
-                xy = True, pz = z_scale * math.cos(math.radians(job['tilt'])), \
-                dpu = DPI)
+        if job['transparency'] < 100:
+            srf_data = gmt.srf2map(meta['srf_file'], swd, prefix = 'plane', \
+                    value = 'slip', cpt_percentile = 95, wd = swd, \
+                    xy = True, dpu = DPI, \
+                    pz = z_scale * math.cos(math.radians(job['tilt'])))
     elif job['sim_time'] >= 0:
         plot = 'timeseries'
         scale_p_final = 1.0
@@ -233,7 +291,7 @@ def timeslice(job, meta):
         srt = int(round(job['sim_time'] / meta['srf_dt']))
         if srt >= meta['sr_len']:
             srt = meta['sr_len'] - 1
-        for i in xrange(meta['n_plane']):
+        for i in xrange(meta['n_plane'] * (job['transparency'] < 100)):
             # lon, lat, depth
             subfaults = np.fromfile('%s/subfaults_%d.bin' % (meta['wd'], i), \
                     dtype = '3f')
@@ -287,7 +345,7 @@ def timeslice(job, meta):
 
     # slip distribution has been reprojected onto x, y of page area
     proj(False, shift = False)
-    if plot == 'slip':
+    if plot == 'slip' and job['transparency'] < 100:
         for s in xrange(len(srf_data[1])):
             if not os.path.exists('%s/plane_%d_slip_xy.grd' % (swd, s)):
                 continue
@@ -386,21 +444,32 @@ def timeslice(job, meta):
                 minor = meta['slip_cpt_max'] / 20., \
                 cross_tick = meta['slip_cpt_max'] / 20., \
                 label = 'Slip (cm)')
+    elif plot == 'surface':
+        p.cpt_scale(PAGE_WIDTH / 2.0, scale_p, \
+                '%s/overlay/%s.cpt' % (meta['wd'], job['overlay']), \
+                length = SCALE_WIDTH, align = 'CT', dy = SCALE_PAD, \
+                thickness = SCALE_SIZE, major = 0.1, minor = 0.02, \
+                cross_tick = 0.02, label = job['cpt_label'])
     # cpt label
-    if cpt_label != '':
+    try:
+        assert(cpt_label != '')
         p.text(scale_margin, cpt_y, \
                 cpt_label, align = 'RM', dx = - SCALE_PAD, size = 16)
+    except (AssertionError, NameError):
+        pass
+
     # title
     p.text(PAGE_WIDTH / 2.0, PAGE_HEIGHT, \
             os.path.basename(meta['srf_file']), align = 'RM', size = 26, \
             dy = WINDOW_T / -2.0, dx = - 0.2)
     # sim time
-    if job['sim_time'] >= 0:
+    if job['sim_time'] >= 0 and job['transparency'] < 100:
         p.text(PAGE_WIDTH - WINDOW_R, PAGE_HEIGHT - WINDOW_T, \
                 '%.3fs' % (job['sim_time']), size = '24p', \
-                align = "BR", font = 'Courier', dx = -0.2, dy = 0.1)
+                align = "BR", font = 'Courier', dx = -0.2, dy = 0.1, \
+                colour = 'black@%s' % (job['transparency']))
 
-    if plot == 'slip':
+    if plot == 'slip' and job['transparency'] < 100:
         # box-and-whisker slip distribution
         scale_start = scale_margin
         scale_factor = 1.0 / meta['slip_cpt_max'] * SCALE_WIDTH
@@ -458,12 +527,16 @@ if len(sys.argv) > 1:
             type = float, default = 6.0)
     parser.add_argument('-m', '--mtime', help = 'minor animation transition time (s)', \
             type = float, default = 0.5)
+    parser.add_argument('-p', '--ptime', help = 'animation pause time (s)', \
+            type = float, default = 5.0)
     parser.add_argument('-d', '--delay', help = 'animation start delay (s)', \
             type = float, default = 1.5)
     parser.add_argument('-e', '--end', help = 'animation end delay (s)', \
             type = float, default = 3.0)
     parser.add_argument('-r', '--rot', help = 'fixed rotation (north deg)', \
             type = float, default = 1000.0)
+    parser.add_argument('-q', '--liquefaction', help = 'liquefaction hdf5 filepath')
+    parser.add_argument('-s', '--landslide', help = 'landslide hdf5 filepath')
     args = parser.parse_args()
     if args.mtime > args.time:
         print('Failed constraints (mtime <= time).')
@@ -487,6 +560,15 @@ if len(sys.argv) > 1:
             sys.exit(2)
     else:
         xyts_file = None
+    # liquefaction / landslide also optional
+    if args.liquefaction != None:
+        if not os.path.exists(args.liquefaction):
+            print('Could not find liquefaction file: %s' % (args.liquefaction))
+            sys.exit(2)
+    if args.landslide != None:
+        if not os.path.exists(args.landslide):
+            print('Could not find landslide file: %s' % (args.landslide))
+            sys.exit(2)
 
     # list of work for slaves to do
     msg_list = []
@@ -622,12 +704,23 @@ if len(sys.argv) > 1:
     frames_azimuth = int(max(frames_sr, frames_gm) * 0.85)
     diff_azimuth /= frames_azimuth
 
+    # prepare other data
+    if args.liquefaction != None:
+        region_liquefaction = load_hdf5(args.liquefaction, \
+                '%s/overlay/liquefaction' % (gmt_temp))
+    if args.landslide != None:
+        region_landslide = load_hdf5(args.landslide, \
+                '%s/overlay/landslide' % (gmt_temp))
+
     # tasks
     if not args.animate:
         msg_list = [(timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
                 'scale_t':1, 'seq':None, 'transparency':OVERLAY_T, \
                 'sim_time':-1}, meta)]
     else:
+        # how long camera should pause when making a pause
+        pause_frames = int(round(args.ptime * args.framerate))
+
         # stage 1 face slip
         frames_slip = int(args.time * args.framerate)
         for i in xrange(frames_slip):
@@ -643,7 +736,7 @@ if len(sys.argv) > 1:
         frames = frames_slip
 
         # stage 2 dip below surface
-        frames_dip = meta['t_frames'] * 4
+        frames_dip = pause_frames
         for i in xrange(frames_dip):
             tilt2 = 90 - (90 - TILT_DIP) * (i + 1.0) / frames_dip
             tiltv = math.sin(math.radians(tilt2)) * map_tilt
@@ -675,6 +768,50 @@ if len(sys.argv) > 1:
                     'tilt':map_tilt, 'scale_t':scale_t, \
                     'seq':frames + i, 'transparency':OVERLAY_T, \
                     'sim_time':sim_time}, meta])
+        if frames_gm == 0:
+            frames += frames_sr
+
+        # stage 5 camera reset
+        # TODO: correct frames
+        frames_return = meta['t_frames'] * 4 * (frames_gm == 0)
+        if frames_return > 0:
+            diff_azimuth = geo.angle_diff(final_azimuth, 180) / frames_return
+        for i in xrange(frames_return):
+            scale_t = 1 - min(1, i / (meta['t_frames'] - 1.0))
+            over_t = 100 - (100 - OVERLAY_T) * scale_t
+            azimuth = final_azimuth + i * diff_azimuth
+            tilt = 90 - (1 - (i / float(frames_return - 1))) * (90 - map_tilt)
+            msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
+                    'scale_t':scale_t, 'seq':frames + i, \
+                    'sim_time':frames_sr / args.framerate, \
+                    'transparency':over_t}, meta])
+        if frames_gm == 0:
+            frames += frames_return
+        # fade into liquefaction and landslide
+        frames2liquefaction = frames
+        if args.liquefaction != None and frames_gm == 0:
+            frames_liquefaction = meta['t_frames']
+            frames += frames_liquefaction * 2 + pause_frames
+        frames2landslide = frames
+        if args.landslide != None and frames_gm == 0:
+            frames_landslide = meta['t_frames']
+            frames += frames_landslide * 2 + pause_frames
+        for i in xrange(meta['t_frames'] * (frames_gm == 0) \
+                * (args.liquefaction != None or args.landslide != None)):
+            scale_t = float(i) / (meta['t_frames'] - 1)
+            over_t = 100 - (100 - OVERLAY_T) * scale_t
+            if args.liquefaction != None:
+                msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
+                        'scale_t':scale_t, 'seq':frames2liquefaction + i, \
+                        'sim_time':-2, 'region':region_liquefaction, \
+                        'transparency':over_t, 'overlay':'liquefaction', \
+                        'cpt_label':'Liquefaction Hazard Probability'}, meta])
+            if args.landslide != None:
+                msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
+                        'scale_t':scale_t, 'seq':frames2landslide + i, \
+                        'sim_time':-2, 'region':region_landslide, \
+                        'transparency':over_t, 'overlay':'landslide', \
+                        'cpt_label':'Landslide Hazard Probability'}, meta])
 
     # spawn slaves
     comm = MPI.COMM_WORLD.Spawn(
@@ -755,10 +892,16 @@ if len(sys.argv) > 1:
     # stop mpi
     comm.Disconnect()
 
+    #from glob import glob
+    #cc = glob('/home/vap30/Published/2010 Darfield/_GMT_WD_PERSPECTIVE_o4eFtH/*.png')
+    #for i in cc:
+    #    copy(i, '%s/%s' % (meta['wd'], os.path.basename(i)))
     basename = os.path.splitext(os.path.basename(meta['srf_file']))[0]
     if args.animate:
         # add dynamic frames to counter
-        frames += max(frames_sr, frames_gm)
+        if frames_gm != 0:
+            frames += max(frames_sr, frames_gm)
+
         # duplicate dip sequence to reverse
         increment = (x for x in xrange(frames_dip * 3 - 1, 0, -2))
         for i in xrange(frames_slip, frames_slip + frames_dip):
@@ -770,6 +913,27 @@ if len(sys.argv) > 1:
             copy('%s/%s_perspective_%.4d.png' \
                     % (gmt_temp, basename, frames_slip + frames_dip - 1), \
                     '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i))
+
+        # duplicate liquefaction sequence to reverse
+        increment = (x for x in xrange(frames_liquefaction * 2 + pause_frames - 1, pause_frames, -2))
+        for i in xrange(frames2liquefaction, frames2liquefaction + frames_liquefaction):
+            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i), \
+                    '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i + increment.next()))
+        # duplicate liquefaction end sequence to pause
+        for i in xrange(frames2liquefaction + frames_liquefaction, frames2liquefaction + frames_liquefaction + pause_frames):
+            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, frames2liquefaction + frames_liquefaction - 1), \
+                    '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i))
+
+        # duplicate landslide sequence to reverse
+        increment = (x for x in xrange(frames_landslide * 2 + pause_frames - 1, pause_frames, -2))
+        for i in xrange(frames2landslide, frames2landslide + frames_landslide):
+            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i), \
+                    '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i + increment.next()))
+        # duplicate landslide end sequence to pause
+        for i in xrange(frames2landslide + frames_landslide, frames2landslide + frames_landslide + pause_frames):
+            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, frames2landslide + frames_landslide - 1), \
+                    '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i))
+
         # copy last frame
         frames_end = int(args.end * args.framerate)
         frames_start = int(args.delay * args.framerate)
