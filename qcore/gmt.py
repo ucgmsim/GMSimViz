@@ -1618,7 +1618,7 @@ def select(data, line_file = None, line_dist = 0, geo = True, wd = '.'):
     """
     Select data subsets based on criteria, wrapper for gmt select.
     """
-    cmd = [gmt, 'select', data]
+    cmd = [GMT, 'select', data]
     if geo:
         cmd.append('-fg')
 
