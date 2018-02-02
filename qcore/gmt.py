@@ -1614,6 +1614,30 @@ def truncate(inputs, clip = None, region = None, wd = '.'):
         points.append(map(float, line.split()[:2]))
     return points
 
+def select(data, line_file = None, line_dist = 0, geo = True, wd = '.'):
+    """
+    Select data subsets based on criteria, wrapper for gmt select.
+    """
+    cmd = [gmt, 'select', data]
+    if geo:
+        cmd.append('-fg')
+
+    # line based selection
+    if line_file != None:
+        cmd.append('-L%s+d%s' % (line_file, line_dist))
+
+    # run
+    sp = Popen(cmd, cwd = wd, stdout = PIPE)
+    so = sp.communicate()[0]
+    sp.wait()
+    # process
+    points = []
+    for line in so.rstrip().split('\n'):
+        if line == '':
+            continue
+        points.append(map(float, line.split()[:2]))
+    return points
+
 ###
 ### MAIN PLOTTING CLASS
 ###
