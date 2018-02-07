@@ -572,6 +572,7 @@ if len(sys.argv) > 1:
 
     # list of work for slaves to do
     msg_list = []
+    msg_list_post_xyts = []
     # dependencies for tasks yet to be added
     msg_deps = 0
 
@@ -768,35 +769,27 @@ if len(sys.argv) > 1:
                     'tilt':map_tilt, 'scale_t':scale_t, \
                     'seq':frames + i, 'transparency':OVERLAY_T, \
                     'sim_time':sim_time}, meta])
-        if frames_gm == 0:
-            frames += frames_sr
 
         # stage 5 camera reset
-        # TODO: correct frames
-        frames_return = meta['t_frames'] * 4 * (frames_gm == 0)
-        if frames_return > 0:
-            diff_azimuth = geo.angle_diff(final_azimuth, 180) / frames_return
-        for i in xrange(frames_return):
+        frames2return = frames + max(frames_gm, frames_sr)
+        frames_return = meta['t_frames'] * 4
+        diff_azimuth_return = geo.angle_diff(final_azimuth, 180) / frames_return
+        for i in xrange(frames_return * (frames_gm == 0)):
             scale_t = 1 - min(1, i / (meta['t_frames'] - 1.0))
             over_t = 100 - (100 - OVERLAY_T) * scale_t
-            azimuth = final_azimuth + i * diff_azimuth
+            azimuth = final_azimuth + i * diff_azimuth_return
             tilt = 90 - (1 - (i / float(frames_return - 1))) * (90 - map_tilt)
             msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
-                    'scale_t':scale_t, 'seq':frames + i, \
+                    'scale_t':scale_t, 'seq':frames2return + i, \
                     'sim_time':frames_sr / args.framerate, \
                     'transparency':over_t}, meta])
-        if frames_gm == 0:
-            frames += frames_return
         # fade into liquefaction and landslide
-        frames2liquefaction = frames
-        if args.liquefaction != None and frames_gm == 0:
-            frames_liquefaction = meta['t_frames']
-            frames += frames_liquefaction * 2 + pause_frames
-        frames2landslide = frames
-        if args.landslide != None and frames_gm == 0:
-            frames_landslide = meta['t_frames']
-            frames += frames_landslide * 2 + pause_frames
-        for i in xrange(meta['t_frames'] * (frames_gm == 0) \
+        frames2liquefaction = frames2return + frames_return
+        frames_liquefaction = meta['t_frames'] * (args.liquefaction != None)
+        frames2landslide = frames2liquefaction + (frames_liquefaction * 2 + pause_frames) * (args.liquefaction != None)
+        frames_landslide = meta['t_frames'] * (args.landslide != None)
+        frames2end = frames2landslide + (frames_landslide * 2 + pause_frames) * (args.landslide != None)
+        for i in xrange(meta['t_frames'] \
                 * (args.liquefaction != None or args.landslide != None)):
             scale_t = float(i) / (meta['t_frames'] - 1)
             over_t = 100 - (100 - OVERLAY_T) * scale_t
@@ -841,6 +834,17 @@ if len(sys.argv) > 1:
 
         elif finished[0] == load_xyts_ts:
             ready = range(finished[2]['start'], xfile.nt, nproc)
+            # return frames require xyts colour palette
+            frames2return = frames + max(frames_gm, frames_sr)
+            for i in xrange(frames_return):
+                scale_t = 1 - min(1, i / (meta['t_frames'] - 1.0))
+                over_t = 100 - (100 - OVERLAY_T) * scale_t
+                azimuth = final_azimuth + i * diff_azimuth_return
+                tilt = 90 - (1 - (i / float(frames_return - 1))) * (90 - map_tilt)
+                msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
+                        'scale_t':scale_t, 'seq':frames2return + i, \
+                        'scale_x':1.0, 'sim_time':frames_sr / args.framerate, \
+                        'transparency':over_t}, meta])
             for i in xrange(frames_sr):
                 # frames containing slip rate
                 sim_time = float(i) / args.framerate
@@ -899,8 +903,7 @@ if len(sys.argv) > 1:
     basename = os.path.splitext(os.path.basename(meta['srf_file']))[0]
     if args.animate:
         # add dynamic frames to counter
-        if frames_gm != 0:
-            frames += max(frames_sr, frames_gm)
+        frames += max(frames_sr, frames_gm) + frames_return
 
         # duplicate dip sequence to reverse
         increment = (x for x in xrange(frames_dip * 3 - 1, 0, -2))
