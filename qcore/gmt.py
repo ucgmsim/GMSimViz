@@ -2914,7 +2914,8 @@ class GMTPlot:
         self.enter()
 
     def png(self, out_dir = None, dpi = 96, clip = True, background = None, \
-                margin = [0], size = None, portrait = False, out_name = None):
+                margin = [0], size = None, portrait = False, out_name = None, \
+                downscale = 1):
         """
         Renders a PNG from the PS.
         Unfortunately relatively slow.
@@ -2928,9 +2929,12 @@ class GMTPlot:
         size: size of cropped area, width or width/height
         portrait: rotate page right way up
         out_name: filename excluding prefix, default is same as input
+        downscale: ghostscript DownScaleFactor (png | tiff)
         """
         cmd = [GMT, psconvert, self.pspath, '-TG', '-E%s' % (dpi), \
                 '-Qg4', '-Qt4']
+        if downscale > 1:
+            cmd.append('-C-dDownScaleFactor=%s' % (downscale))
         if clip:
             cmd.append('-A%s%s%s%s%s' % ('/'.join(map(str, margin)), \
                     '+g' * (background != None), \
