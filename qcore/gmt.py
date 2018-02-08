@@ -2218,7 +2218,7 @@ class GMTPlot:
         if width != None:
             espec = '%s+w%s' % (espec, width)
         cmd.append(espec)
-
+6
         if is_file:
             cmd.append(os.path.abspath(in_data))
             Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
@@ -2227,7 +2227,7 @@ class GMTPlot:
             p.communicate(in_data)
             p.wait()
 
-    def path(self, in_data, is_file = True, close = False, \
+    def path(self, in_data, is_file = True, close = False, cpt = None, \
             width = '0.4p', colour = 'black', split = None, \
             straight = False, fill = None, cols = None, z = False):
         """
@@ -2236,6 +2236,7 @@ class GMTPlot:
                 or a string containing the x, y points
         is_file: whether in_data is a filepath (True) or a string (False)
         close: whether to close the path by joining the first and last points
+        cpt: set segment colours using cpt by -Zval in segment header
         width: thickness of line
         colour: colour of line
         split: None continuous, '-' dashes, '.' dots
@@ -2254,6 +2255,8 @@ class GMTPlot:
             if split != None:
                 pen = '%s,%s' % (pen, split)
             cmd.append(pen)
+        if cpt != None:
+            cmd.append('-C%s' % (cpt))
         if close:
             cmd.append('-L')
         if straight:
