@@ -2218,7 +2218,7 @@ class GMTPlot:
         if width != None:
             espec = '%s+w%s' % (espec, width)
         cmd.append(espec)
-6
+
         if is_file:
             cmd.append(os.path.abspath(in_data))
             Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
