@@ -167,13 +167,7 @@ def timeslice(job, meta):
     # leave space around edges
     dlon *= 1.618
     dlat *= 1.618
-    if job['sim_time'] < 0 or job['transparency'] > 0:
-        # zoom in/out using expanded srf region as start point
-        progress = 1 - (max(job['tilt'], meta['map_tilt']) - meta['map_tilt']) \
-                / (90 - meta['map_tilt'])
-        dlon += dlon * (1 - progress)
-        dlat += dlon * (1 - progress)
-    elif meta['xyts_file'] != None:
+    if meta['xyts_file'] != None and job['sim_time'] != -1:
         # zoom is based on xyts region
         lon0x, lat0x, dlonx, dlatx = \
                 gmt.region_fit_oblique(meta['xyts_corners'], 90, wd = swd)
@@ -194,6 +188,12 @@ def timeslice(job, meta):
         # adjust centre
         lon0 += (lon0x - lon0) * plon
         lat0 += (lat0x - lat0) * plat
+    elif job['sim_time'] < 0 or job['transparency'] > 0:
+        # zoom in/out using expanded srf region as start point
+        progress = 1 - (max(job['tilt'], meta['map_tilt']) - meta['map_tilt']) \
+                / (90 - meta['map_tilt'])
+        dlon += dlon * (1 - progress)
+        dlat += dlon * (1 - progress)
     km_region = (-dlon, dlon, -dlat, dlat)
     projection = 'OA%s/%s/%s/%s' % (lon0, lat0, job['azimuth'] - 90, PAGE_WIDTH)
     km_region = gmt.fill_space_oblique(lon0, lat0, PAGE_WIDTH, \
@@ -572,7 +572,10 @@ if len(sys.argv) > 1:
 
     # list of work for slaves to do
     msg_list = []
+    # list of work prepared earlier but needs dependencies before run
     msg_list_post_xyts = []
+    # post processing instructions
+    op_list = []
     # dependencies for tasks yet to be added
     msg_deps = 0
 
@@ -715,9 +718,9 @@ if len(sys.argv) > 1:
 
     # tasks
     if not args.animate:
-        msg_list = [(timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
+        msg_list.append((timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
                 'scale_t':1, 'seq':None, 'transparency':OVERLAY_T, \
-                'sim_time':-1}, meta)]
+                'sim_time':-1}, meta))
     else:
         # how long camera should pause when making a pause
         pause_frames = int(round(args.ptime * args.framerate))
@@ -744,6 +747,9 @@ if len(sys.argv) > 1:
             msg_list.append([timeslice, {'azimuth':s_azimuth, 'tilt':tiltv, \
                     'scale_t':1, 'seq':frames + i, 'sim_time':-1, \
                     'transparency':OVERLAY_T}, meta])
+        # pause, then reverse frames
+        op_list.append(['DUP', frames + i, pause_frames])
+        op_list.append(['REV', frames, frames_dip, pause_frames])
         # frames will be duplicated in reverse and paused
         frames += frames_dip * 3
 
@@ -789,6 +795,8 @@ if len(sys.argv) > 1:
         frames2landslide = frames2liquefaction + (frames_liquefaction * 2 + pause_frames) * (args.liquefaction != None)
         frames_landslide = meta['t_frames'] * (args.landslide != None)
         frames2end = frames2landslide + (frames_landslide * 2 + pause_frames) * (args.landslide != None)
+        print frames, frames_sr, frames_gm, frames2return, frames_return, \
+                frames2liquefaction, frames_liquefaction, frames2landslide, frames_landslide
         for i in xrange(meta['t_frames'] \
                 * (args.liquefaction != None or args.landslide != None)):
             scale_t = float(i) / (meta['t_frames'] - 1)
@@ -805,6 +813,21 @@ if len(sys.argv) > 1:
                         'sim_time':-2, 'region':region_landslide, \
                         'transparency':over_t, 'overlay':'landslide', \
                         'cpt_label':'Landslide Hazard Probability'}, meta])
+        # pause, reverse frames for animation
+        if args.liquefaction != None:
+            op_list.append(['DUP', frames2liquefaction + i, pause_frames])
+            op_list.append(['REV', frames2liquefaction, frames_liquefaction, pause_frames])
+        if args.landslide != None:
+            op_list.append(['DUP', frames2landslide + i, pause_frames])
+            op_list.append(['REV', frames2landslide, frames_landslide, pause_frames])
+
+        # frames of pause at beginning / end of movie
+        frames_end = int(args.end * args.framerate)
+        frames_start = int(args.delay * args.framerate)
+        # overall movie frame alternations
+        op_list.append(['DUP', frames2end - 1, frames_end])
+        op_list.append(['SHIFT', 0, frames2end + frames_end, frames_start])
+        op_list.append(['DUP', frames_start, - frames_start])
 
     # spawn slaves
     comm = MPI.COMM_WORLD.Spawn(
@@ -835,7 +858,6 @@ if len(sys.argv) > 1:
         elif finished[0] == load_xyts_ts:
             ready = range(finished[2]['start'], xfile.nt, nproc)
             # return frames require xyts colour palette
-            frames2return = frames + max(frames_gm, frames_sr)
             for i in xrange(frames_return):
                 scale_t = 1 - min(1, i / (meta['t_frames'] - 1.0))
                 over_t = 100 - (100 - OVERLAY_T) * scale_t
@@ -843,8 +865,8 @@ if len(sys.argv) > 1:
                 tilt = 90 - (1 - (i / float(frames_return - 1))) * (90 - map_tilt)
                 msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                         'scale_t':scale_t, 'seq':frames2return + i, \
-                        'scale_x':1.0, 'sim_time':frames_sr / args.framerate, \
-                        'transparency':over_t}, meta])
+                        'scale_x':1.0, 'sim_time':max(frames_sr, frames_gm) \
+                        / args.framerate, 'transparency':over_t}, meta])
             for i in xrange(frames_sr):
                 # frames containing slip rate
                 sim_time = float(i) / args.framerate
@@ -896,70 +918,38 @@ if len(sys.argv) > 1:
     # stop mpi
     comm.Disconnect()
 
-    #from glob import glob
-    #cc = glob('/home/vap30/Published/2010 Darfield/_GMT_WD_PERSPECTIVE_o4eFtH/*.png')
-    #for i in cc:
-    #    copy(i, '%s/%s' % (meta['wd'], os.path.basename(i)))
+    # output files prefix
     basename = os.path.splitext(os.path.basename(meta['srf_file']))[0]
+    # frame operations shortcut
+    def frame_op(op, seq_from, seq_to):
+        op('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, seq_from), \
+                '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, seq_to))
+    # frame operation instructions
+    for op in op_list:
+        if op[0] == 'DUP':
+            # 'DUP', dup_frame, dup_count (negative to dup backwards)
+            for i in xrange(1, op[2] + 1) if (op[2] >= 0) else \
+                    xrange(op[2], 0, 1):
+                frame_op(copy, op[1], op[1] + i)
+        elif op[0] == 'REV':
+            # 'REV', seq_from, seq_len, rev_gap
+            for i in xrange(op[2]):
+                frame_op(copy, op[1] + i, op[1] + op[2] * 2 + op[3] - 1 - i)
+        elif op[0] == 'SHIFT':
+            # 'SHIFT', seq_from, seq_len, shift
+            for i in xrange(op[1] + op[2] - 1, op[1] - 1, -1) \
+                    if (op[3] > 0) else xrange(op[1], op[1] + op[2]):
+                frame_op(move, i, i + op[3])
+
     if args.animate:
-        # add dynamic frames to counter
-        frames += max(frames_sr, frames_gm) + frames_return
-
-        # duplicate dip sequence to reverse
-        increment = (x for x in xrange(frames_dip * 3 - 1, 0, -2))
-        for i in xrange(frames_slip, frames_slip + frames_dip):
-            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i), \
-                    '%s/%s_perspective_%.4d.png' \
-                    % (gmt_temp, basename, i + increment.next()))
-        # duplicate dip end sequence to pause
-        for i in xrange(frames_slip + frames_dip, frames_slip + frames_dip * 2):
-            copy('%s/%s_perspective_%.4d.png' \
-                    % (gmt_temp, basename, frames_slip + frames_dip - 1), \
-                    '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i))
-
-        # duplicate liquefaction sequence to reverse
-        increment = (x for x in xrange(frames_liquefaction * 2 + pause_frames - 1, pause_frames, -2))
-        for i in xrange(frames2liquefaction, frames2liquefaction + frames_liquefaction):
-            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i), \
-                    '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i + increment.next()))
-        # duplicate liquefaction end sequence to pause
-        for i in xrange(frames2liquefaction + frames_liquefaction, frames2liquefaction + frames_liquefaction + pause_frames):
-            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, frames2liquefaction + frames_liquefaction - 1), \
-                    '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i))
-
-        # duplicate landslide sequence to reverse
-        increment = (x for x in xrange(frames_landslide * 2 + pause_frames - 1, pause_frames, -2))
-        for i in xrange(frames2landslide, frames2landslide + frames_landslide):
-            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i), \
-                    '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i + increment.next()))
-        # duplicate landslide end sequence to pause
-        for i in xrange(frames2landslide + frames_landslide, frames2landslide + frames_landslide + pause_frames):
-            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, frames2landslide + frames_landslide - 1), \
-                    '%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i))
-
-        # copy last frame
-        frames_end = int(args.end * args.framerate)
-        frames_start = int(args.delay * args.framerate)
-        for i in xrange(frames_end):
-            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, frames - 1), \
-                    '%s/%s_perspective_%.4d.png' \
-                        % (gmt_temp, basename, frames + frames_start + i))
-        # shift sequence
-        for i in xrange(frames - 1, -1, -1):
-            move('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, i), \
-                    '%s/%s_perspective_%.4d.png' \
-                        % (gmt_temp, basename, frames_start + i))
-        # copy first frame
-        for i in xrange(frames_start):
-            copy('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, frames_start), \
-                    '%s/%s_perspective_%.4d.png' \
-                        % (gmt_temp, basename, i))
         # output movie
         gmt.make_movie('%s/%s_perspective_%%04d.png' % (gmt_temp, basename), \
                 basename, fps = args.framerate, codec = 'libx264')
     else:
+        # take result out of temp
         move('%s/%s_perspective.png' % (gmt_temp, basename), \
             '%s_perspective.png' % (basename))
+
     # cleanup
     rmtree(gmt_temp)
 
