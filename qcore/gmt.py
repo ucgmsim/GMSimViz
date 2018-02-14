@@ -204,11 +204,13 @@ def make_movie(input_pattern, output, fps = 20, codec = 'qtrle', crf = 23):
 def proportionate_segs(infile, outfile, p):
     """
     Store infile as outfile with p proportion of every segment.
+    infile: input filename containing gmt ('>' separated) segments
+    outfile: output filename that will contain p proportion of segments
     p: 0 -> 1 proportion of segments from input to store
     """
     with open(outfile, 'w') as out:
-        Popen(['awk', '-v', 'p=%s' % (p), segfile_proportions, \
-                infile], stdout = out).wait()
+        Popen(['awk', '-v', 'p=%s' % (p), segfile_proportionate_awk, infile], \
+                stdout = out).wait()
 
 def perspective_fill(width, height, view = 180, tilt = 90, zlevel = 0):
     """
