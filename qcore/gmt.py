@@ -80,6 +80,22 @@ CPTS = {
     'trise':os.path.join(CPT_DIR, 'trise.cpt')
 }
 
+# awk program to get a proportion (-v p=0<1) of all segments
+segfile_proportionate_awk = r'''BEGIN {l = 0}
+function show_seg() {
+    for (x in c) {
+        if (x / l < p) { print c[x]; }
+        else { break; }
+    }
+}
+{
+    if ( substr($1, 0, 1) == ">" ) {
+        show_seg(); c[0] = $0; l = 1;
+    } else if (substr($1, 0, 1) != "#") {
+        c[l++] = $0;
+    }
+} END { show_seg(); }'''
+
 def update_gmt_path(gmt_bin, wd = None):
     """
     Allow changing GMT binary location.
@@ -184,6 +200,15 @@ def make_movie(input_pattern, output, fps = 20, codec = 'qtrle', crf = 23):
 
     with open('/dev/null', 'w') as sink:
         Popen(cmd, stderr = sink).wait()
+
+def proportionate_segs(infile, outfile, p):
+    """
+    Store infile as outfile with p proportion of every segment.
+    p: 0 -> 1 proportion of segments from input to store
+    """
+    with open(outfile, 'w') as out:
+        Popen(['awk', '-v', 'p=%s' % (p), segfile_proportions, \
+                infile], stdout = out).wait()
 
 def perspective_fill(width, height, view = 180, tilt = 90, zlevel = 0):
     """
