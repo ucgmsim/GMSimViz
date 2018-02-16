@@ -81,19 +81,15 @@ CPTS = {
 }
 
 # awk program to get a proportion (-v p=0<1) of all segments
-segfile_proportionate_awk = r'''BEGIN {l = 0}
+segfile_proportionate_awk = r'''BEGIN { l = 0 }
 function show_seg() {
-    for (x in c) {
-        if (x / l < p) { print c[x]; }
+    for ( x in c ) {
+        if ( x / l < p ) { print c[x]; }
         else { break; }
     }
-}
-{
-    if ( substr($1, 0, 1) == ">" ) {
-        show_seg(); c[0] = $0; l = 1;
-    } else if (substr($1, 0, 1) != "#") {
-        c[l++] = $0;
-    }
+}{
+    if ( substr($1, 0, 1) == ">" ) { show_seg(); c[0] = $0; l = 1; }
+    else if ( substr($1, 0, 1) != "#" ) { c[l++] = $0; }
 } END { show_seg(); }'''
 
 def update_gmt_path(gmt_bin, wd = None):
@@ -2486,6 +2482,66 @@ class GMTPlot:
             cmd.append('-Q')
 
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+
+    def legend(self, legend, x, y, width, height = None, is_file = True, \
+            pos = 'map', align = None, spacing = None, dx = 0, dy = 0, \
+            clearance = 0, frame_fill = None, frame_padding = None):
+        """
+        Add legend to map using pslegend.
+        legend: input file (is_file == True) or input text (is_file == False)
+        x: x position
+        y: y position
+        width: frame width
+        height: manually set frame height
+        is_file: whether `legend` is a file (True) or string (False)
+        pos: `x` and `y` position type
+        align: justification to position
+        spacing: line spacing
+        dx: `x` position shift
+        dy: `y` position shift
+        clearance: space between legend frame with relative positioning x or x/y
+        frame_fill: fill colour of box
+        frame_padding: extend box beyond internal dimentions
+        """
+        # base command
+        cmd = [GMT, 'pslegend', '-R', '-J', '-K', '-O']
+
+        # position argument is required, has optional component
+        pos_spec = '-D%s%s%s%s+w%s%s%s' % (GMT52_POS[pos], \
+                x, '/' * (pos[:3] != 'rel'), y, \
+                width, '/' * (height != None), str(height) * (height != None))
+        if align != None:
+            pos_spec = '%s+j%s' % (pos_spec, align)
+        if spacing != None:
+            pos_spec = '%s+l%s' % (pos_spec, spacing)
+        if dx != None:
+            pos_spec = '%s+o%s%s%s' % (pos_spec, \
+                    dx, '/' * (dy != None), str(dy) * (dy != None))
+        cmd.append(pos_spec)
+
+        # frame setup
+        frame_spec = ''
+        if frame_padding != None:
+            pass
+        if frame_fill != None:
+            frame_spec = '%s+g%s' % (frame_spec, frame_fill)
+        if frame_spec != '':
+            cmd.append('-F%s' % (frame_spec))
+
+        # clearance between frame and items (when not using absolute positions)
+        if clearance != 0:
+            if type(clearance).__name__ in ['tuple', 'list']:
+                cmd.append('-C%s' % ('/'.join(map(str, clearance))))
+            else:
+                cmd.append('-C%s' % (clearance))
+
+        if is_file:
+            cmd.append(legend)
+            Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+        else:
+            p = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
+            p.communicate(legend)
+            p.wait()
 
     def overlay(self, xyv_file, cpt, dx = '1k', dy = '1k', \
             min_v = None, max_v = None, crop_grd = None, \
