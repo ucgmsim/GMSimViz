@@ -1919,7 +1919,7 @@ class GMTPlot:
         tproc.communicate('\n'.join(xyan))
         tproc.wait()
 
-    def water(self, colour = 'lightblue', res = '150k'):
+    def water(self, colour = 'lightblue', res = '150k', oceans = True):
         """
         Adds water areas.
         colour: colour of water
@@ -1933,23 +1933,24 @@ class GMTPlot:
 
         # using LINZ data
         if len(res) > 1:
-            # start cropping inverted (-N) land area
-            cmd = [GMT, 'psclip', '-J', '-R', '-K', '-O', \
-                    LINZ_COAST[res], '-N', self.z]
-            if self.p:
-                cmd.append('-p')
-            Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
-            # fill map with water colour
-            cmd = [GMT, 'pscoast', '-J', '-R', '-G%s' % (colour), \
-                '-Dc', '-K', '-O', '-S%s' % (colour), self.z]
-            if self.p:
-                cmd.append('-p')
-            Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
-            # finish crop
-            cmd = [GMT, 'psclip', '-C', '-J', '-K', '-O']
-            if self.p:
-                cmd.append('-p')
-            Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+            if oceans:
+                # start cropping inverted (-N) land area
+                cmd = [GMT, 'psclip', '-J', '-R', '-K', '-O', \
+                        LINZ_COAST[res], '-N', self.z]
+                if self.p:
+                    cmd.append('-p')
+                Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+                # fill map with water colour
+                cmd = [GMT, 'pscoast', '-J', '-R', '-G%s' % (colour), \
+                    '-Dc', '-K', '-O', '-S%s' % (colour), self.z]
+                if self.p:
+                    cmd.append('-p')
+                Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+                # finish crop
+                cmd = [GMT, 'psclip', '-C', '-J', '-K', '-O']
+                if self.p:
+                    cmd.append('-p')
+                Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
             # also add lakes and rivers
             cmd = [GMT, 'psxy', '-J', '-R', '-K', '-O', self.z, \
                     '-G%s' % (colour), LINZ_LAKE[res]]
@@ -2042,7 +2043,7 @@ class GMTPlot:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
-    def basemap(self, land = 'darkgreen', water = 'lightblue', \
+    def basemap(self, land = 'darkgreen', water = 'lightblue', oceans = True, \
                 topo = TOPO_HIGH, topo_cpt = 'green-brown', \
                 coastlines = 'auto', res = None, \
                 highway = 'auto', highway_colour = 'yellow', \
@@ -2091,9 +2092,9 @@ class GMTPlot:
             self.topo(topo, cpt = topo_cpt)
         if water != None:
             if res == None:
-                self.water(colour = water)
+                self.water(colour = water, oceans = oceans)
             else:
-                self.water(colour = water, res = res)
+                self.water(colour = water, res = res, oceans = oceans)
         if road != None:
             if road == 'auto':
                 road = '%sp' % (refs * 2)
