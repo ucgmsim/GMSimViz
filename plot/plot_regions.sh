@@ -8,14 +8,14 @@ PLOT_STATIONS=$DIR/plot_stations.py #this code and plot_station.py are assumed t
 opt_srf=""
 opt_mparams=""
 
-usage() { echo "Usage: $0 [-s srf_file] [-m model_params] params_plot_dir xyz_file" 1>&2; exit 1; }
+usage() { echo "Usage: $0 [-s srf_file] [-m model_params] [-c crns_file] params_plot_dir xyz_file" 1>&2; exit 1; }
 
 while getopts ":hs:m:" arg; do
     case $arg in
         s) # -s OPTARG
             echo "-s $OPTARG"
             #check OPTARG is a valid file
-            if [ -z "${OPTARG}" ] || [ ! -f "$cwd/${OPTARG}" ]; then #if empty string or no such file
+            if [ -z "${OPTARG}" ] || [ ! -f `realpath ${OPTARG}` ]; then #if empty string or no such file
                 usage
                 exit 0
             else
@@ -25,13 +25,21 @@ while getopts ":hs:m:" arg; do
         m) # -m OPTARG
             #check OPTARG is a valid file
             echo "-m ${OPTARG}"
-            if [ -z "${OPTARG}" ] || [ ! -f "$cwd/${OPTARG}" ]; then #if empty string or no such file
+            if [ -z "${OPTARG}" ] || [ ! -f `realpath ${OPTARG}` ]; then #if empty string or no such file
                 usage
                 exit 0
             else
                 opt_mparams="--model_params $cwd/${OPTARG}"
             fi
             ;;
+		c)
+			if [ -z "${OPTARG}" ] || [ ! -f `realpath ${OPTARG}` ]; then #if empty string or no such file
+				usage
+				exit 0
+			else
+				opt_cnrs="--srf_cnrs ${OPTARG}"
+			fi
+			;;
         h | *) #-h or everything else, show usage and exit
             usage 
             exit 0
@@ -47,6 +55,7 @@ echo "================ Input argements ================"
 echo "parmas_plot_dir: $regions_path"
 echo "xyz_file: $xyz"
 echo "srf option: $opt_srf"
+echo "srf crns option: $opt_cnrs"
 echo "model_params option: $opt_mparams"
 
 
@@ -57,12 +66,13 @@ for region_params_plot in $regions_path/params_plot*.py; do
     echo "Getting ready to process $region_params_plot"
     rm $cwd/$PARAMS_PLOT*
     echo "Deleted existing $PARAMS_PLOT*"
+    rm -rf GMT_WD_STATIONS
     ln -s $region_params_plot $cwd/$PARAMS_PLOT
     link_target=`readlink -f $cwd/$PARAMS_PLOT`
     echo "symlink $PARAMS_PLOT -> $link_target"
 
-    echo "Executing: python $PLOT_STATIONS $xyz $opt_srf $opt_mparams"
-    python $PLOT_STATIONS $xyz $opt_srf $opt_mparams
+    echo "Executing: python $PLOT_STATIONS $xyz $opt_srf $opt_mparams $opt_cnrs"
+    python $PLOT_STATIONS $xyz $opt_srf $opt_mparams $opt_cnrs
 
     output_img=`basename $region_params_plot` #remove PATH/ from PATH/params_plot_X.py
     output_img="${output_img#params_plot_}" #remove params_plot_ from params_plot_X.py
