@@ -37,7 +37,7 @@ while getopts ":hs:m:" arg; do
 				usage
 				exit 0
 			else
-				cnrs="--srf_cnrs ${OPTARG}"
+				opt_cnrs="--srf_cnrs ${OPTARG}"
 			fi
 			;;
         h | *) #-h or everything else, show usage and exit
@@ -55,7 +55,7 @@ echo "================ Input argements ================"
 echo "parmas_plot_dir: $regions_path"
 echo "xyz_file: $xyz"
 echo "srf option: $opt_srf"
-echo "srf crns option: $cnrs"
+echo "srf crns option: $opt_cnrs"
 echo "model_params option: $opt_mparams"
 
 
@@ -71,8 +71,8 @@ for region_params_plot in $regions_path/params_plot*.py; do
     link_target=`readlink -f $cwd/$PARAMS_PLOT`
     echo "symlink $PARAMS_PLOT -> $link_target"
 
-    echo "Executing: python $PLOT_STATIONS $xyz $opt_srf $opt_mparams"
-    python $PLOT_STATIONS $xyz $opt_srf $opt_mparams
+    echo "Executing: python $PLOT_STATIONS $xyz $opt_srf $opt_mparams $opt_cnrs"
+    python $PLOT_STATIONS $xyz $opt_srf $opt_mparams $opt_cnrs
 
     output_img=`basename $region_params_plot` #remove PATH/ from PATH/params_plot_X.py
     output_img="${output_img#params_plot_}" #remove params_plot_ from params_plot_X.py
