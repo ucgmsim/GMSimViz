@@ -81,7 +81,7 @@ CPTS = {
 }
 
 # awk program to get a proportion (-v p=0<1) of all segments
-segfile_proportionate_awk = r'''BEGIN { l = 0 }
+segfile_proportionate_awk = r'''BEGIN { l = 0; }
 function show_seg() {
     for ( x in c ) {
         if ( x / l < p ) { print c[x]; }
@@ -91,6 +91,16 @@ function show_seg() {
     if ( substr($1, 0, 1) == ">" ) { show_seg(); c[0] = $0; l = 1; }
     else if ( substr($1, 0, 1) != "#" ) { c[l++] = $0; }
 } END { show_seg(); }'''
+# awk program to simplify line segments to start and end only
+segfile_simple_awk = r'''BEGIN { c[">"] = 0; c["#"] = 0; c["%"] = 0; l = ""; }
+{
+    if (substr($1,0,1) == ">") {
+        print l;
+        if (s) { print ">"; }
+        while(substr($1,0,1) in c) { getline; }
+        print $0;
+    } else if ( ! (substr($1,0,1) in c )) { l = $0; }
+} END { print l; }'''
 
 def update_gmt_path(gmt_bin, wd = None):
     """
@@ -207,6 +217,23 @@ def proportionate_segs(infile, outfile, p):
     with open(outfile, 'w') as out:
         Popen(['awk', '-v', 'p=%s' % (p), segfile_proportionate_awk, infile], \
                 stdout = out).wait()
+
+def simplify_segs(infile, outfile = None):
+    """
+    Reduce segments in infile to start and end only.
+    """
+    if outfile != None:
+        # store output in same format
+        with open(outfile, 'w') as out:
+            Popen(['awk', '-v', 's=1', segfile_simple_awk, infile], \
+                    stdout = out).wait()
+        return
+
+    # return as list of (individual) points
+    proc = Popen(['awk', segfile_simple_awk, infile], stdout = PIPE)
+    result = proc.communicate()[0]
+    proc.wait()
+    return np.loadtxt(result.split('\n'), dtype = 'f')
 
 def perspective_fill(width, height, view = 180, tilt = 90, zlevel = 0):
     """
@@ -966,7 +993,6 @@ def grd_mask(xy_file, out_file, region = None, dx = '1k', dy = '1k', \
     if region == None:
         cmd.append('-R')
     else:
-        # TODO: optionally do not store history
         cmd.append('-R%s/%s/%s/%s' % region)
 
     write_history(False, wd = wd)
@@ -2486,7 +2512,8 @@ class GMTPlot:
 
     def legend(self, legend, x, y, width, height = None, is_file = True, \
             pos = 'map', align = None, spacing = None, dx = 0, dy = 0, \
-            clearance = 0, frame_fill = None, frame_padding = None):
+            clearance = 0, frame_fill = None, frame_padding = None, \
+            transparency = 0):
         """
         Add legend to map using pslegend.
         legend: input file (is_file == True) or input text (is_file == False)
@@ -2528,6 +2555,8 @@ class GMTPlot:
             frame_spec = '%s+g%s' % (frame_spec, frame_fill)
         if frame_spec != '':
             cmd.append('-F%s' % (frame_spec))
+        if transparency > 0:
+            cmd.append('-t%s' % (transparency))
 
         # clearance between frame and items (when not using absolute positions)
         if clearance != 0:
