@@ -71,13 +71,10 @@ class CommonPlot:
     @staticmethod
     def create_dir(directory, remove=False):
         """Function to create the Figures dir if it doesn't exist
-           directory: abs path to directory to be created
-           remove: to delete the directory or not if it already exits.
-                   default: False==not_delete
-           Inputs:
-                parms - the parameters
-           Outputs:
-                None
+        Inputs:
+            parms - the parameters
+        Outputs:
+            None
         """
         if remove:
             try:

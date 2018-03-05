@@ -1,0 +1,3 @@
+numpy
+mpi4py
+scipy
