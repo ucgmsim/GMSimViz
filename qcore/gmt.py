@@ -2700,7 +2700,7 @@ class GMTPlot:
             # add resulting grid onto map
             # here '-Q' will make NaN transparent
             cmd = [GMT, 'grdimage', temp_grd, '-J', '-R', '-C%s' % (cpt), \
-                    '-t%s' % (transparency), '-Q', '-K', '-O', self.z]
+                    '-Q', '-t%s' % (transparency), '-K', '-O', self.z]
             if self.p:
                 cmd.append('-p')
             # ignore stderr: usually because no data in area
@@ -2828,21 +2828,24 @@ class GMTPlot:
             all_edges = '>\n'.join([''.join(c) for c in bounds[1:]])
 
         # plot planes
-        cmd = [GMT, 'psxy', '-J', '-R', '-L', '-K', '-O', self.z, \
-                '-W%s,%s,-' % (plane_width, plane_colour)]
-        if plane_fill != None:
-            cmd.append('-G%s' % (plane_fill))
-        planep = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
-        planep.communicate(all_edges)
-        planep.wait()
+        if not (plane_colour == None and plane_fill == None):
+            cmd = [GMT, 'psxy', '-J', '-R', '-L', '-K', '-O', self.z]
+            if plane_colour != None:
+                cmd.append('-W%s,%s,-' % (plane_width, plane_colour))
+            if plane_fill != None:
+                cmd.append('-G%s' % (plane_fill))
+            planep = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
+            planep.communicate(all_edges)
+            planep.wait()
         # plot top edges
-        topp = Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', self.z, \
-                '-W%s,%s' % (top_width, top_colour)], \
-                stdin = PIPE, stdout = self.psf, cwd = self.wd)
-        topp.communicate(top_edges)
-        topp.wait()
+        if top_colour != None:
+            topp = Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', self.z, \
+                    '-W%s,%s' % (top_width, top_colour)], \
+                    stdin = PIPE, stdout = self.psf, cwd = self.wd)
+            topp.communicate(top_edges)
+            topp.wait()
         # hypocentre
-        if hyp_size > 0:
+        if hyp_size > 0 and hyp_colour != None:
             hypp = Popen([GMT, 'psxy', '-J', '-R', '-K', '-O', self.z, \
                     '-W%s,%s' % (hyp_width, hyp_colour), \
                     '-S%s%s' % (hyp_shape, hyp_size)], \
