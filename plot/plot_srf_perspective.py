@@ -35,7 +35,7 @@ OVERLAY_T = 40
 # 100 for 1600x900
 # 120 for 1920x1080, 16ix9i
 # 240 for 3840x2160
-DPI = 96
+DPI = 120
 # borders on page
 WINDOW_T = 0.8
 WINDOW_B = 0.3
@@ -114,6 +114,12 @@ def load_hdf5(h5file, basename):
         data[:, :, 1] = np.tile(h['y'][...][::-1], xlen).reshape(xlen, ylen)
         data[:, :, 2] = h['model'][...].T
 
+    # clear low values because grid contains potentially rotated data (gaps)
+    values = data[:, :, 2]
+    low = np.nanpercentile(values, 1)
+    np.nan_to_num(values)
+    values[values <= low] = np.nan
+
     # calculate metadata
     x0, y0 = data[0, 0, :2]
     x1, y1 = data[1, 1, :2]
@@ -145,6 +151,13 @@ def load_hdf5(h5file, basename):
     else:
         raise ValueError('Not implemented.')
     gmt.makecpt('hot', '%s.cpt' % (basename), 0, cpt_max, invert = True)
+
+    # matching mask
+    mask_path = '%s/xyts/corners-hr.gmt' % (meta['wd'])
+    if os.path.exists(mask_path):
+        gmt.grd_mask(mask_path, '%s_mask.nc' % (basename), \
+                dx = meta['xyts_res'], dy = meta['xyts_res'], \
+                region = meta['xyts_region'])
 
     return region
 
@@ -283,11 +296,13 @@ def timeslice(job, meta):
     elif job['sim_time'] == -2:
         plot = 'surface'
         scale_p_final = 1.0
+        crop_grd = '%s/overlay/%s_mask.nc' % (meta['wd'], job['overlay'])
+        if not os.path.exists(crop_grd):
+            crop_grd = None
         p.overlay('%s/overlay/%s.nc' % (meta['wd'], job['overlay']), \
                 '%s/overlay/%s.cpt' % (meta['wd'], job['overlay']), \
                 transparency = job['transparency'], \
-                crop_grd = '%s/overlay/%s.mask' % (meta['wd'], job['overlay']), \
-                custom_region = job['region'])
+                crop_grd = crop_grd, custom_region = job['region'])
     # load srf plane data
     elif job['sim_time'] == - 1:
         plot = 'slip'
@@ -604,13 +619,14 @@ if len(sys.argv) > 1:
         if not os.path.isdir(args.paths):
             print('Could not find path directory: %s' % (args.paths))
             sys.exit(2)
-        path_files = sorted(glob('%s/*.gmt' % (args.paths)))
-        legend_files = sorted(glob('%s/*.legend' % (args.paths)))
+        path_sort = lambda n : int(os.path.basename(n).split('_')[0])
+        path_files = sorted(glob('%s/*.gmt' % (args.paths)), key = path_sort)
+        legend_files = sorted(glob('%s/*.legend' % (args.paths)), key = path_sort)
         if len(path_files) != len(legend_files) and len(legend_files) != 0:
             print('Inconsintent number of path files and legend files.')
             sys.exit(2)
         for i in xrange(len(path_files) * len(legend_files) != 0):
-            if legend_files[i] != '%s.legend' % (path_files[i][:-4]):
+            if '%s.legend' % (path_files[i][:-4]) not in legend_files:
                 print('Filenames are not matching between ".gmt" and ".legend".')
                 sys.exit(2)
 
@@ -723,7 +739,6 @@ if len(sys.argv) > 1:
         meta['xyts_res'] = xres
         meta['xyts_dt'] = xfile.dt
         if args.animate:
-            # TODO: debug
             msg_list.append([load_xyts, meta])
             msg_deps += 1
             frames_gm = int(xfile.dt * (xfile.nt - 0.6) * args.framerate)
@@ -852,8 +867,6 @@ if len(sys.argv) > 1:
             msgs = msg_list
         else:
             msgs = msg_list_post_xyts
-            # TODO: debug
-            #msgs = msg_list
         for i in xrange(frames_return):
             scale_t = 1 - min(1, i / (meta['t_frames'] - 1.0))
             over_t = 100 - (100 - OVERLAY_T) * scale_t
@@ -878,7 +891,7 @@ if len(sys.argv) > 1:
             scale_t = i / (meta['t_frames'] - 1.0)
             over_t = 100 - (100 - OVERLAY_T) * scale_t
             if args.liquefaction != None:
-                msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
+                msgs.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                         'scale_t':scale_t, 'seq':frames2liquefaction + i, \
                         'sim_time':-2, 'region':region_liquefaction, \
                         'transparency':over_t, 'overlay':'liquefaction', \
@@ -886,7 +899,7 @@ if len(sys.argv) > 1:
                         'view':(poi_liquefaction, 1.2, scale_t, poi_gm, 1.2)}, \
                         meta])
             if args.landslide != None:
-                msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
+                msgs.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                         'scale_t':scale_t, 'seq':frames2landslide + i, \
                         'sim_time':-2, 'region':region_landslide, \
                         'transparency':over_t, 'overlay':'landslide', \
@@ -904,13 +917,15 @@ if len(sys.argv) > 1:
                 + (frames_landslide * 2 + pause_frames) \
                 * (args.landslide != None)
 
-        # TODO: debug
-        #azimuth = 180
-        #tilt = 90
         # stage 7 paths such as road network
         if args.paths != None:
             # first status
-            poi_paths = gmt.simplify_segs(path_files[0])
+            poi_paths0 = gmt.simplify_segs(path_files[0])
+            poi_paths = []
+            # kaikoura roads, bottom isn't interesting
+            for poi in poi_paths0:
+                if poi[1] > -44.5:
+                    poi_paths.append([poi[0], poi[1]])
             for i in xrange(meta['t_frames']):
                 scale_t = i / (meta['t_frames'] - 1.0)
                 over_t = 100 - 100 * scale_t
@@ -918,7 +933,7 @@ if len(sys.argv) > 1:
                         'scale_t':0, 'seq':frames2now + i, 'sim_time':-3, \
                         'transparency':over_t, 'overlay':path_files[0], \
                         'proportion':scale_t, \
-                        'view':(poi_paths, 1.2, scale_t, poi_gm, 1.2)}, meta])
+                        'view':(poi_paths, 1.5, scale_t, poi_gm, 1.2)}, meta])
             op_list.append(['DUP', frames2now + i, pause_frames])
             frames2now = frames2now + meta['t_frames'] + pause_frames
             # mid statuses
@@ -927,7 +942,7 @@ if len(sys.argv) > 1:
                         'scale_t':0, 'seq':frames2now, \
                         'sim_time':-3, 'transparency':0, \
                         'overlay':path_files[i], 'proportion':1, \
-                        'view':(poi_paths, 1.2)}, meta])
+                        'view':(poi_paths, 1.5)}, meta])
                 op_list.append(['DUP', frames2now, pause_frames - 1])
                 frames2now += pause_frames
             # end fadeout
@@ -938,7 +953,7 @@ if len(sys.argv) > 1:
                         'scale_t':0, 'seq':frames2now + i, 'sim_time':-3, \
                         'transparency':over_t, 'overlay':path_files[-1], \
                         'proportion':scale_t, \
-                        'view':(poi_paths, 1.2, scale_t, poi_gm, 1.2)}, meta])
+                        'view':(poi_paths, 1.5, scale_t, poi_gm, 1.2)}, meta])
             frames2now += meta['t_frames']
 
         # frames of pause at beginning / end of movie
