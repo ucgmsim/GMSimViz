@@ -36,21 +36,26 @@ def get_nseg(srf):
         nseg = int(sf.readline().split()[1])
     return nseg
 
-def get_nsub_stoch(stoch):
+def get_nsub_stoch(stoch,get_area=False):
     """
     returns the number of sub-faults in a stoch file
     stoch: file path to stoch
     """
     total_size=0
+    total_area=0
     with open(stoch, 'r') as sf:
         nseg=int(sf.readline()) #first line in file
         for seg in xrange(nseg):
             #read first line for each seg for size
             line=sf.readline().split()
             nx=int(line[2])
+            area_x=float(line[4])
             ny=int(line[3])
+            area_y=float(line[5])
             seg_size=nx*ny
+            seg_area=nx*ny*area_x*area_y
             total_size = total_size + seg_size
+            total_area = total_area + seg_area
             #skip one extra line
             sf.readline()
             #skip nx lines in file
@@ -58,6 +63,8 @@ def get_nsub_stoch(stoch):
                 #000, 090,ver
                 for direction in range(3):
                     sf.readline()
+    if get_area:
+        return total_size,total_area
     return total_size
 
 def read_header(sf, idx = False):
