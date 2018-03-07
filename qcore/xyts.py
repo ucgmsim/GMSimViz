@@ -1,4 +1,6 @@
 """
+Read xyts.e3d files.
+C structs available in WccFormat/src/structure.h
 XYTS file related functions.
 XYTS files contain time slices on the X-Y plane (z = 1, top level).
 XYTS file processing
@@ -25,30 +27,34 @@ class XYTSFile:
 
     def __init__(self, xyts_path, meta_only = False):
         """
-        Prepare file for reading.
-        C structs available in WccFormat/src/structure.h
-        Note: endianness is only important here (__init__)
-                hardcoded big src '>', little would be '<'
-                could check sanity in header for auto-endianness
-                outputs are always native
-        xyts_path: path to the xyts file
-        meta_only: only using this to retrieve metadata
-                doesn't enable timeslice capability
+        Load metadata and optionally prepare gridpoint datum locations.
+        xyts_path: path to the xyts.e3d file
+        meta_only: don't prepare gridpoint datum locations (slower)
+                can't use timeslice (lon, lat, value) capability
         """
 
-        # read header
         xytf = open(xyts_path, 'rb')
+
+        # determine endianness, an x-y timeslice has 1 z value
+        nz = np.fromfile(x, dtype = '>i4', count = 7)[-1]
+        if nz == 0x00000001:
+            endian = '>'
+        elif nz == 0x01000000:
+            endian = '<'
+        else:
+            xytf.close()
+            raise ValueError('File is not an XY timeslice file: %s' \
+                    % (xyts_path))
+        xytf.seek(0)
+
+        # read header
         self.x0, self.y0, self.z0, self.t0, \
                 self.nx, self.ny, self.nz, self.nt = \
-                np.fromfile(xytf, dtype = '>i4', count = 8)
+                np.fromfile(xytf, dtype = '%si4' % (endian), count = 8)
         self.dx, self.dy, self.hh, self.dt, \
                 self.mrot, self.mlat, self.mlon = \
-                np.fromfile(xytf, dtype = '>f4', count = 7)
+                np.fromfile(xytf, dtype = '%sf4' % (endian), count = 7)
         xytf.close()
-        if self.nz != 1:
-            print('Not an XY timeslice file.')
-            print('Will not continue as data has different dimentions.')
-            exit(1)
 
         # determine original sim parameters
         self.dxts = int(round(self.dx / self.hh))
@@ -79,8 +85,8 @@ class XYTSFile:
             return
 
         # memory map for data section
-        self.data = np.memmap(xyts_path, dtype = '>f4', mode = 'r', \
-                offset = 60, \
+        self.data = np.memmap(xyts_path, dtype = '%sf4' % (endian), \
+                mode = 'r', offset = 60, \
                 shape = (self.nt, len(self.comps), self.ny, self.nx))
 
         # create longitude, latitude map for data
@@ -132,9 +138,9 @@ class XYTSFile:
         Retrieve timeslice data.
         Based on logic in WccFormat/src/ts2xyz.c
         step: timestep to retrieve data for
+        comp: timestep component -1:sqrt(x^2 + y^2 + z^2), 0:x, 1:y, 2:z
         """
-        # loading x, y, z all the time is not significant
-        # compared with logic unless you have repeated code
+        # loading x, y, z all the time not significant
         y = self.data[step, 0, :, :] * self.cosR \
                 - self.data[step, 1, :, :] * self.sinR
         x = self.data[step, 0, :, :] * self.sinR \
@@ -163,16 +169,14 @@ class XYTSFile:
         mmi: also calculate MMI
         pgvout: file to store pgv or None to return it
         mmiout: file to store mmi or None to return it
-        NOTE: cannot save one of pgvout/mmiout to a file and return another
         """
         # PGV as timeslices reduced to maximum value at each point
         pgv = np.zeros(self.nx * self.ny)
         for ts in xrange(self.t0, self.nt):
             pgv = np.maximum( \
                     np.sqrt(np.sum(np.power(np.dot( \
-                    self.data[ts, :, :, :].reshape(3, -1).T, self.rot_matrix \
-                    ), 2), axis = 1)), \
-                    pgv)
+                    self.data[ts, :, :, :].reshape(3, -1).T, \
+                    self.rot_matrix ), 2), axis = 1)), pgv)
 
         # modified marcalli intensity formula
         if mmi:
@@ -194,5 +198,5 @@ class XYTSFile:
         if pgvout == None:
             if not mmi:
                 return pgv
-            else:
+            elif mmiout == None:
                 return pgv, mmiv
