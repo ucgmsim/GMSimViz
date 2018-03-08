@@ -36,7 +36,7 @@ class XYTSFile:
         xytf = open(xyts_path, 'rb')
 
         # determine endianness, an x-y timeslice has 1 z value
-        nz = np.fromfile(x, dtype = '>i4', count = 7)[-1]
+        nz = np.fromfile(xytf, dtype = '>i4', count = 7)[-1]
         if nz == 0x00000001:
             endian = '>'
         elif nz == 0x01000000:
