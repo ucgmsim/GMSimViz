@@ -6,17 +6,21 @@ import sys
 
 from qcore.config import qconfig
 
-GEN_CORD_BIN = os.path.join(qconfig['tools_dir'], 'gen_model_cords')
-CENTER_ORIGIN = '1'
-GEOPROJ = '1'
-DOCOORDS = '1'
+GEN_COORD_BIN = os.path.join(qconfig['tools_dir'], 'gen_model_cords')
 
-# leave main even though it makes no sense unless you change all code calling this
-def main(outdir = '.', debug = False):
+def gen_coords(outdir = '.', debug = False, geoproj = '1', do_coords = '1'):
+    """
+    Generate coordinate files for an emod3d domain (set of grid points).
+    outdir: directory to store coordinate files in
+    debug: print additional info
+    geoproj: 
+    do_coords: 
+    """
 
     # load params for velocity model
+    sys.path.insert(0, '.')
     sys.path.insert(0, outdir)
-    sys.path.append('.')
+    # parameters file historically not consistent
     try:
         import params_vel as vm
     except ImportError:
@@ -24,6 +28,8 @@ def main(outdir = '.', debug = False):
             import params_base as vm
         except ImportError:
             import params as vm
+    # important to notify of location to prevent path order issues
+    print('sim params: %s' % (os.path.abspath(vm.__file__)))
 
     # these are saved as strings, should be floats because that's what they are
     # YLEN == vm.extent_y etc. in params_vel but not elsewhere
@@ -31,10 +37,11 @@ def main(outdir = '.', debug = False):
     YLEN = float(vm.ny) * float(vm.hh)
     ZLEN = float(vm.nz) * float(vm.hh)
 
+    # list of outputs that this function can create
     GRIDFILE = os.path.join(outdir, 'gridfile%s' % (vm.sufx))
     GRIDOUT = os.path.join(outdir, 'gridout%s' % (vm.sufx))
     MODEL_COORDS = os.path.join(outdir, 'model_coords%s' % (vm.sufx))
-    MODELPARAMS = os.path.join(outdir, 'model_params%s' % (vm.sufx))
+    MODEL_PARAMS = os.path.join(outdir, 'model_params%s' % (vm.sufx))
     MODEL_BOUNDS = os.path.join(outdir, 'model_bounds%s' % (vm.sufx))
 
     # generate gridfile
@@ -47,24 +54,24 @@ def main(outdir = '.', debug = False):
             gridf.write("zlen=%f\n" % (ZLEN))
             gridf.write("%10.4f %10.4f %13.6e\n" % (0.0, ZLEN, float(vm.hh)))
     except IOError:
-        print('Cannot write to location: %s' % (GRIDFILE))
-        sys.exit(1)
+        raise IOError('Cannot write GRIDFILE: %s' % (GRIDFILE))
 
     # generate model_params
-    cmd = ("{GEN_CORD_BIN} "
-            "geoproj={GEOPROJ} gridfile='{GRIDFILE}' gridout='{GRIDOUT}' "
-            "center_origin={CENTER_ORIGIN} do_coords={DOCOORDS} "
+    cmd = ("{GEN_COORD_BIN} "
+            "geoproj={geoproj} gridfile='{GRIDFILE}' gridout='{GRIDOUT}' "
+            "center_origin={CENTER_ORIGIN} do_coords={do_coords} "
             "nzout=1 name='{MODEL_COORDS}' gzip=0 latfirst=0 "
             "modellon={vm.MODEL_LON} modellat={vm.MODEL_LAT} "
-            "modelrot={vm.MODEL_ROT} 1> '{MODELPARAMS}'") \
+            "modelrot={vm.MODEL_ROT} 1> '{MODEL_PARAMS}'") \
             .format(**dict(locals(), **globals()))
-    if not debug:
+    if debug:
+        print(cmd)
+    else:
         cmd += ' 2>/dev/null'
-    print(cmd)
     check_call(cmd, shell = True)
 
     # also generate coordinate related outputs
-    if DOCOORDS != '1':
+    if do_coords != '1':
         return
 
     # retrieve MODEL_BOUNDS
@@ -78,12 +85,13 @@ def main(outdir = '.', debug = False):
                     if x in x_bounds or y in y_bounds:
                         boundf.write(line)
     except IOError:
-        print('Could not write bounds file.')
-        sys.exit(1)
+        raise IOError('Cannot write MODEL_BOUNDS: %s' % (MODEL_BOUNDS))
 
+
+# allow running from shell
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        main(outdir = sys.argv[1])
+        gen_coords(outdir = sys.argv[1])
     else:
-        main()
+        gen_coords()
 
