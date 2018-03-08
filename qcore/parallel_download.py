@@ -1,23 +1,25 @@
+#!/usr/bin/env python2
+
+import collections
+import glob
+import humanize
+import os
+import stat
+import subprocess
+import sys
+import textwrap
+import time
+
+import paramiko
+from mpi4py import MPI
+
+from qcore import parallel_executor
+from qcore import parallel_upload
+
 hostname = 'fitzroy.nesi.org.nz' # remote hostname where SSH server is running
 port = 22
 
 glob_pattern='*.*'
-
-import os
-import glob
-import paramiko
-from mpi4py import MPI
-import collections
-import parallel_executor
-import os.path
-import humanize
-
-import sys
-import textwrap
-import subprocess
-import parallel_upload
-import time
-import stat
 
 #get the size parameters from parallel_upload
 terminal_cols = parallel_upload.terminal_cols

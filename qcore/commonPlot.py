@@ -10,13 +10,13 @@ A collection of common functions used in the plotting scripts.
 
 """
 
-import matplotlib.pyplot as plt
-import os
-import errno
 from collections import OrderedDict
+import errno
+import os
 import shutil
 import sys
 
+import matplotlib.pyplot as plt
 
 class CommonPlot:
     save_PNG = True

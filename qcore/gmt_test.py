@@ -13,7 +13,7 @@ from scipy.misc import imread
 from mpi4py import MPI
 
 # first test is loading library
-import gmt
+from qcore import gmt
 
 # MPI stuff
 comm = MPI.COMM_WORLD

@@ -19,8 +19,7 @@ from time import time
 
 import numpy as np
 
-import load_config as ldcfg
-qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore_config.json"))
+from qcore.config import qconfig
 
 # only needed if plotting fault planes direct from SRF
 try:
@@ -50,7 +49,7 @@ STATUS_INVALID = 1
 # GMT 5.2+ argument mapping
 GMT52_POS = {'map':'g', 'plot':'x', 'norm':'n', 'rel':'j', 'rel_out':'J'}
 
-GMT_DATA = qcore_cfg['GMT_DATA'] #GMT_DATA = '/home/nesi00213/PlottingData'
+GMT_DATA = qconfig['GMT_DATA']
 # LINZ DATA
 LINZ_COAST = {
         '150k':os.path.join(GMT_DATA, 'Paths/lds-nz-coastlines-and-islands/150k.gmt')
@@ -1039,6 +1038,8 @@ def grdmath(expression, wd = '.'):
     e = p.communicate()[1]
     p.wait()
 
+    # rc 70: syntax
+    # rc 77: grid files not of same size
     if len(e) == 0:
         return STATUS_SUCCESS
     elif 'No valid values in grid' in e:

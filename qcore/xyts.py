@@ -13,7 +13,7 @@ from math import radians, cos, sin
 
 import numpy as np
 
-from geo import gp2ll_multi
+from qcore.geo import gp2ll_multi
 
 ###
 ### PROCESSING OF XYTS FILE

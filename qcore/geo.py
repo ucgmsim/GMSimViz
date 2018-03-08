@@ -3,18 +3,16 @@ Various tools which may be needed in various processes.
 """
 
 from math import sin, asin, cos, atan, atan2, degrees, radians, sqrt, pi
+import os
 from subprocess import Popen, PIPE
 
 import numpy as np
 
+from qcore.config import qconfig
+ll2xy_bin = os.path.join(qconfig['tools_dir'], 'll2xy')
+xy2ll_bin = os.path.join(qconfig['tools_dir'], 'xy2ll')
+
 R_EARTH = 6378.139
-# ideally implemented in python
-# TODO: extract this and add to config file
-import load_config as ldcfg
-import os
-qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore_config.json"))
-ll2xy_bin = os.path.join(qcore_cfg['tools_dir'],'ll2xy') #'/projects/nesi00213/tools/ll2xy'
-xy2ll_bin = os.path.join(qcore_cfg['tools_dir'],'xy2ll') #'/projects/nesi00213/tools/xy2ll'
 
 class InputError(Exception):
     pass

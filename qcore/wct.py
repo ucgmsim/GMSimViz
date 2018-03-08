@@ -1,13 +1,12 @@
-    
-import sqlite3 as lite
-import sys
+#!/usr/bin/env python2
+
 import datetime
 import os
-import load_config as ldcfg
+import sys
 
-qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore_config.json"))
+import sqlite3 as lite
 
-
+from qcore.config import qconfig
 
 class WallClockDB:
     def __init__(self):
@@ -17,27 +16,26 @@ class WallClockDB:
             cur = con.cursor()
             cur.execute("SELECT max(estimator),avg(estimator),min(estimator) FROM wall_clock")
             self.est = list(cur.fetchone())
-       
-        
+
     def connect(self):
         # TODO: remove this hardcoded value here. See the GM slurm based repo for the same file
-        con = lite.connect(qcore_cfg['wallclock'])
+        con = lite.connect(qconfig['wallclock'])
         return con
 
     def estimate_wall_clock_time(self, nx, ny, nz, sim_duration,num_procs=512):
         prod = 1.0* nx*ny*nz*sim_duration*512.0/num_procs
-        
+
         wall_clock_est = [x * prod for x in self.est]
         #print wall_clock_est
-        
+
         est = [str(datetime.timedelta(seconds=x)) for x in wall_clock_est]
         print "nx=%d ny=%d nz=%d sim_duration=%d num_procs=%d" %(nx,ny,nz,sim_duration,num_procs)
         print "Maximum: %s" %est[0]
         print "Average: %s" %est[1]
         print "Minimum: %s" %est[2]
-        
+
         return est #max, avg, min
-        
+
     def add(self, path, nx,ny,nz,sim_duration,num_procs,start,end):
         start = datetime.datetime.strptime(start,"%H:%M:%S_%d/%m/%Y")
         end = datetime.datetime.strptime(end,"%H:%M:%S_%d/%m/%Y")
@@ -56,14 +54,14 @@ def usage():
     print "Usage: %s -a start end : Add the measured wall-clock time to db. params.py must be in the current path"%sys.argv[0]
     print "        start, end : Must be in %H:%M:%S_%d/%m/%Y format. Try `date +%H:%M:%S_%d/%m/%Y`"
     sys.exit()
-    
+
 if __name__ == '__main__':
     db = WallClockDB()
     print db.est
-    
+
     if len(sys.argv)==1 or sys.argv[1]=='-h':
         usage()
-        
+
     if sys.argv[1]=='-q':
         if len(sys.argv)==7:
             nx = int(sys.argv[2])
@@ -91,7 +89,7 @@ if __name__ == '__main__':
         else:
             print "Check arguments:", sys.argv
             usage()
-            
+
     elif sys.argv[1]=='-a':
         curdir = os.curdir
         sys.path.append(os.curdir)
@@ -114,11 +112,4 @@ if __name__ == '__main__':
         else:
             print "Check arguments:", sys.argv
             usage()
-        
-        
-    
-    #assumes "date" to be in `date +%H:%M:%S_%d/%m/%Y` format
-    #print datetime.datetime.strptime(start,"%H:%M:%S_%d/%m/%Y")
-    #print datetime.datetime.strptime(end,"%H:%M:%S_%d/%m/%Y")
-    
-    
+

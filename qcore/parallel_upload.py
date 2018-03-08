@@ -14,27 +14,26 @@
 ##       2. no timestamps or file size comparisons are made
 ##       3. use at your own risk
 
+import collections
+import glob
+import humanize
+import md5
+import os
+import subprocess
+import sys
+import textwrap
+import time
+
+from mpi4py import MPI
+import paramiko
+
+from qcore import parallel_executor
+
 hostname = 'fitzroy.nesi.org.nz' # remote hostname where SSH server is running
 port = 22
 
 glob_pattern='*.*'
 
-import os
-import glob
-import paramiko
-import md5
-from mpi4py import MPI
-import collections
-import parallel_executor
-import os.path
-import humanize
-
-import sys
-#import getpass
-#import curses
-import textwrap
-import subprocess
-import time
 #change this according to terminal size
 terminal_cols = 100
 
