@@ -50,7 +50,7 @@ def get_nsub_stoch(stoch_file, get_area = False):
             nsub = int(meta1[2]) * int(meta1[3])
             total_sub += nsub
             if get_area:
-                # nx * ny * area_x * area_y
+                # nx * ny * x * y
                 total_area += nsub * float(meta1[4]) * float(meta1[5])
 
             # skip metadata line 2 of 2
