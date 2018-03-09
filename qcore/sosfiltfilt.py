@@ -1,4 +1,3 @@
-#!/usr/bin/env python2
 """
 Required functions for sosfiltfilt (from scipy 0.18+) to work with scipy 0.16+.
 Functions copied from scipy git 13/07/2016 9AM NZST.
