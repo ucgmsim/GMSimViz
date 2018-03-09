@@ -9,7 +9,7 @@ class shakemapGrid:
             hlat, hlon, origin_time, run_name, x_min, x_max, y_min, y_max, \
             grd_nx, grd_ny):
         """
-        Adds shakemap header, given values.
+        Adds shakemap header using given values.
         """
         self.fp.write(
 '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

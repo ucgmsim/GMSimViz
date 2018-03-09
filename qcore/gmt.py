@@ -115,17 +115,14 @@ def update_gmt_path(gmt_bin, wd = None):
     gmtp.wait()
     GMT_MAJOR, GMT_MINOR = map(int, GMT_VERSION.split('.')[:2])
 
+    psconvert = 'psconvert'
     if GMT_MAJOR < 5:
         print('GMT v%s is too old. Expect nothing to work.' \
                 % (GMT_VERSION))
         psconvert = 'ps2raster'
-    elif GMT_MAJOR > 5:
-        psconvert = 'psconvert'
     # ps2raster becomes psconvert in GMT 5.2
-    elif GMT_MINOR < 2:
+    elif GMT_MAJOR == 5 and GMT_MINOR < 2:
         psconvert = 'ps2raster'
-    else:
-        psconvert = 'psconvert'
 
     if wd != None:
         if os.path.exists(os.path.join(wd, GMT_HISTORY)):
