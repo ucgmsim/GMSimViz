@@ -34,36 +34,34 @@ def get_nseg(srf):
         nseg = int(sf.readline().split()[1])
     return nseg
 
-def get_nsub_stoch(stoch,get_area=False):
+def get_nsub_stoch(stoch_file, get_area = False):
     """
-    returns the number of sub-faults in a stoch file
-    stoch: file path to stoch
+    Returns the number of sub-faults in a stoch file.
+    stoch_file: stoch file path
     """
-    total_size=0
-    total_area=0
-    with open(stoch, 'r') as sf:
-        nseg=int(sf.readline()) #first line in file
-        for seg in xrange(nseg):
-            #read first line for each seg for size
-            line=sf.readline().split()
-            nx=int(line[2])
-            area_x=float(line[4])
-            ny=int(line[3])
-            area_y=float(line[5])
-            seg_size=nx*ny
-            seg_area=nx*ny*area_x*area_y
-            total_size = total_size + seg_size
-            total_area = total_area + seg_area
-            #skip one extra line
+    total_sub = 0
+    total_area = 0
+    with open(stoch_file, 'r') as sf:
+        # file starts with number of segments that follow
+        for seg in xrange(int(sf.readline())):
+            # metadata line 1 of 2
+            meta1 = sf.readline().split()
+            # nx * ny
+            nsub = int(meta1[2]) * int(meta1[3])
+            total_sub += nsub
+            if get_area:
+                # nx * ny * area_x * area_y
+                total_area += nsub * float(meta1[4]) * float(meta1[5])
+
+            # skip metadata line 2 of 2
             sf.readline()
-            #skip nx lines in file
-            for i in xrange(ny):
-                #000, 090,ver
-                for direction in range(3):
-                    sf.readline()
+            # skip x, y, z (3) components * (ny) lines containing nx columns
+            for _ in xrange(3 * ny):
+                sf.readline()
+
     if get_area:
-        return total_size,total_area
-    return total_size
+        return total_sub, total_area
+    return total_sub
 
 def read_header(sf, idx = False):
     """
@@ -599,10 +597,9 @@ def srf_dt(srf):
     timestep in velocity function (sec)
     """
     with open(srf, 'r') as sf:
-        # metadata
-        planes = read_header(sf)
-        # number of points
+        # skip metadata
+        read_header(sf)
+        # skip number of points
         sf.readline()
         # dt from first point
-        dt = float(sf.readline().split()[7])
-    return dt
+        return float(sf.readline().split()[7])
