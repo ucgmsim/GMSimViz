@@ -2,8 +2,11 @@ from qcore import shared
 import pytest
 import os
 """ Command to run this test: 'python -m pytest -v -s test_gen_cords.py' 
-If the test passed it will delete the generated output folder. 
+If the test passed it will delete the files in the output folder. 
 Otherwise it would not delete files """
+""" Instructions: Sample1 folder contains a sample output taken from hypocentre. Its path is noted in the readme file. In that path you will find the 
+ params_vel.py a;ong wwith other 5 output files. Use them as the benchmark files.If you want another sample to be tested, 
+ create a similar folder like sample1 and store the relevant files there (e.g:sample2). While running the test change sample1 to sample2"""
 
 PATH_TO_SAMPLE_DIR = os.path.join(os.getcwd(),"sample1")
 PATH_TO_SAMPLE_OUTDIR = os.path.join(PATH_TO_SAMPLE_DIR, "output")
