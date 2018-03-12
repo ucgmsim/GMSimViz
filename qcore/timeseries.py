@@ -110,6 +110,7 @@ def transf(vs_soil, rho_soil, damp_soil, height_soil, \
     H = 2.0 / ((1.0 + alpha) * np.exp(1j * jS * hS) + (1.0 - alpha) \
             * np.exp(-1j * kS * hS))
     H[0] = 1
+    return H
 
 def read_ascii(filepath, meta = False, t0 = False):
     """
