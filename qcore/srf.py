@@ -31,8 +31,7 @@ def get_nseg(srf):
     """
     with open(srf, 'r') as sf:
         sf.readline()
-        nseg = int(sf.readline().split()[1])
-    return nseg
+        return int(sf.readline().split()[1])
 
 def get_nsub_stoch(stoch_file, get_area = False):
     """
@@ -85,19 +84,18 @@ def read_header(sf, idx = False):
     for _ in xrange(nseg):
         # works for version 1.0 and 2.0
         elon, elat, nstk, ndip, ln, wid = sf.readline().split()
-        stk, dip, dtop, shyp, dhyp = sf.readline().split()
-        # store as correct format
+        stk, dip, dtop, shyp, dhyp = map(float, sf.readline().split())
+        # return as dictionary
         if idx:
             planes.append({'centre':[float(elon), float(elat)], \
                     'nstrike':int(nstk), 'ndip':int(ndip), \
                     'length':float(ln), 'width':float(wid), \
-                    'strike':float(stk), 'dip':float(dip), \
-                    'shyp':float(shyp), 'dhyp':float(dhyp), \
-                    'dtop':float(dtop)})
+                    'strike':stk, 'dip':dip, 'shyp':shyp, 'dhyp':dhyp, \
+                    'dtop':dtop})
         else:
+            # TODO: deprecated, causes confusion
             planes.append((float(elon), float(elat), int(nstk), int(ndip), \
-                    float(ln), float(wid), float(stk), float(dip), \
-                    float(dtop), float(shyp), float(dhyp)))
+                    float(ln), float(wid), stk, dip, dtop, shyp, dhyp))
     if close_me:
         sf.close()
     return planes
@@ -220,10 +218,7 @@ def get_lonlat(sf, value = None, depth = False):
                     value = float(h2[0])
                 else:
                     value = 90
-            while value >= 360:
-                value -= 360
-            while value < 0:
-                value += 360
+            value = value % 360
     elif value == 'dt':
         value = float(h1[7])
 
@@ -484,67 +479,65 @@ def srf2llv(srf, seg = -1, value = 'slip', lonlatdep = True, depth = False):
 def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, depth = False, \
         flip_rake = False):
     """
-    Return lon, lat, type for subfaults.
-    Reading all at once is faster than reading each separate.
-    # speed ratio for a large file (7 seg, 216k subfaults, slip)
-    # All in python version: 3 seconds
-    # All in srf2xyz code: 6.5 seconds
-    # Each in srf2xyz code: 6.5 seconds * 7 = 40 seconds
-    Should be part of srf2llv in the future.
-    srf: srf source
+    Return list of lon, lat, value for subfaults in each plane.
+    # Reading all at once is faster than reading each separate because:
+    #    reading through text is slowest part, seeking not possible.
+    # speed for a large file (7 seg, 216k subfaults, slip):
+    # All in python version: 3 seconds, result separated by planes
+    # All in srf2xyz code: 6.5 seconds, result not separated by planes
+    # Each plane with srf2xyz code: 6.5 seconds * 7 = 40 seconds
+    # Should replace srf2llv.
+    srf: srf file path
     nseg: which segment (-1 for all)
     lonlat: return lon lat (True) or x y (False)
-    depth: give depth as well as lonlat (lonlat must be true)
-    flip_rake: angles above 180 degrees will have 360 taken away
+    depth: return depth as well (lonlat must be true) (lon,lat,depth,value)
+    flip_rake: angles given as -180 -> 180 instead of 0 -> 360 degrees
     """
+
+    # if we want a whole series of values for each subfault
+    multi = value[:8] == 'sliprate' or value[:6] == 'slipts'
+
     with open(srf, 'r') as sf:
         # metadata
-        planes = read_header(sf)
+        planes = read_header(sf, idx = True)
         points = int(sf.readline().split()[1])
 
-        # storage
+        # containers for planes
         values = []
-        # if each subfault will return more than one value
-        multi = value[:8] == 'sliprate' or value[:6] == 'slipts'
         if multi:
-            # separate series to keep array dimentions equal
             series = []
 
         # each plane has a separate set of subfaults
         for n, plane in enumerate(planes):
-            nstk, ndip = plane[2:4]
+            # skip unwanted plane
             if seg >= 0 and seg != n:
-                skip_points(sf, nstk * ndip)
+                skip_points(sf, plane['nstrike'] * plane['ndip'])
                 continue
 
-            if not multi:
-                if depth:
-                    plane_values = np.zeros((nstk * ndip, 4))
-                else:
-                    plane_values = np.zeros((nstk * ndip, 3))
-            else:
-                if depth:
-                    plane_values = np.zeros((nstk * ndip, 3))
-                else:
-                    plane_values = np.zeros((nstk * ndip, 2))
-                plane_series = [None] * (nstk * ndip)
+            # numpy containers for plane
+            plane_values = np.zeros((plane['nstrike'] * plane['ndip'], \
+                    3 - multi + depth))
+            if multi:
+                plane_series = [None] * (plane['nstrike'] * plane['ndip'])
+
             if not lonlat:
                 # calculate x, y offsets
                 # unlike srf2xyz offsets are relative to segment
-                dx = float(plane[4]) / nstk
-                dy = float(plane[5]) / ndip
+                dx = plane['length'] / plane['nstrike']
+                dy = plane['width'] / plane['ndip']
                 # fill with x, y coord grid
                 plane_values[:, :2] = np.mgrid[ \
-                        0.5 * dx : float(plane[4]) : dx, \
-                        0.5 * dy : float(plane[5]) : dy] \
+                        0.5 * dx : plane['length'] : dx, \
+                        0.5 * dy : plane['width'] : dy] \
                         .reshape(2, -1, order = 'F').T
                 # last item - values from SRF
-                if not multi:
-                    for i in xrange(nstk * ndip):
-                        plane_values[i][2] = get_lonlat(sf, value = value)[-1]
-                else:
-                    for i in xrange(nstk * ndip):
+                if multi:
+                    for i in xrange(plane['nstrike'] * plane['ndip']):
                         plane_series[i] = get_lonlat(sf, value = value)[-1]
+                else:
+                    for i in xrange(plane['nstrike'] * plane['ndip']):
+                        plane_values[i, 2] = get_lonlat(sf, value = value)[-1]
+
             else:
                 if not multi:
                     for i in xrange(nstk * ndip):
@@ -561,13 +554,19 @@ def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, depth = False, \
                             plane_values[i][0], plane_values[i][1], \
                                     plane_series[i] = get_lonlat(sf, \
                                     value = value)
-            if type == 'rake' and flip_rake:
-                np.where(plane_values[:, 2] > 180, \
-                        plane_values[:, 2] - 360, plane_values[:, 2])
+
+            # adjust angles to -180 -> 180 degrees
+            if flip_rake and value == 'rake':
+                np.where(plane_values[:, 2 + depth] > 180, \
+                        plane_values[:, 2 + depth] - 360, \
+                        plane_values[:, 2 + depth])
+
+            # add plane specific dimention numpy arrays to return list
             values.append(plane_values)
             if multi:
                 series.append(np.array(plane_series))
 
+            # do not read rest of srf file (slow)
             if n == seg:
                 break
 
