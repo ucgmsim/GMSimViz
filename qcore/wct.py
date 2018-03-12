@@ -6,7 +6,7 @@ import sys
 
 import sqlite3
 
-from config import qconfig
+from qcore.config import qconfig
 
 class WallClockDB:
 
