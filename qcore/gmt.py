@@ -23,12 +23,12 @@ from qcore.config import qconfig
 
 # only needed if plotting fault planes direct from SRF
 try:
-    import srf
+    from qcore import srf
 except ImportError:
     print('srf.py not found. will not be able to plot faults from SRF.')
 # only needed for some functions
 try:
-    import geo
+    import qcore.geo
 except ImportError:
     print('geo.py not found. some functions will not work.')
 

@@ -42,7 +42,7 @@ def ll2gp_multi(coords, mlon, mlat, rot, nx, ny, hh, \
               'geoproj=1', 'center_origin=1', 'h=%s' % (hh), \
               'xazim=%s' % (xazim), 'xlen=%s' % (xlen), 'ylen=%s' % (ylen)]
     if verbose:
-        print ' '.join(cmd)
+        print(' '.join(cmd))
     p_conv = Popen(cmd,
             stdin = PIPE, stdout = PIPE)
     stdout = p_conv.communicate( \
