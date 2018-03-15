@@ -8,7 +8,8 @@ from qcore.config import qconfig
 
 GEN_COORD_BIN = os.path.join(qconfig['tools_dir'], 'gen_model_cords')
 
-def gen_coords(outdir = '.', debug = False, geoproj = '1', do_coords = '1'):
+def gen_coords(outdir = '.', debug = False, geoproj = '1', do_coords = '1', \
+        centre_origin = '1'):
     """
     Generate coordinate files for an emod3d domain (set of grid points).
     outdir: directory to store coordinate files in
@@ -59,7 +60,7 @@ def gen_coords(outdir = '.', debug = False, geoproj = '1', do_coords = '1'):
     # generate model_params
     cmd = ("{GEN_COORD_BIN} "
             "geoproj={geoproj} gridfile='{GRIDFILE}' gridout='{GRIDOUT}' "
-            "center_origin={CENTER_ORIGIN} do_coords={do_coords} "
+            "center_origin={centre_origin} do_coords={do_coords} "
             "nzout=1 name='{MODEL_COORDS}' gzip=0 latfirst=0 "
             "modellon={vm.MODEL_LON} modellat={vm.MODEL_LAT} "
             "modelrot={vm.MODEL_ROT} 1> '{MODEL_PARAMS}'") \
