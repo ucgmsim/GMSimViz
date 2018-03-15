@@ -28,7 +28,7 @@ except ImportError:
     print('srf.py not found. will not be able to plot faults from SRF.')
 # only needed for some functions
 try:
-    import qcore.geo
+    import qcore.geo as geo
 except ImportError:
     print('geo.py not found. some functions will not work.')
 
