@@ -540,11 +540,11 @@ def srf2llv_py(srf, value = 'slip', seg = -1, lonlat = True, depth = False, \
 
             else:
                 if not multi:
-                    for i in xrange(nstk * ndip):
+                    for i in xrange(plane['nstk'] * plane['ndip']):
                         plane_values[i] = get_lonlat(sf, value = value, \
                                 depth = depth)
                 else:
-                    for i in xrange(nstk * ndip):
+                    for i in xrange(plane['nstk'] * plane['ndip']):
                         if depth:
                             plane_values[i][0], plane_values[i][1], \
                                     plane_values[i][2], plane_series[i] \
