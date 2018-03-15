@@ -13,7 +13,7 @@ PATH_TO_SAMPLE_OUTDIR = os.path.join(PATH_TO_SAMPLE_DIR, "output")
 # print "PATH_TO_SAMPLE_OUTDIR: ",PATH_TO_SAMPLE_OUTDIR
 PATH_TO_NEW_OUTDIR = os.path.join(os.getcwd(), "output")
 # print "PATH_TO_NEW_OUTDIR: ", PATH_TO_NEW_OUTDIR
-PATH_FOR_PRG_TOBE_TESTED = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.getcwd())), "gen_cords.py"))
+PATH_FOR_PRG_TOBE_TESTED = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.getcwd())), "gen_coords.py"))
 # print "PATH_FOR_PRG_TOBE_TESTED: ",PATH_FOR_PRG_TOBE_TESTED
 
 def setup_module():
@@ -25,7 +25,7 @@ def setup_module():
 def test_gencords():
     """ test qcore/gen_coords.py """
     print "---------test_gencords------------"
-    shared.exe("python "+PATH_FOR_PRG_TOBE_TESTED+" "+PATH_TO_NEW_OUTDIR+"")
+    shared.exe("python "+PATH_FOR_PRG_TOBE_TESTED+" "+PATH_TO_NEW_OUTDIR)
     out,err=shared.exe("diff -qr "+PATH_TO_NEW_OUTDIR+" "+PATH_TO_SAMPLE_OUTDIR)
     assert out == "" and err == ""
     remove_files()
