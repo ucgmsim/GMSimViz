@@ -19,8 +19,8 @@ PATH_FOR_PRG_TOBE_TESTED = os.path.abspath(os.path.join(os.path.dirname(os.path.
 def setup_module():
     """ create a symbolic link for params_vel.py"""
     print "---------setup_module------------"
-    sample_path = os.path.join(PATH_TO_SAMPLE_DIR,"params_vel.py")
-    os.symlink(sample_path,os.path.join(os.getcwd(),"params_vel.py"))
+    sample_path = os.path.join(PATH_TO_SAMPLE_DIR, "params_vel.py")
+    os.symlink(sample_path,os.path.join(os.getcwd(), "params_vel.py"))
 
 def test_gencords():
     """ test qcore/gen_coords.py """
