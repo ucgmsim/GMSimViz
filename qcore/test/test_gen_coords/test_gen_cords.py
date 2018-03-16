@@ -7,13 +7,18 @@ Otherwise it would not delete files """
 """ Instructions: Sample1 folder contains a sample output taken from hypocentre. Its path is noted in the readme file. In that path you will find the 
  params_vel.py along with other 5 output files. Use them as the benchmark files.If you want another sample to be tested, 
  create a similar folder like sample1 and store the relevant files there (e.g:sample2). While running the test change sample1 to sample2"""
+"""
+Just to run : py.test (or) python -m pytest -s -v test_gen_cords.py
+To know the code coverage : py.test --cov=test_gen_cords.py
+To know the test coverage :python -m pytest --cov ../../gen_cords.py test_gen_cords.py
 
+"""
 PATH_TO_SAMPLE_DIR = os.path.join(os.getcwd(),"sample1")
 PATH_TO_SAMPLE_OUTDIR = os.path.join(PATH_TO_SAMPLE_DIR, "output")
 # print "PATH_TO_SAMPLE_OUTDIR: ",PATH_TO_SAMPLE_OUTDIR
-PATH_TO_NEW_OUTDIR = os.path.join(os.getcwd(), "output")
+PATH_TO_NEW_OUTDIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "output")
 # print "PATH_TO_NEW_OUTDIR: ", PATH_TO_NEW_OUTDIR
-PATH_FOR_PRG_TOBE_TESTED = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.getcwd())), "gen_coords.py"))
+PATH_FOR_PRG_TOBE_TESTED = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.getcwd())), "gen_cords.py"))
 # print "PATH_FOR_PRG_TOBE_TESTED: ",PATH_FOR_PRG_TOBE_TESTED
 
 def setup_module():

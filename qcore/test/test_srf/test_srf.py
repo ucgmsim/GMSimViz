@@ -1,17 +1,34 @@
+# TODO: WHAT IS TMP DIRECTORY
+# TODO: check if sample cnrs files are OK to be used as sample output
+
 from qcore import srf, shared
 import pytest
-
+import hashlib
+from datetime import datetime
 import os
-""" Command to run this test: 'python -m pytest -v -s test_srf.py'  """
+""" Command to run this test: 'python -m pytest -v -s test_srf.py'  
+To know the code coverage : py.test --cov=test_srf.py
+To know the test coverage :python -m pytest --cov ../../srf.py test_srf.py
 
-SRF_1_PATH = os.path.join(os.getcwd(), "sample1/Hossack_HYP01-01_S1244.srf")
-SRF_2_PATH = os.path.join(os.getcwd(), "sample2/Tuakana13_HYP01-01_S1244.srf")
-SRF_1_CNR_PATH = os.path.join(os.getcwd(), "sample1/output/cnrs.txt")
-SRF_2_CNR_PATH = os.path.join(os.getcwd(), "sample2/output/cnrs.txt")
+"""
+SRF_1_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample1/Hossack_HYP01-01_S1244.srf")
+SRF_2_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample2/Tuakana13_HYP01-01_S1244.srf")
+SRF_3_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample3/single_point_source.srf")# This is a fake one, just created for testing single point source
+SRF_1_CNR_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample1/output/cnrs.txt")
+SRF_2_CNR_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample2/output/cnrs.txt")
 SRF_1_PLANES = srf.read_header(SRF_1_PATH, True)
 SRF_2_PLANES = srf.read_header(SRF_2_PATH, True)
 HEADERS = ['centre', 'nstrike', 'ndip', 'length', 'width', 'strike', 'dip', 'dtop', \
            'shyp', 'dhyp']
+DIR_NAME = (("tmp_" + os.path.basename(__file__)[:-3] + '_' + ''.join(str(datetime.now()).split())).replace('.', '_')).replace(
+            ':', '_')
+def setup_module(scope="module"):
+    print "----------setup_module----------"
+
+    def create_tmp_dir(tmpdir):
+        print "---------create_tmp_dir-----------"
+        print "TMP DIR Name IS : ", DIR_NAME
+        tmpdir.mkdir(DIR_NAME)
 
 @pytest.mark.parametrize("plane, expected_values",[( SRF_1_PLANES[0], [[176.2354,-38.3404], 34, 92, 3.44, 9.24, 230, 60, 0.00, 0.00, 5.54]),
                                                 (SRF_2_PLANES[0],[[176.8003, -37.0990], 46, 104, 4.57, 10.44, 21, 50, 0.00, 0.00, 6.27]),
@@ -31,11 +48,15 @@ def test_dt(test_dt, expected_dt):
 def test_dxy(test_dxy, expected_dxy):
     assert srf.srf_dxy(test_dxy) == expected_dxy
 
-# TODO: check if sample cnrs files are OK to be used as sample output
 @pytest.mark.parametrize("test_srf,filename,sample_cnr_file_path",[(SRF_1_PATH,'cnrs1.txt',SRF_1_CNR_PATH), (SRF_2_PATH,'cnrs2.txt',SRF_2_CNR_PATH)])
-def test_srf2corners(test_srf,filename,sample_cnr_file_path):
+def test_srf2corners(tmpdir,test_srf,filename,sample_cnr_file_path):
+    # NOTE : The testing was carried out based on the assumption that the hypocentre was correct
+    # srf2corners method calls the get_hypo method in it which give the hypocentre value
+    print "-------TMP DIR --------------- ",tmpdir
+    abs_filename = os.path.join(tmpdir,DIR_NAME,filename)
+    print "abs_filename: ",abs_filename
     srf.srf2corners(test_srf,cnrs=filename)
-    out, err = shared.exe("diff -qr " + sample_cnr_file_path + " " + filename)
+    out, err = shared.exe("diff -qr " + sample_cnr_file_path + " " + abs_filename)
     assert out == "" and err == ""
 
 @pytest.mark.parametrize("test_srf,expected_latlondepth",[(SRF_1_PATH, {'lat': -38.3354, 'depth': 0.0431, 'lon': 176.2414}),\
@@ -66,7 +87,32 @@ def test_is_ff(test_srf, expected_result):
 def test_nplane1(test_srf_planes, expected_result):
     assert len(test_srf_planes) == expected_result
 
-# # TODO:TO BE DECIDED LATER
+@pytest.mark.parametrize("test_srf, expected_result",[(SRF_1_PATH,(AssertionError)),(SRF_2_PATH,AssertionError),(SRF_3_PATH,(291, 59, 142))])
+def test_ps_params(test_srf, expected_result):
+    try:
+        srf.ps_params(test_srf)
+        print "point is single- in try block"
+    except AssertionError:
+        print "point is not single-except block "
+        return
+
+    assert srf.ps_params(test_srf) == expected_result #only check strike, dip, rake values if it is a single point source
+
+@pytest.mark.parametrize("test_srf, expected_hash",[(SRF_1_PATH,"eb871efea218fe4ca9021bcbd83b78c8"),(SRF_2_PATH,"8f53bc3be309f408473968954e2d5a0d")])
+def test_srf2llv(test_srf, expected_hash):
+    out_array = srf.srf2llv(test_srf)
+    test_hash = hashlib.md5(out_array.tostring()).hexdigest()
+    assert test_hash == expected_hash
+
+@pytest.mark.parametrize("test_srf, expected_hash",[(SRF_1_PATH,"62dde252d97840dbf16bde46ec8ab205"),(SRF_2_PATH,"68c6b211eb38df48461e175781928729")])
+def test_srf2llv_py(test_srf, expected_hash):
+    out_array = srf.srf2llv_py(test_srf)
+    test_hash = hashlib.md5(''.join(str(x) for x in out_array)).hexdigest()
+    assert test_hash == expected_hash
+
+
+
+# ------------------------------------------------------------------------------------------------------------
 # @pytest.mark.parametrize("test_srf,value,depth",[(SRF_1_PATH, None, True),(SRF_2_PATH, None, True),\
 #                                                   (SRF_1_PATH, None, False),(SRF_2_PATH, None, False)])
 # def test_get_lonlat(test_srf, value , depth):
@@ -78,7 +124,3 @@ def test_nplane1(test_srf_planes, expected_result):
 # def test_get_hypo(test_srf,lonlat, depth):
 #     print srf.get_hypo(test_srf,lonlat = lonlat, depth = depth)
 
-# def test_pf_params():
-#     with pytest.raises(AssertionError) as e:
-#         print srf.ps_params(SRF_2_PATH)
-#     # assert ("Error parsing documentation",) == e.value.args
