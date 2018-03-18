@@ -32,8 +32,7 @@ import qcore.gmt as gmt
 import qcore.srf as srf
 
 faults = '/nesi/projects/nesi00213/PlottingData/Paths/faults/FAULTS_20161219.ll'
-cpt = os.path.join(os.path.dirname(os.path.abspath(__file__)), \
-        'cpt', 'slip.cpt')
+cpt = gmt.CPTS['slip']
 
 # can specify here or pass as command line argument
 srf_file = 'default.srf'

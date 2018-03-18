@@ -39,9 +39,7 @@ for folder in [srfplot.out_dir, srfplot.gmt_temp]:
         os.makedirs(folder)
 
 # modified base colour palettes
-cpt_dir = '%s/cpt' % (script_dir)
-plot_cpt = ['%s/slip.cpt' % (cpt_dir), \
-        '%s/trise.cpt' % (cpt_dir)]
+plot_cpt = [gmt.CPTS['slip'], gmt.CPTS['trise']]
 
 labels = ['Slip (cm)', 'Rise Time (s)', 'Rake (deg)']
 

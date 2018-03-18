@@ -35,8 +35,7 @@ from geo import *
 topo = '/nesi/projects/nesi00213/PlottingData/Topo/srtm_all_filt_nz.grd'
 topo_low = '/nesi/projects/nesi00213/PlottingData/Topo/nztopo.grd'
 faults = '/nesi/projects/nesi00213/PlottingData/Paths/faults/FAULTS_20161219.ll'
-cpt = os.path.join(os.path.dirname(os.path.abspath(__file__)), \
-        'cpt', 'slip.cpt')
+cpt = CPTS['slip']
 
 # can specify here or pass as command line argument
 srf = 'default.srf'
@@ -162,7 +161,7 @@ print('Plotting SRF on map...')
 makecpt(cpt, '%s/slip.cpt' % (out_dir), 0, cpt_max, 1)
 # also make a cpt to properly stretch topo colours
 topo_cpt = '%s/topo.cpt' % (out_dir)
-makecpt('gray', topo_cpt, -10000, 3000, inc = 10)
+makecpt('gray', topo_cpt, -10000, 3000)
 gmt_defaults(wd = out_dir)
 # gap on left of maps
 gap = 1
@@ -183,9 +182,7 @@ zoom_width, zoom_height = \
         map_width('M', full_height, plot_region, wd = out_dir)
 p.spacial('M', plot_region, sizing = zoom_width, \
         x_shift = gap, y_shift = 2.5)
-p.land()
-p.topo(topo, cpt = topo_cpt)
-p.water()
+p.basemap(topo_cpt = 'grey1')
 if plot_faults:
     p.path(faults, is_file = True, close = False, width = '0.4p', colour = 'red')
 for seg in xrange(len(bounds)):
@@ -201,7 +198,6 @@ for seg in xrange(len(bounds)):
             transparency = 30, contours = contour_int)
 p.fault(srf, is_srf = True, hyp_colour = 'red')
 
-p.coastlines()
 p.sites(sites.keys())
 # work out an ideal tick increment (ticks per inch)
 # x axis is more constrainig
