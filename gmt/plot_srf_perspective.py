@@ -20,8 +20,6 @@ import qcore.geo as geo
 import qcore.gmt as gmt
 import qcore.srf as srf
 import qcore.xyts as xyts
-# TODO: debug
-import gmt
 
 MASTER = 0
 TILT_MIN = 40
@@ -36,7 +34,7 @@ OVERLAY_T = 40
 # 100 for 1600x900
 # 120 for 1920x1080, 16ix9i
 # 240 for 3840x2160
-DPI = 120
+DPI = 240
 # borders on page
 WINDOW_T = 0.8
 WINDOW_B = 0.3
@@ -69,7 +67,8 @@ def load_xyts_ts(meta, job):
     """
     # prevent gmt.conf clashes with unique working directory
     tmp = os.path.join(meta['wd'], 'xyts', '_%03d_' % (job['start']))
-    os.makedirs(tmp)
+    if not os.path.isdir(tmp):
+        os.makedirs(tmp)
 
     xfile = xyts.XYTSFile(meta['xyts_file'], meta_only = False)
     crop_grd = os.path.join(meta['wd'], 'xyts', 'mask.nc')
@@ -157,8 +156,8 @@ def load_hdf5(h5file, basename):
     mask_path = '%s/xyts/corners-hr.gmt' % (meta['wd'])
     if os.path.exists(mask_path):
         gmt.grd_mask(mask_path, '%s_mask.nc' % (basename), \
-                dx = meta['xyts_res'], dy = meta['xyts_res'], \
-                region = meta['xyts_region'])
+                dx = dx, dy = dy, \
+                region = region)
 
     return region
 
@@ -173,10 +172,13 @@ def timeslice(job, meta):
         i = job['seq']
     # working directory for current image
     swd = os.path.join(meta['wd'], '_%.4d_' % (i))
-    os.makedirs(swd)
     gmt_ps = os.path.join(swd, '%s_perspective%s.ps' \
         % (os.path.splitext(os.path.basename(meta['srf_file']))[0], \
         '_%.4d' % (i) * (job['seq'] != None)))
+    if os.path.exists('%s.png' % (os.path.splitext(gmt_ps)[0])):
+        print('Sequence %d found.' % (i))
+        return
+    os.makedirs(swd)
 
     # allow fixed rotation (north azimuth)
     if meta['rot'] != 1000.0:
@@ -582,6 +584,7 @@ if len(sys.argv) > 1:
             help = 'ghostscript downscale factor (prevents jitter)')
     parser.add_argument('-q', '--liquefaction', help = 'liquefaction hdf5 filepath')
     parser.add_argument('-s', '--landslide', help = 'landslide hdf5 filepath')
+    parser.add_argument('--temp', help = 'continue from previous temp dir')
     parser.add_argument('--paths', help = 'standard road network input')
     args = parser.parse_args()
     if args.mtime > args.time:
@@ -668,8 +671,12 @@ if len(sys.argv) > 1:
             for b in p[:2]]) for p in bounds])
 
     # working directory
-    gmt_temp = mkdtemp(prefix = '_GMT_WD_PERSPECTIVE_', \
-            dir = os.path.dirname(srf_file))
+    if args.temp != None:
+        gmt_temp = os.path.abspath(args.temp)
+        print('Resuming from: %s' % (gmt_temp))
+    else:
+        gmt_temp = mkdtemp(prefix = '_GMT_WD_PERSPECTIVE_', \
+                dir = os.path.dirname(srf_file))
 
     meta = {'wd':gmt_temp, 'srf_file':srf_file, 's_azimuth':s_azimuth, \
             'map_tilt':map_tilt, 'hlon':hlon, 'hlat':hlat, 'hdepth':hdepth, \
@@ -706,7 +713,8 @@ if len(sys.argv) > 1:
     meta['n_plane'] = len(slip_pos)
     # prepare cpt
     meta['srf_wd'] = os.path.join(gmt_temp, 'srf')
-    os.makedirs(meta['srf_wd'])
+    if not os.path.isdir(meta['srf_wd']):
+        os.makedirs(meta['srf_wd'])
     seg_slips = srf.srf2llv_py(srf_file, value = 'slip')
     all_vs = np.concatenate((seg_slips))[:, -1]
     percentile = np.percentile(all_vs, 95)
@@ -728,7 +736,8 @@ if len(sys.argv) > 1:
     final_azimuth = 180
     # xyts quick preparation
     if xyts_file != None:
-        os.makedirs(os.path.join(gmt_temp, 'xyts'))
+        if not os.path.isdir(os.path.join(gmt_temp, 'xyts')):
+            os.makedirs(os.path.join(gmt_temp, 'xyts'))
         xfile = xyts.XYTSFile(xyts_file, meta_only = True)
         xcnrs = xfile.corners(gmt_format = True)
         xregion = xfile.region(corners = xcnrs[0])
