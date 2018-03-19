@@ -1,2 +1,6 @@
 *.pyc
 build/
+*.coverage
+.cache/
+.gitignore.sw
+*.idea/
