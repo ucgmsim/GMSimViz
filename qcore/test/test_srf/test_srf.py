@@ -1,4 +1,3 @@
-
 """ Command to run this test: 'python -m pytest -v -s test_srf.py'  
 To know the code coverage : py.test --cov=test_srf.py
 To know the test coverage :python -m pytest --cov ../../srf.py test_srf.py
@@ -6,19 +5,23 @@ To know the test coverage :python -m pytest --cov ../../srf.py test_srf.py
 
 from qcore import srf, shared
 import pytest
-import hashlib
 from datetime import datetime
 import os
+import numpy as np
 import sys
 import getpass
 import shutil
 
-
-SRF_1_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample1/Hossack_HYP01-01_S1244.srf")
-SRF_2_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample2/Tuakana13_HYP01-01_S1244.srf")
-SRF_3_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample3/single_point_source.srf")# This is a fake one, just created for testing single point source
+ERROR_LIMIT = 0.001
+SRF_1_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample1/input/Hossack_HYP01-01_S1244.srf")
+SRF_2_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample2/input/Tuakana13_HYP01-01_S1244.srf")
+SRF_3_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample3/input/single_point_source.srf")# This is a fake one, just created for testing single point source
 SRF_1_CNR_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample1/output/cnrs.txt")
 SRF_2_CNR_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample2/output/cnrs.txt")
+SRF_1_OUT_ARRAY_SRF2LLV = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample1/output/out_array_srf2llv.bin")
+SRF_2_OUT_ARRAY_SRF2LLV = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample2/output/out_array_srf2llv.bin")
+SRF_1_OUT_ARRAY_SRF2LLV_PY = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample1/output/out_array_srf2llv_py.bin")
+SRF_2_OUT_ARRAY_SRF2LLV_PY = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample2/output/out_array_srf2llv_py.bin")
 SRF_1_PLANES = srf.read_header(SRF_1_PATH, True)
 SRF_2_PLANES = srf.read_header(SRF_2_PATH, True)
 HEADERS = ['centre', 'nstrike', 'ndip', 'length', 'width', 'strike', 'dip', 'dtop', 'shyp', 'dhyp']
@@ -27,6 +30,7 @@ DIR_NAME = (os.path.join("/home/",getpass.getuser(),("tmp_" + os.path.basename(_
 
 
 def setup_module(scope="module"):
+    """ create a tmp directory for storing output from test"""
     print "----------setup_module----------"
     try:
         os.mkdir(DIR_NAME)
@@ -35,7 +39,7 @@ def setup_module(scope="module"):
 
 
 def teardown_module():
-    """ delete the files if any inside the folder"""
+    """ delete the tmp directory if it is empty"""
     print "---------teardown_module------------"
     if (len(os.listdir(DIR_NAME)) == 0):
         try:
@@ -95,7 +99,7 @@ def test_read_latlondepth(test_srf,expected_latlondepth): #give you so many lat,
 ),(SRF_2_PATH, -1, False,[[(176.7922, -37.118), (176.8101, -37.0806), (176.876, -37.1089), (176.8581, -37.1464)], [(176.8107, -37.0798), (176.8433, -37.0455), (176.9092, -37.0739), (176.8765, -37.1082)]]
 )])
 def test_get_bounds(test_srf, seg, depth, expected_bounds):
-    assert srf.get_bounds(test_srf, seg = seg, depth = depth) == expected_bounds
+    assert srf.get_bounds(test_srf, seg=seg, depth=depth) == expected_bounds
 
 
 @pytest.mark.parametrize("test_srf, expected_nseg",[(SRF_1_PATH, 1),(SRF_2_PATH,2)])
@@ -123,19 +127,41 @@ def test_ps_params(test_srf, expected_result):
         return
     assert srf.ps_params(test_srf) == expected_result #only check strike, dip, rake values if it is a single point source
 
-#
-# @pytest.mark.parametrize("test_srf, expected_hash",[(SRF_1_PATH,"eb871efea218fe4ca9021bcbd83b78c8"),(SRF_2_PATH,"8f53bc3be309f408473968954e2d5a0d")])
-# def test_srf2llv(test_srf, expected_hash):
-#     out_array = srf.srf2llv(test_srf)
-#     test_hash = hashlib.md5(out_array.tostring()).hexdigest()
-#     assert test_hash == expected_hash
-#
-#
-# @pytest.mark.parametrize("test_srf, expected_hash",[(SRF_1_PATH,"62dde252d97840dbf16bde46ec8ab205"),(SRF_2_PATH,"68c6b211eb38df48461e175781928729")])
-# def test_srf2llv_py(test_srf, expected_hash):
-#     out_array = srf.srf2llv_py(test_srf)
-#     test_hash = hashlib.md5(''.join(str(x) for x in out_array)).hexdigest()
-#     assert test_hash == expected_hash
 
+@pytest.mark.parametrize("test_srf, sample_out_array",[(SRF_1_PATH,SRF_1_OUT_ARRAY_SRF2LLV),(SRF_2_PATH,SRF_2_OUT_ARRAY_SRF2LLV)])
+def test_srf2llv(test_srf, sample_out_array):
+    sample_array = np.fromfile(sample_out_array, dtype='3<f4')
+    out_array = srf.srf2llv(test_srf)
+    compare_np_array(sample_array,out_array,ERROR_LIMIT)
+
+
+@pytest.mark.parametrize("test_srf, sample_out_array",[(SRF_1_PATH,SRF_1_OUT_ARRAY_SRF2LLV_PY),(SRF_2_PATH,SRF_2_OUT_ARRAY_SRF2LLV_PY)],)
+def test_srf2llv_py(test_srf, sample_out_array):
+    sample_array = np.fromfile(sample_out_array, dtype = '3<f4')
+    out_array_list = srf.srf2llv_py(test_srf)
+    print("Adsfafsaf",out_array_list)
+    out_array = out_array_list[0]
+    # out_array[0] += 1 # Use this, if you want to test for a fail case, by changing a value in the out_array
+    for array in out_array_list[1:]:
+        out_array = np.concatenate([out_array, array])
+    print("first out array", out_array)
+    compare_np_array(sample_array,out_array,ERROR_LIMIT)
+
+
+def compare_np_array(array1, array2, error_limit):
+    """array1: a numpy array from sample output, will be used as the denominator,
+       array2: a numpy array from test output, makes part of the numerator.
+       error_limit: preset error_limit to be compared with the relative error (array1-array2)/array1
+    """
+    # print("array1",array1.shape)
+    # print("array2",array2.shape)
+    # print("diff",array1 - array2)
+
+    assert array1.shape == array2.shape
+    relative_error = np.divide((array1 - array2), array1)
+    print "relative_error: *********** ",relative_error
+    max_relative_error = np.nanmax(np.abs(relative_error))
+    print "max_relative_error: *********** ",max_relative_error
+    assert max_relative_error <= error_limit
 
 
