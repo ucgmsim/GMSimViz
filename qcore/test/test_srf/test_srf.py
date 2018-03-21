@@ -11,6 +11,7 @@ import numpy as np
 import sys
 import getpass
 import shutil
+import errno
 
 ERROR_LIMIT = 0.001
 SRF_1_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample1/input/Hossack_HYP01-01_S1244.srf")
@@ -34,8 +35,9 @@ def setup_module(scope="module"):
     print "----------setup_module----------"
     try:
         os.mkdir(DIR_NAME)
-    except Exception as (e):
-        sys.exit(e)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
 
 
 def teardown_module():
@@ -44,7 +46,7 @@ def teardown_module():
     if (len(os.listdir(DIR_NAME)) == 0):
         try:
             shutil.rmtree(DIR_NAME)
-        except Exception as (e):
+        except (IOError, OSError) as (e):
             sys.exit(e)
 
 
@@ -80,8 +82,8 @@ def test_srf2corners(test_srf,filename,sample_cnr_file_path):
     assert out == "" and err == ""
     try:
         os.remove(abs_filename)
-    except Exception as (e):
-        sys.exit(e)
+    except (IOError, OSError):
+        raise
 
 
 @pytest.mark.parametrize("test_srf,expected_latlondepth",[(SRF_1_PATH, {'lat': -38.3354, 'depth': 0.0431, 'lon': 176.2414}),\

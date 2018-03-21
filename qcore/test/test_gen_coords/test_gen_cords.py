@@ -16,7 +16,7 @@ import os
 import shutil
 import getpass
 from datetime import datetime
-import sys
+import errno
 
 PATH_TO_SAMPLE_DIR = os.path.join(os.getcwd(),"sample1")
 PATH_TO_SAMPLE_OUTDIR = os.path.join(PATH_TO_SAMPLE_DIR, "output")
@@ -36,8 +36,9 @@ def setup_module(scope="module"):
     print "---------setup_module------------"
     try:
         os.mkdir(DIR_NAME)
-    except Exception as (e):
-        sys.exit(e)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
     sample_path = os.path.join(PATH_TO_SAMPLE_INPUT_DIR, INPUT_FILENAME)
     os.symlink(sample_path,SYMLINK_PATH)
 
