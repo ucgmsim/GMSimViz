@@ -2,5 +2,6 @@
 build/
 *.coverage
 .cache/
-.gitignore.sw
 *.idea/
+dist/
+qcore.egg-info
