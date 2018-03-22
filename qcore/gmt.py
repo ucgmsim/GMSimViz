@@ -19,17 +19,16 @@ from time import time
 
 import numpy as np
 
-import load_config as ldcfg
-qcore_cfg=ldcfg.load(os.path.join(os.path.dirname(os.path.realpath(__file__)),"qcore_config.json"))
+from qcore.config import qconfig
 
 # only needed if plotting fault planes direct from SRF
 try:
-    import srf
+    from qcore import srf
 except ImportError:
     print('srf.py not found. will not be able to plot faults from SRF.')
 # only needed for some functions
 try:
-    import geo
+    import qcore.geo as geo
 except ImportError:
     print('geo.py not found. some functions will not work.')
 
@@ -50,7 +49,7 @@ STATUS_INVALID = 1
 # GMT 5.2+ argument mapping
 GMT52_POS = {'map':'g', 'plot':'x', 'norm':'n', 'rel':'j', 'rel_out':'J'}
 
-GMT_DATA = qcore_cfg['GMT_DATA'] #GMT_DATA = '/home/nesi00213/PlottingData'
+GMT_DATA = qconfig['GMT_DATA']
 # LINZ DATA
 LINZ_COAST = {
         '150k':os.path.join(GMT_DATA, 'Paths/lds-nz-coastlines-and-islands/150k.gmt')
@@ -70,8 +69,7 @@ TOPO_HIGH = os.path.join(GMT_DATA, 'Topo/srtm_all_filt_nz.grd')
 TOPO_LOW = os.path.join(GMT_DATA, 'Topo/nztopo.grd')
 CHCH_WATER = os.path.join(GMT_DATA, 'Paths/water_network/water.gmt')
 # CPT DATA
-CPT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), \
-        os.pardir, 'plot', 'cpt')
+CPT_DIR = os.path.join(GMT_DATA, 'cpt')
 CPTS = {
     'nztopo-green-brown':os.path.join(CPT_DIR, 'palm_springs_nz_topo.cpt'),
     'nztopo-grey1':os.path.join(CPT_DIR, 'nz_topo_grey1.cpt'),
@@ -116,17 +114,14 @@ def update_gmt_path(gmt_bin, wd = None):
     gmtp.wait()
     GMT_MAJOR, GMT_MINOR = map(int, GMT_VERSION.split('.')[:2])
 
+    psconvert = 'psconvert'
     if GMT_MAJOR < 5:
         print('GMT v%s is too old. Expect nothing to work.' \
                 % (GMT_VERSION))
         psconvert = 'ps2raster'
-    elif GMT_MAJOR > 5:
-        psconvert = 'psconvert'
     # ps2raster becomes psconvert in GMT 5.2
-    elif GMT_MINOR < 2:
+    elif GMT_MAJOR == 5 and GMT_MINOR < 2:
         psconvert = 'ps2raster'
-    else:
-        psconvert = 'psconvert'
 
     if wd != None:
         if os.path.exists(os.path.join(wd, GMT_HISTORY)):
@@ -1039,6 +1034,8 @@ def grdmath(expression, wd = '.'):
     e = p.communicate()[1]
     p.wait()
 
+    # rc 70: syntax
+    # rc 77: grid files not of same size
     if len(e) == 0:
         return STATUS_SUCCESS
     elif 'No valid values in grid' in e:
