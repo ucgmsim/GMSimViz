@@ -27,7 +27,7 @@ SYMLINK_PATH = os.path.join(os.getcwd(), INPUT_FILENAME)
 DIR_NAME = (os.path.join("/home/",getpass.getuser(),("tmp_" + os.path.basename(__file__)[:-3] + '_' + ''.join(str(datetime.now()).split())).replace('.', '_')).replace(
             ':', '_'))
 # print "PATH_TO_NEW_OUTDIR: ", DIR_NAME
-PATH_FOR_PRG_TOBE_TESTED = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.getcwd())), "gen_cords.py"))
+PATH_FOR_PRG_TOBE_TESTED = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.getcwd())), "gen_coords.py"))
 # print "PATH_FOR_PRG_TOBE_TESTED: ",PATH_FOR_PRG_TOBE_TESTED
 
 
