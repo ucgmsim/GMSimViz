@@ -7,14 +7,19 @@ Shared functions to work on time-series.
 
 from math import ceil, log, pi
 
+try:
+    from scipy.signal import butter
+except ImportError:
+    print('SciPy not installed. Certain functions will fail.')
 # sosfilt new in scipy 0.16
 # sosfiltfilt new in scipy 0.18
 try:
-    from scipy.signal import butter
-    # this is a local import
-    from sosfiltfilt import sosfiltfilt
+    butter
+    from scipy.signal import sosfiltfilt
+except NameError:
+    pass
 except ImportError:
-    print('SciPy not installed. Certain functions will fail.')
+    from qcore.sosfiltfilt import sosfiltfilt
 import numpy as np
 rfft = np.fft.rfft
 irfft = np.fft.irfft
@@ -105,6 +110,7 @@ def transf(vs_soil, rho_soil, damp_soil, height_soil, \
     H = 2.0 / ((1.0 + alpha) * np.exp(1j * jS * hS) + (1.0 - alpha) \
             * np.exp(-1j * kS * hS))
     H[0] = 1
+    return H
 
 def read_ascii(filepath, meta = False, t0 = False):
     """
@@ -155,7 +161,7 @@ def acc2vel(timeseries, dt):
 
 def pgv2MMI(pgv):
     """
-    Calculates MMI from pgv based  on Worden et al (2012)
+    Calculates MMI from pgv based on Worden et al (2012)
     """
     return np.where(np.log10(pgv) < 0.53,
                     3.78 + 1.47 * np.log10(pgv),
