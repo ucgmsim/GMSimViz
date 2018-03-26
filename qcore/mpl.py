@@ -11,10 +11,7 @@ A collection of common functions used in the plotting scripts.
 """
 
 from collections import OrderedDict
-import errno
 import os
-import shutil
-import sys
 
 import matplotlib.pyplot as plt
 
