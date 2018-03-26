@@ -12,8 +12,9 @@ import sys
 import getpass
 import shutil
 import errno
+from qcore.test.tool import utils
 
-ERROR_LIMIT = 0.001
+
 SRF_1_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample1/input/Hossack_HYP01-01_S1244.srf")
 SRF_2_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample2/input/Tuakana13_HYP01-01_S1244.srf")
 SRF_3_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "sample3/input/single_point_source.srf")# This is a fake one, just created for testing single point source
@@ -80,10 +81,7 @@ def test_srf2corners(test_srf,filename,sample_cnr_file_path):
     srf.srf2corners(test_srf,cnrs=abs_filename)
     out, err = shared.exe("diff -qr " + sample_cnr_file_path + " " + abs_filename)
     assert out == "" and err == ""
-    try:
-        os.remove(abs_filename)
-    except (IOError, OSError):
-        raise
+    utils.remove_file(abs_filename)
 
 
 @pytest.mark.parametrize("test_srf,expected_latlondepth",[(SRF_1_PATH, {'lat': -38.3354, 'depth': 0.0431, 'lon': 176.2414}),\
@@ -134,7 +132,7 @@ def test_ps_params(test_srf, expected_result):
 def test_srf2llv(test_srf, sample_out_array):
     sample_array = np.fromfile(sample_out_array, dtype='3<f4')
     out_array = srf.srf2llv(test_srf)
-    compare_np_array(sample_array,out_array,ERROR_LIMIT)
+    utils.compare_np_array(sample_array,out_array)
 
 
 @pytest.mark.parametrize("test_srf, sample_out_array",[(SRF_1_PATH,SRF_1_OUT_ARRAY_SRF2LLV_PY),(SRF_2_PATH,SRF_2_OUT_ARRAY_SRF2LLV_PY)],)
@@ -147,23 +145,9 @@ def test_srf2llv_py(test_srf, sample_out_array):
     for array in out_array_list[1:]:
         out_array = np.concatenate([out_array, array])
     print("first out array", out_array)
-    compare_np_array(sample_array,out_array,ERROR_LIMIT)
+    utils.compare_np_array(sample_array,out_array)
 
 
-def compare_np_array(array1, array2, error_limit):
-    """array1: a numpy array from sample output, will be used as the denominator,
-       array2: a numpy array from test output, makes part of the numerator.
-       error_limit: preset error_limit to be compared with the relative error (array1-array2)/array1
-    """
-    # print("array1",array1.shape)
-    # print("array2",array2.shape)
-    # print("diff",array1 - array2)
 
-    assert array1.shape == array2.shape
-    relative_error = np.divide((array1 - array2), array1)
-    print "relative_error: *********** ",relative_error
-    max_relative_error = np.nanmax(np.abs(relative_error))
-    print "max_relative_error: *********** ",max_relative_error
-    assert max_relative_error <= error_limit
 
 
