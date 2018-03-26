@@ -9,7 +9,7 @@ import os
 import matplotlib.pyplot as plt
 
 def save_figure(fig, out_dir, basename, png = True, eps = False, \
-        close = False, return_fig = False):
+                close = False, return_fig = False):
     """
     "Shortcut" to run fig.savefig, optionally returns fig.gca().
     fig: matplotlib figure object
@@ -39,12 +39,15 @@ def save_figure(fig, out_dir, basename, png = True, eps = False, \
         plt.close(fig)
 
     # XXX: VERY VERY BAD, LEGACY, DEPRECATED.
-    if return_fig:
+    if return_fig and not close:
         return fig, fig.gca()
 
 def show_legend(centre=False, extra_labels={}):
     """
-    TODO: description
+    Collapses the legend to remove mulitple entries of the same name
+    
+    extra_labels: (dict) Optionally adds extra labels to the legend
+    centre: optional arguement to place the legend in the top-centre of the plot
     """
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = OrderedDict(zip(labels, handles))
@@ -77,6 +80,7 @@ def convert_strings_to_floats(string_list):
 
 def is_virtual_station(station_name):
     """
+    station_name: (string)
     Checks if all restraints on virtual station names are met.
     """
     # 7 characters long
