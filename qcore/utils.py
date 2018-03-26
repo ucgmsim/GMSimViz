@@ -10,6 +10,8 @@ def setup_dir(directory, empty = False):
     Make sure a directory exists, optionally make sure it is empty.
     directory: path to directory
     empty: make sure directory is empty
+    
+    TODO: recursively make directories
     """
     if os.path.exists(directory) and empty:
             rmtree(directory)
