@@ -66,23 +66,28 @@ def test_pgv(mmi, pgvout, mmiout, sample_pgv, sample_mmi):
         mmiout = os.path.join(TMP_DIR_NAME,mmiout)
         files_to_del.append(mmiout)
 
-    result = OBJ_XYTS.pgv(mmi=mmi, pgvout=pgvout, mmiout=mmiout)
+    xyts_test_output_array = OBJ_XYTS.pgv(mmi=mmi, pgvout=pgvout, mmiout=mmiout)
 
     if pgvout:
-        utils.compare_binary_files(pgvout, sample_pgv)
+        sample_pgv_array = np.fromfile(sample_pgv, dtype='3<f4')
+        test_pgvout_array = np.fromfile(pgvout, dtype='3<f4')
+        utils.compare_np_array(sample_pgv_array,test_pgvout_array)
         if mmiout:
-            utils.compare_binary_files(mmiout, sample_mmi)
+            sample_mmi_array = np.fromfile(sample_mmi, dtype='3<f4')
+            test_mmiout_array = np.fromfile(mmiout, dtype='3<f4')
+            utils.compare_np_array(sample_mmi_array, test_mmiout_array)
 
     else:
-        if len(result) == 2:
-            pgv,mmi = result
+        if not mmi:
+            sample_pgv_array = np.fromfile(sample_pgv, dtype='3<f4')
+            utils.compare_np_array(sample_pgv_array, xyts_test_output_array)
+        elif mmiout == None:
+            pgv,mmi = xyts_test_output_array
             sample_pgv_array = np.fromfile(sample_pgv, dtype='3<f4')
             utils.compare_np_array(sample_pgv_array, pgv)
             sample_mmi_array = np.fromfile(sample_mmi, dtype='3<f4')
             utils.compare_np_array(sample_mmi_array, mmi)
-        else:
-            sample_pgv_array = np.fromfile(sample_pgv, dtype='3<f4')
-            utils.compare_np_array(sample_pgv_array, result)
+
 
     for f in files_to_del:
         utils.remove_file(f)
