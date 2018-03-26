@@ -69,33 +69,6 @@ class CommonPlot:
             plt.legend(by_label.values(), by_label.keys(), loc='best', fontsize=9)
 
     @staticmethod
-    def create_dir(directory, remove=False):
-        """Function to create the Figures dir if it doesn't exist
-           directory: abs path to directory to be created
-           remove: to delete the directory or not if it already exits.
-                   default: False==not_delete
-           Inputs:
-                parms - the parameters
-           Outputs:
-                None
-        """
-        if remove:
-            try:
-                shutil.rmtree(directory)
-                print("Removing directory {}".format(directory))
-            except OSError as e:
-                sys.exit(e)
-        try:
-            os.makedirs(directory)
-            print 'Creating dir %s ' % (directory)
-        except OSError as exc:
-            if exc.errno != errno.EEXIST:
-                raise
-
-            print 'Not Creating dir %s. Already exists' %(directory)
-            pass
-
-    @staticmethod
     def extract_number(input):
         result = input.split(',')
         if len(result) <= 1:
