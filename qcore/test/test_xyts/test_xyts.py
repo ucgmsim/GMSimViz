@@ -76,7 +76,6 @@ def test_pgv(mmi, pgvout, mmiout, sample_pgv, sample_mmi):
             sample_mmi_array = np.fromfile(sample_mmi, dtype='3<f4')
             test_mmiout_array = np.fromfile(mmiout, dtype='3<f4')
             utils.compare_np_array(sample_mmi_array, test_mmiout_array)
-
     else:
         if not mmi:
             sample_pgv_array = np.fromfile(sample_pgv, dtype='3<f4')
@@ -88,25 +87,25 @@ def test_pgv(mmi, pgvout, mmiout, sample_pgv, sample_mmi):
             sample_mmi_array = np.fromfile(sample_mmi, dtype='3<f4')
             utils.compare_np_array(sample_mmi_array, mmi)
 
-
     for f in files_to_del:
         utils.remove_file(f)
 
 
 @pytest.mark.parametrize("step, comp, test_outfile, sample_outfile",[(10, -1, None, "out_tslice-1"),\
-                        (10, -1,"test_tslice-1", "out_tslice-1"),(10, 0, "test_tslice0", "out_tslice2"), \
-                        (10, 1, "test_tslice1", "out_tslice1"),(10, 2, "test_tslice2", "out_tslice0")])
+                        (10, -1,"test_tslice-1", "out_tslice-1"),(10, 0, "test_tslice0", "out_tslice0"), \
+                        (10, 1, "test_tslice1", "out_tslice1"),(10, 2, "test_tslice2", "out_tslice2")])
 def test_tslice_get(step, comp, test_outfile, sample_outfile):
     files_to_del = []
     if test_outfile:
         test_outfile = os.path.join(TMP_DIR_NAME, test_outfile)
         sample_outfile = os.path.join(SAMPLE_OUT_DIR_PATH, sample_outfile)
-        result = OBJ_XYTS.tslice_get(step, comp, test_outfile)
-        if result:
-            sample_array = np.fromfile(sample_outfile, dtype='3<f4')
-            utils.compare_np_array(sample_array, result)
+        test_tslice_output_array = OBJ_XYTS.tslice_get(step, comp, test_outfile)
+        sample_array = np.fromfile(sample_outfile, dtype='3<f4')
+        if test_tslice_output_array:
+            utils.compare_np_array(sample_array, test_tslice_output_array)
         else:
-            utils.compare_binary_files(sample_outfile, test_outfile)
+            test_outfile_array = np.fromfile(test_outfile, dtype='3<f4')
+            utils.compare_np_array(sample_array, test_outfile_array)
             files_to_del.append(test_outfile)
     for f in files_to_del:
         utils.remove_file(f)
