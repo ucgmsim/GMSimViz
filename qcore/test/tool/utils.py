@@ -42,4 +42,4 @@ def remove_file(abs_path):
     try:
         os.remove(abs_path)
     except (IOError, OSError):
-        raise AssertionError
+        raise
