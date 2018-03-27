@@ -93,7 +93,7 @@ def is_virtual_station(station_name):
 
     # valid hex string
     try:
-        if not isinstance(s, int):
+        if not isinstance(station_name, int):
             int(station_name, 16)
     except (ValueError, TypeError):
         return False
