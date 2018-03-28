@@ -92,7 +92,7 @@ def load_xyts_ts(meta, job):
     # clean up
     rmtree(tmp)
 
-def load_hdf5(h5file, basename):
+def load_hdf5(h5file, basename, landmask = True):
     """
     Specific to liquefaction and landslide HDF5 files.
     """
@@ -129,14 +129,6 @@ def load_hdf5(h5file, basename):
     gmt.table2grd('%s.bin' % (basename), '%s.nc' % (basename), \
             region = region, dx = dx, dy = dy, \
             climit = np.nanpercentile(data[:, :, 2], 10))
-    # create corners, mask
-    corners = [data[0, 0, :2], data[xlen - 1, 0, :2], \
-            data[xlen - 1, ylen - 1, :2], data[0, ylen - 1, :2], data[0, 0, :2]]
-    with open('%s.cnrs' % (basename), 'w') as c:
-        c.write('> corners of data\n')
-        c.write('\n'.join([' '.join(map(str, cnr)) for cnr in corners]))
-    gmt.grd_mask('%s.cnrs' % (basename), '%s.mask' % (basename), \
-            region = region, dx = dx, dy = dy)
 
     # cpt - liquefaction up to 0.6, landslide up to 0.4
     # assuming fixed file names
@@ -148,12 +140,19 @@ def load_hdf5(h5file, basename):
         raise ValueError('Not implemented.')
     gmt.makecpt('hot', '%s.cpt' % (basename), 0, cpt_max, invert = True)
 
-    # matching mask
-    mask_path = '%s/xyts/corners-hr.gmt' % (meta['wd'])
-    if os.path.exists(mask_path):
-        gmt.grd_mask(mask_path, '%s_mask.nc' % (basename), \
-                dx = dx, dy = dy, \
-                region = region)
+    # mask - xyts ground motion
+    mask_path_gm = '%s/xyts/corners-hr.gmt' % (meta['wd'])
+    if os.path.exists(mask_path_gm):
+        gmt.grd_mask(mask_path_gm, '%s_mask_xyts.nc' % (basename), \
+                dx = dx, dy = dy, region = region)
+        grdmath(['%s.nc' % (basename), '%s_mask_xyts.nc' % (basename), \
+                 'MUL', '=', '%s.nc' % (basename)])
+    # mask - land area
+    if landmask:
+        gmt.grd_mask(gmt.LINZ_COAST['150k'], '%s_mask_coast.nc' % (basename), \
+                dx = dx, dy = dy, region = region)
+        grdmath(['%s.nc' % (basename), '%s_mask_coast.nc' % (basename), \
+                 'MUL', '=', '%s.nc' % (basename)])
 
     return region
 
@@ -300,13 +299,10 @@ def timeslice(job, meta):
     elif job['sim_time'] == -2:
         plot = 'surface'
         scale_p_final = 1.0
-        crop_grd = '%s/overlay/%s_mask.nc' % (meta['wd'], job['overlay'])
-        if not os.path.exists(crop_grd):
-            crop_grd = None
         p.overlay('%s/overlay/%s.nc' % (meta['wd'], job['overlay']), \
                 '%s/overlay/%s.cpt' % (meta['wd'], job['overlay']), \
                 transparency = job['transparency'], \
-                crop_grd = crop_grd, custom_region = job['region'])
+                custom_region = job['region'])
     # load srf plane data
     elif job['sim_time'] == - 1:
         plot = 'slip'
