@@ -31,10 +31,6 @@ SCALE_WIDTH = PAGE_WIDTH / 1.618
 SCALE_SIZE = 0.25
 SCALE_PAD = 0.1
 OVERLAY_T = 40
-# 100 for 1600x900
-# 120 for 1920x1080, 16ix9i
-# 240 for 3840x2160
-DPI = 240
 # borders on page
 WINDOW_T = 0.8
 WINDOW_B = 0.3
@@ -175,9 +171,12 @@ def timeslice(job, meta):
     gmt_ps = os.path.join(swd, '%s_perspective%s.ps' \
         % (os.path.splitext(os.path.basename(meta['srf_file']))[0], \
         '_%.4d' % (i) * (job['seq'] != None)))
-    if os.path.exists('%s.png' % (os.path.splitext(gmt_ps)[0])):
+    if os.path.exists('%s/%s.png' % (meta['wd'], \
+            os.path.splitext(os.path.basename(gmt_ps))[0])):
         print('Sequence %d found.' % (i))
         return
+    if os.path.isdir(swd):
+        rmtree(swd)
     os.makedirs(swd)
 
     # allow fixed rotation (north azimuth)
@@ -208,7 +207,8 @@ def timeslice(job, meta):
     km_region = gmt.fill_space_oblique(lon1, lat1, PAGE_WIDTH, \
             PAGE_HEIGHT / math.sin(math.radians( \
             max(job['tilt'], meta['map_tilt']))), km_region, 'k', projection, \
-            DPI / math.sin(math.radians(max(job['tilt'], meta['map_tilt']))), \
+            meta['dpi'] \
+            / math.sin(math.radians(max(job['tilt'], meta['map_tilt']))), \
             swd)
     corners, llur = gmt.map_corners(projection = projection, \
             region = km_region, region_units = 'k', return_region = 'llur', \
@@ -262,12 +262,13 @@ def timeslice(job, meta):
         p.spacial('X', (0, 1, -1, 1), \
                 sizing = '%s/%s' % (PAGE_WIDTH, PAGE_HEIGHT))
         p.path('0 0\n1 0\n1 1\n0 1', is_file = False, close = True, \
-                width = None, fill = 'p50+bskyblue+fwhite+r%s' % (DPI))
+                width = None, fill = 'p50+bskyblue+fwhite+r%s' % (meta['dpi']))
         p.path('0 0\n1 0\n1 -1\n0 -1', is_file = False, close = True, \
-                width = None, fill = 'p30+bdarkbrown+fbrown+r%s' % (DPI))
+                width = None, \
+                fill = 'p30+bdarkbrown+fbrown+r%s' % (meta['dpi']))
 
     proj(True)
-    p.basemap()
+    p.basemap(topo = None, road = None, highway = None)
 
     # simulation domain
     if os.path.isfile('%s/xyts/corners.gmt' % (meta['wd'])):
@@ -313,7 +314,7 @@ def timeslice(job, meta):
         if job['transparency'] < 100:
             srf_data = gmt.srf2map(meta['srf_file'], swd, prefix = 'plane', \
                     value = 'slip', cpt_percentile = 95, wd = swd, \
-                    xy = True, dpu = DPI, \
+                    xy = True, dpu = meta['dpi'], \
                     pz = z_scale * math.cos(math.radians(job['tilt'])))
     elif job['sim_time'] >= 0:
         plot = 'timeseries'
@@ -352,8 +353,8 @@ def timeslice(job, meta):
             # XY mask grid
             rc = gmt.grd_mask('%s/plane_%d_bounds.xy' % (swd, i), \
                     '%s/plane_%d_mask_xy.grd' % (swd, i), \
-                    geo = False, dx = 1.0 / DPI, dy = 1.0 / DPI, \
-                    region = regions_sr[i], wd = swd)
+                    geo = False, dx = 1.0 / meta['dpi'], \
+                    dy = 1.0 / meta['dpi'], region = regions_sr[i], wd = swd)
             if rc == gmt.STATUS_INVALID:
                 # bounds are likely of area = 0, do not procede
                 # caller should check if file below produced
@@ -369,7 +370,8 @@ def timeslice(job, meta):
             rc = gmt.table2grd('%s/slip_%d.bin' % (swd, i), \
                     '%s/slip_%d.grd' % (swd, i), \
                     file_input = True, grd_type = 'nearneighbor', \
-                    region = regions_sr[i], dx = 1.0 / DPI, dy = 1.0 / DPI, \
+                    region = regions_sr[i], \
+                    dx = 1.0 / meta['dpi'], dy = 1.0 / meta['dpi'], \
                     wd = swd, geo = False, search = search, min_sectors = 2)
             if rc == gmt.STATUS_INVALID \
                     and os.path.exists('%s/slip_%d.grd' % (swd, i)):
@@ -407,7 +409,7 @@ def timeslice(job, meta):
     gm_file = os.path.join(meta['wd'], 'xyts', 'ts%04d.nc' % (xpos))
     if os.path.isfile(gm_file):
         p.overlay3d(gm_file, cpt = '%s/xyts/gm.cpt' % (meta['wd']), \
-                transparency = job['transparency'], dpi = DPI, \
+                transparency = job['transparency'], dpi = meta['dpi'], \
                 z = '-Jz%s' \
                 % ((meta['gm_z_km'] * -z_scale) / meta['xyts_cpt_max']), \
                 mesh = True, mesh_pen = '0.1p')
@@ -492,13 +494,13 @@ def timeslice(job, meta):
 
     # title
     p.text(PAGE_WIDTH / 2.0, PAGE_HEIGHT, \
-            os.path.basename(meta['srf_file']), align = 'RM', size = 26, \
+            meta['title'], align = 'RM', size = 26, \
             dy = WINDOW_T / -2.0, dx = - 0.2)
     # sim time
     if job['sim_time'] >= 0 and job['transparency'] < 100:
         p.text(PAGE_WIDTH - WINDOW_R, PAGE_HEIGHT - WINDOW_T, \
                 '%.3fs' % (job['sim_time']), size = '24p', \
-                align = "BR", font = 'Courier', dx = -0.2, dy = 0.1, \
+                align = "BR", font = 'Courier', dx = -0.2 - 2.2, dy = 0.1, \
                 colour = 'black@%s' % (job['transparency']))
 
     if plot == 'slip' and job['transparency'] < 100:
@@ -518,6 +520,11 @@ def timeslice(job, meta):
         # label max
         p.text(max_x, cpt_y, '%.1f' % (srf_data[2]['max']), size = '16p', \
                 align = 'LM', dx = SCALE_PAD)
+
+    # add QuakeCoRE logo
+    p.image('R', 'T', os.path.join(os.path.dirname(__file__), \
+            'quakecore-logo.png'), width = '2.5i', pos = 'rel', \
+            dy = 0.1)
 
     ###
     ### projection of the inner area to draw map ticks, legend
@@ -548,20 +555,23 @@ def timeslice(job, meta):
 
     # finish, clean up
     p.finalise()
-    p.png(dpi = DPI * meta['downscale'], clip = False, out_dir = meta['wd'], \
-            downscale = meta['downscale'])
+    p.png(dpi = meta['dpi'] * meta['downscale'], clip = False, \
+            out_dir = meta['wd'], downscale = meta['downscale'])
     # temporary storage can get very large
     rmtree(swd)
 
-###
-### MASTER
-###
-if len(sys.argv) > 1:
+def get_args():
     from argparse import ArgumentParser
 
+    ###
+    ### load
+    ###
     parser = ArgumentParser()
     parser.add_argument('srf_file', help = 'srf file to plot')
+    parser.add_argument('--title', help = 'main title on animation')
     parser.add_argument('-x', '--xyts', help = 'xyts file to plot')
+    parser.add_argument('--gm-cut', help = 'cutoff for ground motion', \
+            type = float)
     parser.add_argument('-a', '--animate', help = 'create animation', \
             action = 'store_true')
     parser.add_argument('-n', '--nproc', help = 'number of processes to run', \
@@ -585,54 +595,62 @@ if len(sys.argv) > 1:
     parser.add_argument('-q', '--liquefaction', help = 'liquefaction hdf5 filepath')
     parser.add_argument('-s', '--landslide', help = 'landslide hdf5 filepath')
     parser.add_argument('--temp', help = 'continue from previous temp dir')
+    parser.add_argument('-k', '--keep-temp', help = 'don\'t delete temp dir', \
+            action = 'store_true')
     parser.add_argument('--paths', help = 'standard road network input')
+    parser.add_argument('--dpi', help = '[240]:4K 120:HD (frames are 16ix9i)', \
+            type = int, default = 240)
     args = parser.parse_args()
+
+    ###
+    ### validate
+    ###
+    # default title is based on the required argument
+    if args.title == None:
+        args.title = os.path.basename(args.srf_file)
+    # minor transitions must complete within major transition time
     if args.mtime > args.time:
-        print('Failed constraints (mtime <= time).')
-        sys.exit(1)
+        sys.exit('Failed constraints (mtime <= time).')
+    # minimum framerate currently enforced for safety
     if args.framerate < 5:
-        print('Framerate too low: %s' % (args.framerate))
-        sys.exit(1)
-    nproc = args.nproc
-    # srf check
-    srf_file = os.path.abspath(args.srf_file)
+        sys.exit('Framerate too low: %s' % (args.framerate))
+    # srf file must exist
     try:
-        assert(os.path.isfile(srf_file))
+        args.srf_file = os.path.abspath(args.srf_file)
+        assert(os.path.isfile(args.srf_file))
     except AssertionError:
-        print('Could not find SRF: %s' % (srf_file))
-        sys.exit(2)
-    # xyts optional
+        sys.exit('Could not find SRF: %s' % (args.srf_file))
+    # xyts is optional
     if args.xyts != None:
-        xyts_file = os.path.abspath(args.xyts)
-        if not os.path.isfile(xyts_file):
-            print('Could not find XYTS: %s' % (xyts_file))
-            sys.exit(2)
-    else:
-        xyts_file = None
+        try:
+            args.xyts = os.path.abspath(args.xyts)
+            assert(os.path.isfile(args.xyts))
+        except AssertionError:
+            sys.exit('Could not find XYTS: %s' % (args.xyts))
     # liquefaction / landslide also optional
-    if args.liquefaction != None:
-        if not os.path.exists(args.liquefaction):
-            print('Could not find liquefaction file: %s' % (args.liquefaction))
-            sys.exit(2)
-    if args.landslide != None:
-        if not os.path.exists(args.landslide):
-            print('Could not find landslide file: %s' % (args.landslide))
-            sys.exit(2)
+    if args.liquefaction != None and not os.path.exists(args.liquefaction):
+            sys.exit('Could not find liquefaction file: %s' \
+                    % (args.liquefaction))
+    if args.landslide != None and not os.path.exists(args.landslide):
+            sys.exit('Could not find landslide file: %s' \
+                    % (args.landslide))
     # paths optional
     if args.paths != None:
         if not os.path.isdir(args.paths):
-            print('Could not find path directory: %s' % (args.paths))
-            sys.exit(2)
+            sys.exit('Could not find path directory: %s' % (args.paths))
         path_sort = lambda n : int(os.path.basename(n).split('_')[0])
-        path_files = sorted(glob('%s/*.gmt' % (args.paths)), key = path_sort)
-        legend_files = sorted(glob('%s/*.legend' % (args.paths)), key = path_sort)
-        if len(path_files) != len(legend_files) and len(legend_files) != 0:
-            print('Inconsintent number of path files and legend files.')
-            sys.exit(2)
-        for i in xrange(len(path_files) * len(legend_files) != 0):
-            if '%s.legend' % (path_files[i][:-4]) not in legend_files:
-                print('Filenames are not matching between ".gmt" and ".legend".')
-                sys.exit(2)
+        args.path_files = sorted(glob('%s/*.gmt' % (args.paths)), key = path_sort)
+
+    return args
+
+###
+### MASTER
+###
+if len(sys.argv) > 1:
+    # process arguements
+    args = get_args()
+    nproc = args.nproc
+    xyts_file = args.xyts
 
     # list of work for slaves to do
     msg_list = []
@@ -645,10 +663,9 @@ if len(sys.argv) > 1:
 
     # load plane data
     try:
-        planes = srf.read_header(srf_file, idx = True)
+        planes = srf.read_header(args.srf_file, idx = True)
     except (ValueError, IndexError):
-        print('Failed to read SRF: %s' % (srf_file))
-        sys.exit(1)
+        sys.exit('Failed to read SRF: %s' % (args.srf_file))
     # information from plane data
     avg_strike = geo.avg_wbearing([(p['strike'], p['length']) for p in planes])
     avg_dip = planes[0]['dip']
@@ -656,12 +673,12 @@ if len(sys.argv) > 1:
     map_tilt = max(90 - avg_dip, TILT_MAX)
     map_tilt = min(map_tilt, TILT_MIN)
     # plane domains
-    bounds = srf.get_bounds(srf_file, depth = True)
+    bounds = srf.get_bounds(args.srf_file, depth = True)
     poi_srf = []
     for plane in bounds:
         for point in plane:
             poi_srf.append(point)
-    hlon, hlat, hdepth = srf.get_hypo(srf_file, depth = True)
+    hlon, hlat, hdepth = srf.get_hypo(args.srf_file, depth = True)
     top_left = bounds[0][0]
     top_right = bounds[-1][1]
     top_mid = geo.ll_mid(top_left[0], top_left[1], top_right[0], top_right[1])
@@ -676,19 +693,21 @@ if len(sys.argv) > 1:
         print('Resuming from: %s' % (gmt_temp))
     else:
         gmt_temp = mkdtemp(prefix = '_GMT_WD_PERSPECTIVE_', \
-                dir = os.path.dirname(srf_file))
+                dir = os.path.dirname(args.srf_file))
 
-    meta = {'wd':gmt_temp, 'srf_file':srf_file, 's_azimuth':s_azimuth, \
+    # common information passed to frame processes
+    meta = {'wd':gmt_temp, 'srf_file':args.srf_file, 's_azimuth':s_azimuth, \
             'map_tilt':map_tilt, 'hlon':hlon, 'hlat':hlat, 'hdepth':hdepth, \
             'gmt_bottom':gmt_bottom, 'gmt_top':gmt_top, 'animate':args.animate, \
             't_frames':int(args.mtime * args.framerate), 'srf_bounds':bounds, \
-            'rot':args.rot, 'downscale':args.downscale}
+            'rot':args.rot, 'downscale':args.downscale, 'title':args.title, \
+            'dpi':args.dpi}
 
     # TODO: sliprate preparation should be an early task
-    slip_end = srf.srf2llv_py(srf_file, value = 'ttotal')
+    slip_end = srf.srf2llv_py(args.srf_file, value = 'ttotal')
     rup_time = max([max(slip_end[p][:, 2]) for p in xrange(len(slip_end))])
     # internal dt
-    srf_dt = srf.srf_dt(srf_file)
+    srf_dt = srf.srf_dt(args.srf_file)
     # frames per slip rate increment
     fpdt = 1 / (srf_dt * args.framerate)
     # decimation of srf slip rate dt to show
@@ -701,8 +720,9 @@ if len(sys.argv) > 1:
     frames_sr = int(time_sr * args.framerate)
     # TODO: possibly interpolate in future
     spec_sr = 'slipts-%s-%s' % (ddt, time_sr)
-    slip_pos, slip_rate = srf.srf2llv_py(srf_file, value = spec_sr, depth = True)
-    meta['planes'] = srf.read_header(srf_file, idx = True)
+    slip_pos, slip_rate = \
+            srf.srf2llv_py(args.srf_file, value = spec_sr, depth = True)
+    meta['planes'] = srf.read_header(args.srf_file, idx = True)
     for plane in xrange(len(slip_pos)):
         slip_pos[plane].astype(np.float32).tofile( \
                 os.path.join(gmt_temp, 'subfaults_%d.bin' % (plane)))
@@ -715,7 +735,7 @@ if len(sys.argv) > 1:
     meta['srf_wd'] = os.path.join(gmt_temp, 'srf')
     if not os.path.isdir(meta['srf_wd']):
         os.makedirs(meta['srf_wd'])
-    seg_slips = srf.srf2llv_py(srf_file, value = 'slip')
+    seg_slips = srf.srf2llv_py(args.srf_file, value = 'slip')
     all_vs = np.concatenate((seg_slips))[:, -1]
     percentile = np.percentile(all_vs, 95)
     # round percentile significant digits for colour pallete
@@ -753,6 +773,8 @@ if len(sys.argv) > 1:
             msg_list.append([load_xyts, meta])
             msg_deps += 1
             frames_gm = int(xfile.dt * (xfile.nt - 0.6) * args.framerate)
+            if args.gm_cut != None:
+                frames_gm = min(frames_gm, int(args.gm_cut * args.framerate))
         # ground motion 3D Z extent based on sim domain size
         # final size also depends on map tilt angle
         xlen1 = geo.ll_dist(xcnrs[0][0][0], xcnrs[0][0][1], \
@@ -851,11 +873,15 @@ if len(sys.argv) > 1:
         frames2sim = frames2now
         # frame index to zoom progression (zoom out within 12.5 seconds)
         if frames_gm / args.framerate >= 12.5:
+            # zfac must be a float
             zfac = 12.5 * args.framerate * 0.2
         else:
             zfac = frames_gm * 0.618 * 0.2
+        # tanh linear gap fill over effective range tanh(-3 -> 3)
+        tanh_gap = (0.5 + 0.5 * math.tanh(-3)) / 3.
         def i2p(i):
-            return 0.5 + 0.5 * math.tanh(i / zfac - 3)
+            return min(1.0, 0.5 + 0.5 * math.tanh(i / zfac - 3) \
+                            + tanh_gap * (i / zfac - 3))
         # stage 4 slip animation if no xyts
         for i in xrange(frames_sr * (frames_gm == 0)):
             sim_time = float(i) / args.framerate
@@ -931,7 +957,7 @@ if len(sys.argv) > 1:
         # stage 7 paths such as road network
         if args.paths != None:
             # first status
-            poi_paths0 = gmt.simplify_segs(path_files[0])
+            poi_paths0 = gmt.simplify_segs(args.path_files[0])
             poi_paths = []
             # kaikoura roads, bottom isn't interesting
             for poi in poi_paths0:
@@ -942,17 +968,17 @@ if len(sys.argv) > 1:
                 over_t = 100 - 100 * scale_t
                 msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                         'scale_t':0, 'seq':frames2now + i, 'sim_time':-3, \
-                        'transparency':over_t, 'overlay':path_files[0], \
+                        'transparency':over_t, 'overlay':args.path_files[0], \
                         'proportion':scale_t, \
                         'view':(poi_paths, 1.5, scale_t, poi_gm, 1.2)}, meta])
             op_list.append(['DUP', frames2now + i, pause_frames])
             frames2now = frames2now + meta['t_frames'] + pause_frames
             # mid statuses
-            for i in xrange(1, len(path_files)):
+            for i in xrange(1, len(args.path_files)):
                 msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                         'scale_t':0, 'seq':frames2now, \
                         'sim_time':-3, 'transparency':0, \
-                        'overlay':path_files[i], 'proportion':1, \
+                        'overlay':args.path_files[i], 'proportion':1, \
                         'view':(poi_paths, 1.5)}, meta])
                 op_list.append(['DUP', frames2now, pause_frames - 1])
                 frames2now += pause_frames
@@ -962,7 +988,7 @@ if len(sys.argv) > 1:
                 over_t = 100 - 100 * scale_t
                 msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                         'scale_t':0, 'seq':frames2now + i, 'sim_time':-3, \
-                        'transparency':over_t, 'overlay':path_files[-1], \
+                        'transparency':over_t, 'overlay':args.path_files[-1], \
                         'proportion':scale_t, \
                         'view':(poi_paths, 1.5, scale_t, poi_gm, 1.2)}, meta])
             frames2now += meta['t_frames']
@@ -1063,7 +1089,7 @@ if len(sys.argv) > 1:
     comm.Disconnect()
 
     # output files prefix
-    basename = os.path.splitext(os.path.basename(meta['srf_file']))[0]
+    basename = os.path.splitext(os.path.basename(args.srf_file))[0]
     # frame operations shortcut
     def frame_op(op, seq_from, seq_to):
         op('%s/%s_perspective_%.4d.png' % (gmt_temp, basename, seq_from), \
@@ -1095,7 +1121,8 @@ if len(sys.argv) > 1:
             '%s_perspective.png' % (basename))
 
     # cleanup
-    rmtree(gmt_temp)
+    if not args.keep_temp:
+        rmtree(gmt_temp)
 
 ###
 ### SLAVE
