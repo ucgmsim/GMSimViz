@@ -130,31 +130,45 @@ def load_hdf5(h5file, basename, landmask = True):
             region = region, dx = dx, dy = dy, \
             climit = np.nanpercentile(data[:, :, 2], 10))
 
-    # cpt - liquefaction up to 0.6, landslide up to 0.4
+    # cpt - liquefaction up to 0.6, landslide up to 0.25
     # assuming fixed file names
     if os.path.basename(basename) == 'liquefaction':
         cpt_max = 0.6
     elif os.path.basename(basename) == 'landslide':
-        cpt_max = 0.4
+        cpt_max = 0.25
     else:
         raise ValueError('Not implemented.')
     gmt.makecpt('hot', '%s.cpt' % (basename), 0, cpt_max, invert = True)
 
+    # cut small values
+    gmt.grdclip('%s.nc' % (basename), '%s.nc' % (basename), \
+            min_v = cpt_max * 0.025)
+    # masking is visually crude and slow at high resolutions (LINZ_COAST)
+    # rough version masked for computation, clipping used for presentation
     # mask - xyts ground motion
-    mask_path_gm = '%s/xyts/corners-hr.gmt' % (meta['wd'])
+    mask_path_gm = '%s/xyts/corners.gmt' % (meta['wd'])
     if os.path.exists(mask_path_gm):
         gmt.grd_mask(mask_path_gm, '%s_mask_xyts.nc' % (basename), \
                 dx = dx, dy = dy, region = region)
-        grdmath(['%s.nc' % (basename), '%s_mask_xyts.nc' % (basename), \
-                 'MUL', '=', '%s.nc' % (basename)])
+        gmt.grdmath(['%s.nc' % (basename), '%s_mask_xyts.nc' % (basename), \
+                 'MUL', '=', '%s_rough.nc' % (basename)])
+    else:
+        copy('%s.nc' % (basename), '%s_rough.nc' % (basename))
     # mask - land area
     if landmask:
-        gmt.grd_mask(gmt.LINZ_COAST['150k'], '%s_mask_coast.nc' % (basename), \
+        gmt.grd_mask('f', '%s_mask_coast.nc' % (basename), \
                 dx = dx, dy = dy, region = region)
-        grdmath(['%s.nc' % (basename), '%s_mask_coast.nc' % (basename), \
-                 'MUL', '=', '%s.nc' % (basename)])
+        gmt.grdmath(['%s_rough.nc' % (basename), \
+                '%s_mask_coast.nc' % (basename), \
+                'MUL', '=', '%s_rough.nc' % (basename)])
 
-    return region
+    # points of interest are where we haven't cut/masked values out
+    with h5open('%s_rough.nc' % (basename), 'r') as h:
+        arglat, arglon = np.nonzero(np.isfinite(h['z'][...]))
+        pois = np.transpose((h['lon'][...][arglon], \
+                             h['lat'][...][arglat]))
+
+    return region, pois
 
 def timeslice(job, meta):
     """
@@ -299,10 +313,15 @@ def timeslice(job, meta):
     elif job['sim_time'] == -2:
         plot = 'surface'
         scale_p_final = 1.0
+        mask_path_gm = '%s/xyts/corners-hr.gmt' % (meta['wd'])
+        if os.path.exists(mask_path_gm):
+            p.clip(path = mask_path_gm, is_file = True)
+        p.clip(path = gmt.LINZ_COAST['150k'])
         p.overlay('%s/overlay/%s.nc' % (meta['wd'], job['overlay']), \
                 '%s/overlay/%s.cpt' % (meta['wd'], job['overlay']), \
                 transparency = job['transparency'], \
                 custom_region = job['region'])
+        p.clip()
     # load srf plane data
     elif job['sim_time'] == - 1:
         plot = 'slip'
@@ -803,19 +822,11 @@ if len(sys.argv) > 1:
 
     # prepare other data
     if args.liquefaction != None:
-        region_liquefaction = load_hdf5(args.liquefaction, \
+        region_liquefaction, poi_liquefaction = load_hdf5(args.liquefaction, \
                 '%s/overlay/liquefaction' % (gmt_temp))
-        poi_liquefaction = [[region_liquefaction[0], region_liquefaction[2]], \
-                [region_liquefaction[1], region_liquefaction[2]], \
-                [region_liquefaction[1], region_liquefaction[3]], \
-                [region_liquefaction[0], region_liquefaction[3]]]
     if args.landslide != None:
-        region_landslide = load_hdf5(args.landslide, \
+        region_landslide, poi_landslide = load_hdf5(args.landslide, \
                 '%s/overlay/landslide' % (gmt_temp))
-        poi_landslide = [[region_landslide[0], region_landslide[2]], \
-                [region_landslide[1], region_landslide[2]], \
-                [region_landslide[1], region_landslide[3]], \
-                [region_landslide[0], region_landslide[3]]]
 
     # tasks
     if not args.animate:
