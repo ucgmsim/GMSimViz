@@ -316,7 +316,7 @@ def timeslice(job, meta):
         mask_path_gm = '%s/xyts/corners-hr.gmt' % (meta['wd'])
         if os.path.exists(mask_path_gm):
             p.clip(path = mask_path_gm, is_file = True)
-        p.clip(path = gmt.LINZ_COAST['150k'])
+        p.clip(path = gmt.LINZ_COAST['150k'], is_file = True)
         p.overlay('%s/overlay/%s.nc' % (meta['wd'], job['overlay']), \
                 '%s/overlay/%s.cpt' % (meta['wd'], job['overlay']), \
                 transparency = job['transparency'], \
