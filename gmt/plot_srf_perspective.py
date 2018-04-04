@@ -301,6 +301,9 @@ def timeslice(job, meta):
         plot = 'paths'
         # there is no scale anyway
         scale_p_final = 1.0
+        # all state higways highlighted as a background
+        p.path(gmt.LINZ_HWY, width = '2p', \
+                colour = 'white@%s' % (100 - min(100, job['proportion'] * 100)))
         # draw path file
         if job['proportion'] >= 1:
             path_file = job['overlay']
@@ -511,6 +514,12 @@ def timeslice(job, meta):
     p.text(PAGE_WIDTH / 2.0, PAGE_HEIGHT, \
             meta['title'], align = 'RM', size = 26, \
             dy = WINDOW_T / -2.0, dx = - 0.2)
+    # subtitle
+    if 'subtitle' in job.keys():
+        p.text(PAGE_WIDTH / 2.0, PAGE_HEIGHT, \
+                job['subtitle'], align = 'LM', size = 24, \
+                dy = WINDOW_T / -2.0, dx = 0.2, \
+                colour = 'black@%s' % (job['transparency']))
     # sim time
     if job['sim_time'] >= 0 and job['transparency'] < 100:
         p.text(PAGE_WIDTH - WINDOW_R, PAGE_HEIGHT - WINDOW_T, \
@@ -539,7 +548,7 @@ def timeslice(job, meta):
     # add QuakeCoRE logo
     p.image('R', 'T', os.path.join(os.path.dirname(__file__), \
             'quakecore-logo.png'), width = '2.5i', pos = 'rel', \
-            dy = 0.1)
+            dx = WINDOW_R - 0.15, dy = -0.15)
 
     ###
     ### projection of the inner area to draw map ticks, legend
@@ -849,7 +858,8 @@ if len(sys.argv) > 1:
             msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                     'scale_t':scale_t, 'seq':i, 'transparency':OVERLAY_T, \
                     'sim_time':-1, 'view':(poi_srf, 1.618, \
-                    i / (frames_slip - 1.0), poi_gm, 1.2)}, meta])
+                    i / (frames_slip - 1.0), poi_gm, 1.2), \
+                    'subtitle':'Fault Slip Distribution'}, meta])
         frames2now = frames_slip
 
         # stage 2 dip below surface
@@ -859,7 +869,8 @@ if len(sys.argv) > 1:
             tiltv = math.sin(math.radians(tilt2)) * map_tilt
             msg_list.append([timeslice, {'azimuth':s_azimuth, 'tilt':tiltv, \
                     'scale_t':1, 'seq':frames2now + i, 'sim_time':-1, \
-                    'transparency':OVERLAY_T, 'view':(poi_srf, 1.618)}, meta])
+                    'transparency':OVERLAY_T, 'view':(poi_srf, 1.618), \
+                    'subtitle':'Fault Slip Distribution'}, meta])
         # pause, then reverse frames
         op_list.append(['DUP', frames2now + i, pause_frames])
         op_list.append(['REV', frames2now, frames_dip, pause_frames])
@@ -873,7 +884,8 @@ if len(sys.argv) > 1:
             over_t = 100 - (100 - OVERLAY_T) * scale_t
             msg_list.append([timeslice, {'azimuth':s_azimuth, 'tilt':map_tilt, \
                     'scale_t':scale_t, 'seq':frames2now + i, 'sim_time':-1, \
-                    'transparency':over_t, 'view':(poi_srf, 1.618)}, meta])
+                    'transparency':over_t, 'view':(poi_srf, 1.618), \
+                    'subtitle':'Fault Slip Distribution'}, meta])
         frames2now += frames_fade
 
         # for tasks added later (with xyts file), reference to time = 0
@@ -900,7 +912,8 @@ if len(sys.argv) > 1:
             msg_list.append([timeslice, {'azimuth':azimuth, \
                     'tilt':map_tilt, 'scale_t':scale_t, \
                     'seq':frames2now + i, 'transparency':OVERLAY_T, \
-                    'sim_time':sim_time, 'view':(poi_srf, 1.618)}, meta])
+                    'sim_time':sim_time, 'view':(poi_srf, 1.618), \
+                    'subtitle':'Cumulative Slip'}, meta])
         # must work if there will be later tasks or not
         frames2now += max(frames_gm, frames_sr)
 
@@ -940,6 +953,7 @@ if len(sys.argv) > 1:
                         'sim_time':-2, 'region':region_liquefaction, \
                         'transparency':over_t, 'overlay':'liquefaction', \
                         'cpt_label':'Liquefaction Hazard Probability', \
+                        'subtitle':'Liquefaction Probability', \
                         'view':(poi_liquefaction, 1.2, scale_t, poi_gm, 1.2)}, \
                         meta])
             if args.landslide != None:
@@ -948,6 +962,7 @@ if len(sys.argv) > 1:
                         'sim_time':-2, 'region':region_landslide, \
                         'transparency':over_t, 'overlay':'landslide', \
                         'cpt_label':'Landslide Hazard Probability', \
+                        'subtitle':'Landslide Probability', \
                         'view':(poi_landslide, 1.2, scale_t, poi_gm, 1.2)}, \
                         meta])
         # pause, reverse frames for animation
@@ -976,7 +991,7 @@ if len(sys.argv) > 1:
                 msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                         'scale_t':0, 'seq':frames2now + i, 'sim_time':-3, \
                         'transparency':over_t, 'overlay':args.path_files[0], \
-                        'proportion':scale_t, \
+                        'proportion':scale_t, 'subtitle':'Transport Network', \
                         'view':(poi_paths, 1.5, scale_t, poi_gm, 1.2)}, meta])
             op_list.append(['DUP', frames2now + i, pause_frames])
             frames2now = frames2now + meta['t_frames'] + pause_frames
@@ -986,6 +1001,7 @@ if len(sys.argv) > 1:
                         'scale_t':0, 'seq':frames2now, \
                         'sim_time':-3, 'transparency':0, \
                         'overlay':args.path_files[i], 'proportion':1, \
+                        'subtitle':'Transport Network', \
                         'view':(poi_paths, 1.5)}, meta])
                 op_list.append(['DUP', frames2now, pause_frames - 1])
                 frames2now += pause_frames
@@ -996,7 +1012,7 @@ if len(sys.argv) > 1:
                 msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                         'scale_t':0, 'seq':frames2now + i, 'sim_time':-3, \
                         'transparency':over_t, 'overlay':args.path_files[-1], \
-                        'proportion':scale_t, \
+                        'proportion':scale_t, 'subtitle':'Transport Network', \
                         'view':(poi_paths, 1.5, scale_t, poi_gm, 1.2)}, meta])
             frames2now += meta['t_frames']
 
@@ -1049,7 +1065,7 @@ if len(sys.argv) > 1:
                     msg_list.append([timeslice, {'azimuth':azimuth, \
                             'tilt':map_tilt, 'scale_t':scale_t, 'scale_x':0.0, \
                             'seq':frames2sim + i, 'transparency':OVERLAY_T, \
-                            'sim_time':sim_time, \
+                            'sim_time':sim_time, 'subtitle':'Simulation', \
                             'view':(poi_gm, 1.2, i2p(i), poi_srf, 1.618)}, \
                             meta])
             for i in xrange(frames_sr, frames_gm):
@@ -1066,7 +1082,7 @@ if len(sys.argv) > 1:
                     msg_list.append([timeslice, {'azimuth':azimuth, \
                             'tilt':map_tilt, 'scale_t':1.0, 'scale_x':scale_x, \
                             'seq':frames2sim + i, 'transparency':OVERLAY_T, \
-                            'sim_time':sim_time, \
+                            'sim_time':sim_time, 'subtitle':'Simulation', \
                             'view':(poi_gm, 1.2, i2p(i), poi_srf, 1.618)}, \
                             meta])
             msg_deps -= 1
