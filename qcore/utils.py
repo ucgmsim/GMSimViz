@@ -4,14 +4,17 @@ Mostly related to file system operations and other non-specific functionality.
 """
 
 from shutil import rmtree
+import os
 
 def setup_dir(directory, empty = False):
     """
     Make sure a directory exists, optionally make sure it is empty.
     directory: path to directory
     empty: make sure directory is empty
-    
-    TODO: recursively make directories
+
+    :param directory:
+    :param empty:
+    :return:
     """
     if os.path.exists(directory) and empty:
             rmtree(directory)

@@ -42,9 +42,9 @@ def save_figure(fig, out_dir, basename, png=True, eps=False, close=False):
 def show_legend(centre=False, extra_labels={}):
     """
     Collapses the legend to remove mulitple entries of the same name
-    
-    extra_labels: (dict) Optionally adds extra labels to the legend
-    centre: optional arguement to place the legend in the top-centre of the plot
+    :param centre: optional arguement to place the legend in the top-centre of the plot
+    :param extra_labels: (dict) Optionally adds extra labels to the legend
+    :return: None
     """
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = OrderedDict(zip(labels, handles))
@@ -61,8 +61,9 @@ def show_legend(centre=False, extra_labels={}):
 def convert_strings_to_floats(string_list):
     """
     Map the float function onto a list of strings.
-    List of comma-separated floats for each string are returned
-    BUT if there was one value then the type returned is the single float.
+
+    :param string_list: list of strings - each containing comma separated floats
+    :return: List of floats, BUT if there was one value then the type returned is the single float.
     """
 
     def extract_numbers(number_string):
