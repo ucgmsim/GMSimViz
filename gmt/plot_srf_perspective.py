@@ -137,8 +137,8 @@ def load_hdf5(h5file, basename, landmask = True):
     # calculate metadata
     x0, y0 = data[0, 0, :2]
     x1, y1 = data[1, 1, :2]
-    dx = '%.2fk' % (geo.ll_dist(x0, y0, x1, y0) * 0.6)
-    dy = '%.2fk' % (geo.ll_dist(x0, y0, x0, y1) * 0.6)
+    dx = '%.2fk' % (max(geo.ll_dist(x0, y0, x1, y0) * 0.6, 0.5))
+    dy = '%.2fk' % (max(geo.ll_dist(x0, y0, x0, y1) * 0.6, 0.5))
     region = (np.min(data[:, :, 0]), np.max(data[:, :, 0]), \
             np.min(data[:, :, 1]), np.max(data[:, :, 1]))
     print os.path.basename(basename), 2, dx, dy
