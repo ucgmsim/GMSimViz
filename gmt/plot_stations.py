@@ -111,6 +111,7 @@ def load_file(station_file):
             grid = None
             grd_mask_dist = None
             landmask = False
+            contours = False
             try:
                 stat_properties = cpt_info[1].split(':')[1].split(',')
                 for p in stat_properties:
@@ -125,6 +126,8 @@ def load_file(station_file):
                         grd_mask_dist = p[6:]
                     elif p[:8] == 'landmask':
                         landmask = True
+                    elif p[:8] == 'contours':
+                        contours = True
             except IndexError:
                 stat_properties = []
         if not user_search and grid == 'surface':
@@ -186,7 +189,8 @@ def load_file(station_file):
             'cpt_inc':cpt_inc, 'cpt_tick':cpt_tick, 'cpt_properties':cpt_properties, \
             'transparency':transparency, 'ncol':ncol, 'cpt_gap':cpt_gap, \
             'label_colour':label_colour, 'col_labels':col_labels, \
-            'cpt_topo':cpt_topo, 'landmask':landmask, 'overlays':cpt_overlays}
+            'cpt_topo':cpt_topo, 'landmask':landmask, 'overlays':cpt_overlays, \
+            'contours':contours}
 
 ###
 ### boundaries
@@ -395,6 +399,13 @@ def column_overlay(n, station_file, meta, plot):
         p.overlay(grd_file, cpt_stations, dx = meta['stat_size'], \
                 dy = meta['stat_size'], crop_grd = mask, land_crop = False, \
                 transparency = meta['transparency'])
+        if meta['contours']:
+            # use set increments if we have scaled the CPT
+            if cpt_stations == '%s/stations.cpt' % (swd):
+                interval = meta['cpt_tick'][n]
+            else:
+                interval = cpt_stations
+            p.contours(grd_file, interval = interval)
         if meta['landmask']:
             # apply clip to intermediate items
             p.clip()
