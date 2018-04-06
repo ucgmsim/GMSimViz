@@ -2570,6 +2570,28 @@ class GMTPlot:
             p.communicate(legend)
             p.wait()
 
+    def contours(self, xyv_file, interval = None, annotations = None):
+        """
+        Draw contour map.
+        interval: numeric interval, taken from cpt file, or description file
+        """
+        cmd = [GMT, 'grdcontour', '-J', '-K', '-O', xyv_file]
+
+        # annotations at specific values
+        if type(annotations) == list:
+            for c in annotations:
+                cmd.append('-A+%s' % (c))
+        # interval annotations
+        if interval != None:
+            if annotations == None:
+                cmd.append('-C%s' % (interval))
+                # annotations displayed if -C is given a CPT file
+                cmd.append('-A-')
+            else:
+                cmd.append('-A%s' % (interval))
+
+        Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+
     def overlay(self, xyv_file, cpt, dx = '1k', dy = '1k', \
             min_v = None, max_v = None, crop_grd = None, \
             custom_region = None, transparency = 40, climit = 1.0, \
@@ -2709,7 +2731,7 @@ class GMTPlot:
             cmd = [GMT, 'grdcontour', '-J', '-R', temp_grd, '-K', '-O', \
             '-W%s,%s' % (contour_thickness, contour_colour), self.z]
             if contours != None:
-                cmd.append('-C%s+f%s' % (contours, font_size))
+                cmd.append('-C%s' % (contours))
             if acontours != None:
                 annot_spec = '-A%s+f%s' % (acontours, font_size)
                 if annot_back != None:
