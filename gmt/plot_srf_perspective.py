@@ -6,7 +6,7 @@ import os
 from shutil import copy, move, rmtree
 import sys
 from tempfile import mkdtemp
-from time import time
+from time import time, sleep
 
 from mpi4py import MPI
 import numpy as np
@@ -55,6 +55,23 @@ def load_xyts(meta):
     cpt_max = gmt.xyv_cpt_range('%s/xyts/pgv.bin' % (meta['wd']))[2]
     gmt.makecpt('magma', '%s/xyts/gm.cpt' % (meta['wd']), 0, cpt_max, \
             invert = True, wd = '%s/xyts' % (meta['wd']), continuing = True)
+    xyts_cpt_max = gmt.xyv_cpt_range('%s/xyts/pgv.bin' % (meta['wd']))[2]
+
+    # prepare to use as overlay
+    if not os.path.isdir('%s/overlay' % (meta['wd'])):
+        try:
+            os.makedirs('%s/overlay' % (meta['wd']))
+        except IOError:
+            pass
+    os.symlink('%s/xyts/gm.cpt' % (meta['wd']), \
+               '%s/overlay/pgv.cpt' % (meta['wd']))
+    gmt.table2grd('%s/xyts/pgv.bin' % (meta['wd']), \
+                  '%s/overlay/pgv.nc' % (meta['wd']), \
+                  region = meta['xyts_region'], \
+                  dx = meta['xyts_res'], dy = meta['xyts_res'], \
+                  climit = xyts_cpt_max * 0.01)
+
+    return xyts_cpt_max
 
 def load_xyts_ts(meta, job):
     """
@@ -102,6 +119,7 @@ def load_hdf5(h5file, basename, landmask = True):
         except IOError:
             pass
 
+    print os.path.basename(basename), 1
     # reformat data
     with h5open(h5file, 'r') as h:
         ylen, xlen = h['model'].shape
@@ -123,26 +141,38 @@ def load_hdf5(h5file, basename, landmask = True):
     dy = '%.2fk' % (geo.ll_dist(x0, y0, x0, y1) * 0.6)
     region = (np.min(data[:, :, 0]), np.max(data[:, :, 0]), \
             np.min(data[:, :, 1]), np.max(data[:, :, 1]))
-
+    print os.path.basename(basename), 2, dx, dy
     # store data
     data.astype(np.float32).tofile('%s.bin' % (basename))
     gmt.table2grd('%s.bin' % (basename), '%s.nc' % (basename), \
             region = region, dx = dx, dy = dy, \
             climit = np.nanpercentile(data[:, :, 2], 10))
-
-    # cpt - liquefaction up to 0.6, landslide up to 0.25
+    print os.path.basename(basename), 3
+    # prababilities for liquefaction up to 0.6, landslide up to 0.25
+    # susceptibilities have prepared cpt files
     # assuming fixed file names
-    if os.path.basename(basename) == 'liquefaction':
+    cpt_max = 0
+    if os.path.basename(basename) == 'liquefaction_s':
+        os.symlink(os.path.join(gmt.CPT_DIR, \
+                                'liquefaction_susceptibility.cpt'), \
+                   '%s.cpt' % (basename))
+    elif os.path.basename(basename) == 'liquefaction_p':
         cpt_max = 0.6
-    elif os.path.basename(basename) == 'landslide':
+    elif os.path.basename(basename) == 'landslide_s':
+        os.symlink(os.path.join(gmt.CPT_DIR, \
+                                'landslide_susceptibility.cpt'), \
+                   '%s.cpt' % (basename))
+    elif os.path.basename(basename) == 'landslide_p':
         cpt_max = 0.25
     else:
         raise ValueError('Not implemented.')
-    gmt.makecpt('hot', '%s.cpt' % (basename), 0, cpt_max, invert = True)
-
-    # cut small values
-    gmt.grdclip('%s.nc' % (basename), '%s.nc' % (basename), \
-            min_v = cpt_max * 0.025)
+    print os.path.basename(basename), 4
+    if cpt_max != 0:
+        gmt.makecpt('hot', '%s.cpt' % (basename), 0, cpt_max, invert = True)
+        # cut small values
+        gmt.grdclip('%s.nc' % (basename), '%s.nc' % (basename), \
+                min_v = cpt_max * 0.05)
+    print os.path.basename(basename), 5
     # masking is visually crude and slow at high resolutions (LINZ_COAST)
     # rough version masked for computation, clipping used for presentation
     # mask - xyts ground motion
@@ -150,24 +180,28 @@ def load_hdf5(h5file, basename, landmask = True):
     if os.path.exists(mask_path_gm):
         gmt.grd_mask(mask_path_gm, '%s_mask_xyts.nc' % (basename), \
                 dx = dx, dy = dy, region = region)
+        print os.path.basename(basename), 6
         gmt.grdmath(['%s.nc' % (basename), '%s_mask_xyts.nc' % (basename), \
                  'MUL', '=', '%s_rough.nc' % (basename)])
+        print os.path.basename(basename), 7
     else:
         copy('%s.nc' % (basename), '%s_rough.nc' % (basename))
     # mask - land area
     if landmask:
         gmt.grd_mask('f', '%s_mask_coast.nc' % (basename), \
                 dx = dx, dy = dy, region = region)
+        print os.path.basename(basename), 8
         gmt.grdmath(['%s_rough.nc' % (basename), \
                 '%s_mask_coast.nc' % (basename), \
                 'MUL', '=', '%s_rough.nc' % (basename)])
+        print os.path.basename(basename), 9
 
     # points of interest are where we haven't cut/masked values out
     with h5open('%s_rough.nc' % (basename), 'r') as h:
         arglat, arglon = np.nonzero(np.isfinite(h['z'][...]))
         pois = np.transpose((h['lon'][...][arglon], \
                              h['lat'][...][arglat]))
-
+    print os.path.basename(basename), 'DONE'
     return region, pois
 
 def timeslice(job, meta):
@@ -484,7 +518,8 @@ def timeslice(job, meta):
                 length = length, align = 'LT', dy = SCALE_PAD, \
                 thickness = SCALE_SIZE, major = meta['xyts_cpt_max'] / 5., \
                 minor = meta['xyts_cpt_max'] / 20., \
-                cross_tick = meta['xyts_cpt_max'] / 20., label = 'Ground motion (cm/s)')
+                cross_tick = meta['xyts_cpt_max'] / 20., \
+                label = 'Ground motion (cm/s)')
             x += length + WINDOW_L * 2 + scale_margin * job['scale_x']
         else:
             x = scale_margin
@@ -495,13 +530,12 @@ def timeslice(job, meta):
                 major = meta['slip_cpt_max'] / 5., \
                 minor = meta['slip_cpt_max'] / 20., \
                 cross_tick = meta['slip_cpt_max'] / 20., \
-                label = 'Slip (cm)')
+                label = 'Cumulative Slip (cm)')
     elif plot == 'surface':
         p.cpt_scale(PAGE_WIDTH / 2.0, scale_p, \
                 '%s/overlay/%s.cpt' % (meta['wd'], job['overlay']), \
                 length = SCALE_WIDTH, align = 'CT', dy = SCALE_PAD, \
-                thickness = SCALE_SIZE, major = 0.1, minor = 0.02, \
-                cross_tick = 0.02, label = job['cpt_label'])
+                thickness = SCALE_SIZE, label = job['cpt_label'])
     # cpt label
     try:
         assert(cpt_label != '')
@@ -515,11 +549,11 @@ def timeslice(job, meta):
             meta['title'], align = 'RM', size = 26, \
             dy = WINDOW_T / -2.0, dx = - 0.2)
     # subtitle
-    if 'subtitle' in job.keys():
+    if 'subtitle' in job:
         p.text(PAGE_WIDTH / 2.0, PAGE_HEIGHT, \
                 job['subtitle'], align = 'LM', size = 24, \
                 dy = WINDOW_T / -2.0, dx = 0.2, \
-                colour = 'black@%s' % (job['transparency']))
+                colour = 'black@%s' % (max(OVERLAY_T, job['transparency'])))
     # sim time
     if job['sim_time'] >= 0 and job['transparency'] < 100:
         p.text(PAGE_WIDTH - WINDOW_R, PAGE_HEIGHT - WINDOW_T, \
@@ -616,8 +650,10 @@ def get_args():
             type = float, default = 1000.0)
     parser.add_argument('--downscale', type = int, default = 1, \
             help = 'ghostscript downscale factor (prevents jitter)')
-    parser.add_argument('-q', '--liquefaction', help = 'liquefaction hdf5 filepath')
-    parser.add_argument('-s', '--landslide', help = 'landslide hdf5 filepath')
+    parser.add_argument('--liquefaction-s', help = 'liquefaction susceptibility hdf5 filepath')
+    parser.add_argument('--liquefaction-p', help = 'liquefaction probability hdf5 filepath')
+    parser.add_argument('--landslide-s', help = 'landslide susceptibility hdf5 filepath')
+    parser.add_argument('--landslide-p', help = 'landslide probability hdf5 filepath')
     parser.add_argument('--temp', help = 'continue from previous temp dir')
     parser.add_argument('-k', '--keep-temp', help = 'don\'t delete temp dir', \
             action = 'store_true')
@@ -652,12 +688,11 @@ def get_args():
         except AssertionError:
             sys.exit('Could not find XYTS: %s' % (args.xyts))
     # liquefaction / landslide also optional
-    if args.liquefaction != None and not os.path.exists(args.liquefaction):
-            sys.exit('Could not find liquefaction file: %s' \
-                    % (args.liquefaction))
-    if args.landslide != None and not os.path.exists(args.landslide):
-            sys.exit('Could not find landslide file: %s' \
-                    % (args.landslide))
+    for filepath in [args.liquefaction_s, args.liquefaction_p, \
+                     args.landslide_s, args.landslide_p]:
+        if filepath != None and not os.path.exists(filepath):
+            sys.exit('Could not find liquefaction/landslide file: %s' \
+                     % (filepath))
     # paths optional
     if args.paths != None:
         if not os.path.isdir(args.paths):
@@ -830,12 +865,18 @@ if len(sys.argv) > 1:
     diff_azimuth /= frames_azimuth
 
     # prepare other data
-    if args.liquefaction != None:
-        region_liquefaction, poi_liquefaction = load_hdf5(args.liquefaction, \
-                '%s/overlay/liquefaction' % (gmt_temp))
-    if args.landslide != None:
-        region_landslide, poi_landslide = load_hdf5(args.landslide, \
-                '%s/overlay/landslide' % (gmt_temp))
+    if args.liquefaction_s != None:
+        region_liquefaction_s, poi_liquefaction_s = load_hdf5( \
+                args.liquefaction_s, '%s/overlay/liquefaction_s' % (gmt_temp))
+    if args.liquefaction_p != None:
+        region_liquefaction_p, poi_liquefaction_p = load_hdf5( \
+                args.liquefaction_p, '%s/overlay/liquefaction_p' % (gmt_temp))
+    if args.landslide_s != None:
+        region_landslide_s, poi_landslide_s = load_hdf5( \
+                args.landslide_s, '%s/overlay/landslide_s' % (gmt_temp))
+    if args.landslide_p != None:
+        region_landslide_p, poi_landslide_p = load_hdf5( \
+                args.landslide_p, '%s/overlay/landslide_p' % (gmt_temp))
 
     # tasks
     if not args.animate:
@@ -936,45 +977,88 @@ if len(sys.argv) > 1:
                     'view':(poi_gm, 1.2)}, meta])
         frames2now += frames_return
 
-        # stage 6 fade into liquefaction and landslide
-        frames2liquefaction = frames2now
-        frames_liquefaction = meta['t_frames'] * (args.liquefaction != None)
-        frames2landslide = frames2liquefaction \
-                + (frames_liquefaction * 2 + pause_frames) \
-                * (args.liquefaction != None)
-        frames_landslide = meta['t_frames'] * (args.landslide != None)
-        for i in xrange(meta['t_frames'] \
-                * (args.liquefaction != None or args.landslide != None)):
+        # stage 6 fade in, pause, fade out of:
+        # - PGV
+        # - liquefaction susceptibility
+        # - liquefaction probability
+        # - landslide susceptibility
+        # - landslide probability
+        frames_sep = meta['t_frames'] * 2 + pause_frames
+        frames2pgv = frames2now
+        frames2liquefaction_s = frames2pgv \
+                                + frames_sep * (args.xyts != None)
+        frames2liquefaction_p = frames2liquefaction_s \
+                                + frames_sep * (args.liquefaction_s != None)
+        frames2landslide_s = frames2liquefaction_p \
+                             + frames_sep * (args.liquefaction_p != None)
+        frames2landslide_p = frames2landslide_s \
+                             + frames_sep * (args.landslide_s != None)
+        frames2now = frames2landslide_p \
+                     + frames_sep * (args.landslide_p != None)
+        for i in xrange(meta['t_frames'] * (frames2now != frames2pgv)):
             scale_t = i / (meta['t_frames'] - 1.0)
             over_t = 100 - (100 - OVERLAY_T) * scale_t
-            if args.liquefaction != None:
+            if args.xyts != None:
                 msgs.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
-                        'scale_t':scale_t, 'seq':frames2liquefaction + i, \
-                        'sim_time':-2, 'region':region_liquefaction, \
-                        'transparency':over_t, 'overlay':'liquefaction', \
+                        'scale_t':scale_t, 'seq':frames2pgv + i, \
+                        'sim_time':-2, 'region':meta['xyts_region'], \
+                        'transparency':over_t, 'overlay':'pgv', \
+                        'cpt_label':'Peak Ground Velocity (cm/s)', \
+                        'subtitle':'PGV', \
+                        'view':(poi_gm, 1.2, scale_t, poi_gm, 1.2)}, \
+                        meta])
+            if args.liquefaction_s != None:
+                msgs.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
+                        'scale_t':scale_t, 'seq':frames2liquefaction_s + i, \
+                        'sim_time':-2, 'region':region_liquefaction_s, \
+                        'transparency':over_t, 'overlay':'liquefaction_s', \
+                        'cpt_label':'Liquefaction Hazard Susceptibility', \
+                        'subtitle':'Liquefaction Susceptibility', \
+                        'view':(poi_liquefaction_s, 1.2, scale_t, poi_gm, 1.2)}, \
+                        meta])
+            if args.liquefaction_p != None:
+                msgs.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
+                        'scale_t':scale_t, 'seq':frames2liquefaction_p + i, \
+                        'sim_time':-2, 'region':region_liquefaction_p, \
+                        'transparency':over_t, 'overlay':'liquefaction_p', \
                         'cpt_label':'Liquefaction Hazard Probability', \
                         'subtitle':'Liquefaction Probability', \
-                        'view':(poi_liquefaction, 1.2, scale_t, poi_gm, 1.2)}, \
+                        'view':(poi_liquefaction_p, 1.2, scale_t, poi_gm, 1.2)}, \
                         meta])
-            if args.landslide != None:
+            if args.landslide_s != None:
                 msgs.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
-                        'scale_t':scale_t, 'seq':frames2landslide + i, \
-                        'sim_time':-2, 'region':region_landslide, \
-                        'transparency':over_t, 'overlay':'landslide', \
+                        'scale_t':scale_t, 'seq':frames2landslide_s + i, \
+                        'sim_time':-2, 'region':region_landslide_s, \
+                        'transparency':over_t, 'overlay':'landslide_s', \
+                        'cpt_label':'Landslide Hazard Susceptibility', \
+                        'subtitle':'Landslide Susceptibility', \
+                        'view':(poi_landslide_s, 1.2, scale_t, poi_gm, 1.2)}, \
+                        meta])
+            if args.landslide_p != None:
+                msgs.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
+                        'scale_t':scale_t, 'seq':frames2landslide_p + i, \
+                        'sim_time':-2, 'region':region_landslide_p, \
+                        'transparency':over_t, 'overlay':'landslide_p', \
                         'cpt_label':'Landslide Hazard Probability', \
                         'subtitle':'Landslide Probability', \
-                        'view':(poi_landslide, 1.2, scale_t, poi_gm, 1.2)}, \
+                        'view':(poi_landslide_p, 1.2, scale_t, poi_gm, 1.2)}, \
                         meta])
         # pause, reverse frames for animation
-        if args.liquefaction != None:
-            op_list.append(['DUP', frames2liquefaction + i, pause_frames])
-            op_list.append(['REV', frames2liquefaction, frames_liquefaction, pause_frames])
-        if args.landslide != None:
-            op_list.append(['DUP', frames2landslide + i, pause_frames])
-            op_list.append(['REV', frames2landslide, frames_landslide, pause_frames])
-        frames2now = frames2landslide \
-                + (frames_landslide * 2 + pause_frames) \
-                * (args.landslide != None)
+        if args.xyts != None:
+            op_list.append(['DUP', frames2pgv + i, pause_frames])
+            op_list.append(['REV', frames2pgv, meta['t_frames'], pause_frames])
+        if args.liquefaction_s != None:
+            op_list.append(['DUP', frames2liquefaction_s + i, pause_frames])
+            op_list.append(['REV', frames2liquefaction_s, meta['t_frames'], pause_frames])
+        if args.liquefaction_p != None:
+            op_list.append(['DUP', frames2liquefaction_p + i, pause_frames])
+            op_list.append(['REV', frames2liquefaction_p, meta['t_frames'], pause_frames])
+        if args.landslide_s != None:
+            op_list.append(['DUP', frames2landslide_s + i, pause_frames])
+            op_list.append(['REV', frames2landslide_s, meta['t_frames'], pause_frames])
+        if args.landslide_p != None:
+            op_list.append(['DUP', frames2landslide_p + i, pause_frames])
+            op_list.append(['REV', frames2landslide_p, meta['t_frames'], pause_frames])
 
         # stage 7 paths such as road network
         if args.paths != None:
@@ -996,15 +1080,19 @@ if len(sys.argv) > 1:
             op_list.append(['DUP', frames2now + i, pause_frames])
             frames2now = frames2now + meta['t_frames'] + pause_frames
             # mid statuses
+            pause_frames_road = meta['t_frames']
             for i in xrange(1, len(args.path_files)):
+                if i == len(args.path_files) - 1:
+                    # TODO: place extra pause outside main loop
+                    pause_frames_road = pause_frames
                 msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                         'scale_t':0, 'seq':frames2now, \
                         'sim_time':-3, 'transparency':0, \
                         'overlay':args.path_files[i], 'proportion':1, \
                         'subtitle':'Transport Network', \
                         'view':(poi_paths, 1.5)}, meta])
-                op_list.append(['DUP', frames2now, pause_frames - 1])
-                frames2now += pause_frames
+                op_list.append(['DUP', frames2now, pause_frames_road - 1])
+                frames2now += pause_frames_road
             # end fadeout
             for i in xrange(meta['t_frames']):
                 scale_t = 1 - min(1, i / (meta['t_frames'] - 1.0))
@@ -1033,7 +1121,7 @@ if len(sys.argv) > 1:
     status = MPI.Status()
     while nproc:
         # previous job
-        comm.recv(source = MPI.ANY_SOURCE, status = status)
+        value = comm.recv(source = MPI.ANY_SOURCE, status = status)
         slave_id = status.Get_source()
         finished = in_progress[slave_id]
 
@@ -1042,7 +1130,7 @@ if len(sys.argv) > 1:
             pass
 
         elif finished[0] == load_xyts:
-            meta['xyts_cpt_max'] = gmt.xyv_cpt_range('%s/xyts/pgv.bin' % (gmt_temp))[2]
+            meta['xyts_cpt_max'] = value
             msg_deps -= 1
 
             # load xyts overlays
@@ -1160,20 +1248,19 @@ else:
         print('Alternatively MPI cannot connect to parent.')
         exit(1)
 
-    # have to sleep if waiting for dependencies
-    from time import sleep
-
     # ask for work until stop sentinel
     logbook = []
-    for task in iter(lambda: comm.sendrecv(None, dest = MASTER), StopIteration):
-
+    value = None
+    for task in iter(lambda: comm.sendrecv(value, dest = MASTER), StopIteration):
         t0 = time()
+        value = None
+
         # no jobs available yet
         if task == None:
             sleep(1)
             logbook.append(('sleep', time() - t0))
         elif task[0] is load_xyts:
-            load_xyts(task[1])
+            value = load_xyts(task[1])
         elif task[0] is load_xyts_ts:
             load_xyts_ts(task[1], task[2])
         elif task[0] is timeslice:
