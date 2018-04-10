@@ -119,7 +119,6 @@ def load_hdf5(h5file, basename, landmask = True):
         except IOError:
             pass
 
-    print os.path.basename(basename), 1
     # reformat data
     with h5open(h5file, 'r') as h:
         ylen, xlen = h['model'].shape
@@ -141,13 +140,11 @@ def load_hdf5(h5file, basename, landmask = True):
     dy = '%.2fk' % (max(geo.ll_dist(x0, y0, x0, y1) * 0.6, 0.5))
     region = (np.min(data[:, :, 0]), np.max(data[:, :, 0]), \
             np.min(data[:, :, 1]), np.max(data[:, :, 1]))
-    print os.path.basename(basename), 2, dx, dy
     # store data
     data.astype(np.float32).tofile('%s.bin' % (basename))
     gmt.table2grd('%s.bin' % (basename), '%s.nc' % (basename), \
             region = region, dx = dx, dy = dy, \
             climit = np.nanpercentile(data[:, :, 2], 10))
-    print os.path.basename(basename), 3
     # prababilities for liquefaction up to 0.6, landslide up to 0.25
     # susceptibilities have prepared cpt files
     # assuming fixed file names
@@ -166,13 +163,8 @@ def load_hdf5(h5file, basename, landmask = True):
         cpt_max = 0.25
     else:
         raise ValueError('Not implemented.')
-    print os.path.basename(basename), 4
     if cpt_max != 0:
         gmt.makecpt('hot', '%s.cpt' % (basename), 0, cpt_max, invert = True)
-        # cut small values
-        gmt.grdclip('%s.nc' % (basename), '%s.nc' % (basename), \
-                min_v = cpt_max * 0.05)
-    print os.path.basename(basename), 5
     # masking is visually crude and slow at high resolutions (LINZ_COAST)
     # rough version masked for computation, clipping used for presentation
     # mask - xyts ground motion
@@ -180,28 +172,27 @@ def load_hdf5(h5file, basename, landmask = True):
     if os.path.exists(mask_path_gm):
         gmt.grd_mask(mask_path_gm, '%s_mask_xyts.nc' % (basename), \
                 dx = dx, dy = dy, region = region)
-        print os.path.basename(basename), 6
         gmt.grdmath(['%s.nc' % (basename), '%s_mask_xyts.nc' % (basename), \
                  'MUL', '=', '%s_rough.nc' % (basename)])
-        print os.path.basename(basename), 7
     else:
         copy('%s.nc' % (basename), '%s_rough.nc' % (basename))
     # mask - land area
     if landmask:
         gmt.grd_mask('f', '%s_mask_coast.nc' % (basename), \
                 dx = dx, dy = dy, region = region)
-        print os.path.basename(basename), 8
         gmt.grdmath(['%s_rough.nc' % (basename), \
                 '%s_mask_coast.nc' % (basename), \
                 'MUL', '=', '%s_rough.nc' % (basename)])
-        print os.path.basename(basename), 9
+    # cut small values
+    if cpt_max != 0:
+        gmt.grdclip('%s_rough.nc' % (basename), '%s_rough.nc' % (basename), \
+                min_v = cpt_max * 0.05)
 
     # points of interest are where we haven't cut/masked values out
     with h5open('%s_rough.nc' % (basename), 'r') as h:
         arglat, arglon = np.nonzero(np.isfinite(h['z'][...]))
         pois = np.transpose((h['lon'][...][arglon], \
                              h['lat'][...][arglat]))
-    print os.path.basename(basename), 'DONE'
     return region, pois
 
 def timeslice(job, meta):
@@ -315,7 +306,7 @@ def timeslice(job, meta):
                 fill = 'p30+bdarkbrown+fbrown+r%s' % (meta['dpi']))
 
     proj(True)
-    p.basemap(topo = None, road = None, highway = None)
+    p.basemap(road = None, highway = None, topo = gmt.TOPO_LOW)
 
     # simulation domain
     if os.path.isfile('%s/xyts/corners.gmt' % (meta['wd'])):
@@ -532,10 +523,20 @@ def timeslice(job, meta):
                 cross_tick = meta['slip_cpt_max'] / 20., \
                 label = 'Cumulative Slip (cm)')
     elif plot == 'surface':
+        # default: use internal cpt steps
+        major = None
+        minor = None
+        categorical = False
+        if job['overlay'] == 'pgv':
+            major = meta['xyts_cpt_max'] / 5.
+            minor = meta['xyts_cpt_max'] / 20.
+        elif job['overlay'][-2:] == '_s':
+            categorical = True
         p.cpt_scale(PAGE_WIDTH / 2.0, scale_p, \
                 '%s/overlay/%s.cpt' % (meta['wd'], job['overlay']), \
                 length = SCALE_WIDTH, align = 'CT', dy = SCALE_PAD, \
-                thickness = SCALE_SIZE, label = job['cpt_label'])
+                thickness = SCALE_SIZE, label = job['cpt_label'], \
+                categorical = categorical, major = major, minor = minor)
     # cpt label
     try:
         assert(cpt_label != '')
@@ -697,7 +698,7 @@ def get_args():
     if args.paths != None:
         if not os.path.isdir(args.paths):
             sys.exit('Could not find path directory: %s' % (args.paths))
-        path_sort = lambda n : int(os.path.basename(n).split('_')[0])
+        path_sort = lambda n : map(int, os.path.basename(os.path.splitext(n)[0]).split('_'))
         args.path_files = sorted(glob('%s/*.gmt' % (args.paths)), key = path_sort)
 
     return args
@@ -1083,8 +1084,10 @@ if len(sys.argv) > 1:
             pause_frames_road = meta['t_frames']
             for i in xrange(1, len(args.path_files)):
                 if i == len(args.path_files) - 1:
-                    # TODO: place extra pause outside main loop
                     pause_frames_road = pause_frames
+                elif int(os.path.basename(args.path_files[i]).split('_')[0]) \
+                        > 29:
+                    pause_frame_road = meta['t_frames'] / 3
                 msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                         'scale_t':0, 'seq':frames2now, \
                         'sim_time':-3, 'transparency':0, \
@@ -1198,6 +1201,8 @@ if len(sys.argv) > 1:
     reports = comm.gather(None, root = MPI.ROOT)
     # stop mpi
     comm.Disconnect()
+    # fix up results
+    #sys.exit(0)
 
     # output files prefix
     basename = os.path.splitext(os.path.basename(args.srf_file))[0]
