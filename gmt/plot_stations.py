@@ -393,22 +393,22 @@ def column_overlay(n, station_file, meta, plot):
                 search = meta['search'], cols = cols, \
                 header = n_header, automask = col_mask, \
                 mask_dist = meta['grd_mask_dist'])
+        p.clip(path = '%s/sim.modelpath_hr' % (meta['gmt_temp']), is_file = True)
         if meta['landmask']:
             # start clip - TODO: allow different resolutions including GSHHG
             p.clip(path = gmt.LINZ_COAST['150k'], is_file = True)
         p.overlay(grd_file, cpt_stations, dx = meta['stat_size'], \
-                dy = meta['stat_size'], crop_grd = mask, land_crop = False, \
+                dy = meta['stat_size'], land_crop = False, \
                 transparency = meta['transparency'])
         if meta['contours']:
             # use set increments if we have scaled the CPT
-            if cpt_stations == '%s/stations.cpt' % (swd):
-                interval = meta['cpt_tick'][n]
-            else:
-                interval = cpt_stations
+            #if cpt_stations == '%s/stations.cpt' % (swd):
+            #    interval = meta['cpt_tick'][n]
+            #else:
+            interval = cpt_stations
             p.contours(grd_file, interval = interval)
-        if meta['landmask']:
-            # apply clip to intermediate items
-            p.clip()
+        # apply clip to intermediate items
+        p.clip()
     # add locations to map
     p.sites(plot['sites'])
 
