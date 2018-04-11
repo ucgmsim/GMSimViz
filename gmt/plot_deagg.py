@@ -73,8 +73,8 @@ else:
 # bins to put data in
 bins_x = (np.arange(int(x_max / dx)) + 1) * dx
 bins_y = (np.arange(int((y_max - y_min) / dy)) + 1) * dy + y_min
-bins_z = np.array([-2, -1, -0.5, 0, 0.5, 1, \
-                   max(2, np.max(rrup_mag_e_c[:, 2]) + 1)])
+bins_z = np.array([-2, -1, -0.5, 0, 0.5, 1, 2, \
+                   max(3, np.max(rrup_mag_e_c[:, 2]) + 1)])
 
 # convert data into bin indexes
 rrup_mag_e_c[:, 0] = np.digitize(rrup_mag_e_c[:, 0], bins_x)
