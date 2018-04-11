@@ -20,6 +20,8 @@ import qcore.geo as geo
 import qcore.gmt as gmt
 import qcore.srf as srf
 import qcore.xyts as xyts
+# DEBUG
+import gmt
 
 MASTER = 0
 TILT_MIN = 40
@@ -307,6 +309,9 @@ def timeslice(job, meta):
 
     proj(True)
     p.basemap(road = None, highway = None, topo = gmt.TOPO_LOW)
+    if job['sim_time'] == -3:
+        p.topo(gmt.TOPO_LOW, cpt = gmt.CPTS['nztopo-grey1'], \
+                transparency = (1 - job['proportion']) * 100)
 
     # simulation domain
     if os.path.isfile('%s/xyts/corners.gmt' % (meta['wd'])):
@@ -527,16 +532,27 @@ def timeslice(job, meta):
         major = None
         minor = None
         categorical = False
+        cross_tick = None
         if job['overlay'] == 'pgv':
             major = meta['xyts_cpt_max'] / 5.
             minor = meta['xyts_cpt_max'] / 20.
+            cross_tick = meta['xyts_cpt_max'] / 20.
         elif job['overlay'][-2:] == '_s':
             categorical = True
+        elif job['overlay'] == 'liquefaction_p':
+            major = 0.12
+            minor = 0.03
+            cross_tick = 0.03
+        elif job['overlay'] == 'landslide_p':
+            major = 0.05
+            minor = 0.0125
+            cross_tick = 0.0125
         p.cpt_scale(PAGE_WIDTH / 2.0, scale_p, \
                 '%s/overlay/%s.cpt' % (meta['wd'], job['overlay']), \
                 length = SCALE_WIDTH, align = 'CT', dy = SCALE_PAD, \
                 thickness = SCALE_SIZE, label = job['cpt_label'], \
-                categorical = categorical, major = major, minor = minor)
+                categorical = categorical, major = major, minor = minor, \
+                cross_tick = cross_tick)
     # cpt label
     try:
         assert(cpt_label != '')
@@ -1070,6 +1086,7 @@ if len(sys.argv) > 1:
             for poi in poi_paths0:
                 if poi[1] > -44.5:
                     poi_paths.append([poi[0], poi[1]])
+            pause_frames_road = meta['t_frames']
             for i in xrange(meta['t_frames']):
                 scale_t = i / (meta['t_frames'] - 1.0)
                 over_t = 100 - 100 * scale_t
@@ -1078,16 +1095,15 @@ if len(sys.argv) > 1:
                         'transparency':over_t, 'overlay':args.path_files[0], \
                         'proportion':scale_t, 'subtitle':'Transport Network', \
                         'view':(poi_paths, 1.5, scale_t, poi_gm, 1.2)}, meta])
-            op_list.append(['DUP', frames2now + i, pause_frames])
-            frames2now = frames2now + meta['t_frames'] + pause_frames
+            op_list.append(['DUP', frames2now + i, pause_frames_road])
+            frames2now = frames2now + meta['t_frames'] + pause_frames_road
             # mid statuses
-            pause_frames_road = meta['t_frames']
             for i in xrange(1, len(args.path_files)):
                 if i == len(args.path_files) - 1:
                     pause_frames_road = pause_frames
                 elif int(os.path.basename(args.path_files[i]).split('_')[0]) \
                         > 29:
-                    pause_frame_road = meta['t_frames'] / 3
+                    pause_frames_road = meta['t_frames'] / 3
                 msg_list.append([timeslice, {'azimuth':azimuth, 'tilt':tilt, \
                         'scale_t':0, 'seq':frames2now, \
                         'sim_time':-3, 'transparency':0, \
