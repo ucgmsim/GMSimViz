@@ -20,8 +20,6 @@ import qcore.geo as geo
 import qcore.gmt as gmt
 import qcore.srf as srf
 import qcore.xyts as xyts
-# DEBUG
-import gmt
 
 MASTER = 0
 TILT_MIN = 40
@@ -1217,8 +1215,6 @@ if len(sys.argv) > 1:
     reports = comm.gather(None, root = MPI.ROOT)
     # stop mpi
     comm.Disconnect()
-    # fix up results
-    #sys.exit(0)
 
     # output files prefix
     basename = os.path.splitext(os.path.basename(args.srf_file))[0]
