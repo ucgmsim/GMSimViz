@@ -14,20 +14,22 @@ from argparse import ArgumentParser
 from io import BytesIO
 import math
 import os
-from subprocess import call
+from tempfile import mkstemp
 
 import numpy as np
+# requires fairly new version of numpy for axis parameter in np.unique
+npv = map(int, np.__version__.split('.'))
+if npv[0] < 1 or (npv[0] == 1 and npv[1] < 13):
+    print('requires numpy >= 1.13')
+    exit(1)
 
 from qcore import gmt
-# DEBUG
-import gmt
 
-# TODO: automate defaults
-dx = 10
-dy = 0.25
-x_len = 4.5
-y_len = 4.0
-z_len = 2.5
+X_LEN = 4.5
+Y_LEN = 4.0
+Z_LEN = 2.5
+EPSILON_COLOURS = ['215/38/3', '252/94/62', '252/180/158', '254/220/210', \
+                   '217/217/255', '151/151/255', '0/0/255', '0/0/170']
 
 ###
 ### LOAD DATA
@@ -38,25 +40,50 @@ args = parser.parse_args()
 assert(os.path.exists(args.deagg_file))
 rrup_mag_e_c = np.loadtxt(args.deagg_file, skiprows = 4, usecols = (2, 1, 5, 4))
 
+
+###
+### PROCESS DATA
+###
+# TODO: automate, logic from given original code missing
+dx = 10
+dy = 0.25
+
+# x axis
 x_min = 0
 x_max = int(math.ceil(max(rrup_mag_e_c[:, 0] / float(dx)))) * dx
-x_inc = 20
+if x_max < 115:
+    x_inc = 10
+elif x_max < 225:
+    x_inc = 20
+elif x_max < 335:
+    x_inc = 30
+elif x_max < 445:
+    x_tick = 40
+else:
+    x_inc = 50
 
+# y axis
 y_min = 5
 y_max = 9
-y_inc = 0.5
+if y_max - y_min < 5:
+    y_inc = 0.5
+else:
+    y_inc = 1.0
 
 # bins to put data in
 bins_x = (np.arange(int(x_max / dx)) + 1) * dx
 bins_y = (np.arange(int((y_max - y_min) / dy)) + 1) * dy + y_min
 bins_z = np.array([-2, -1, -0.5, 0, 0.5, 1, \
                    max(2, np.max(rrup_mag_e_c[:, 2]) + 1)])
+
 # convert data into bin indexes
 rrup_mag_e_c[:, 0] = np.digitize(rrup_mag_e_c[:, 0], bins_x)
 rrup_mag_e_c[:, 1] = np.digitize(rrup_mag_e_c[:, 1], bins_y)
 rrup_mag_e_c[:, 2] = np.digitize(rrup_mag_e_c[:, 2], bins_z)
+
 # combine duplicate bins
-blocks = np.zeros(tuple(map(int, np.append(np.max(rrup_mag_e_c[:, :3], axis = 0) + 1, 2))))
+blocks = np.zeros(tuple(map(int, \
+                  np.append(np.max(rrup_mag_e_c[:, :3], axis = 0) + 1, 2))))
 unique = np.unique(rrup_mag_e_c[:, :3], axis = 0)
 for rrup, mag, e in unique[unique[:, 2].argsort()]:
     # get base
@@ -69,13 +96,25 @@ for rrup, mag, e in unique[unique[:, 2].argsort()]:
     if value:
         blocks[int(rrup), int(mag), int(e), 0] = \
                 value + blocks[int(rrup), int(mag), int(e), 1]
+del rrup_mag_e_c, unique
+
 # move indexes into array
-# top base
-blocks = blocks.reshape((-1, 2))
+top, base = blocks.reshape((-1, 2)).T
+cpt = np.tile(np.arange(blocks.shape[2]), np.prod(blocks.shape[0:2]))
+y = np.tile(np.repeat(np.arange(blocks.shape[1]) * dy + 0.5 * dy + y_min, \
+                      blocks.shape[2]), blocks.shape[0])
+x = np.repeat(np.arange(blocks.shape[0]) * dx + 0.5 * dx, \
+              np.prod(blocks.shape[1:3]))
+gmt_rows = np.column_stack((x, y, top, cpt, base))
+del x, y, top, cpt, base
+# don't plot if top == 0
+gmt_rows = np.delete(gmt_rows, \
+                     np.argwhere(gmt_rows[:, 2] == 0).flatten(), axis = 0)
 
 # z axis depends on max contribution tower
 z_inc = int(math.ceil(np.max(np.add.reduce(blocks, axis = 2)) / 5.0))
 z_max = z_inc * 5
+del blocks
 
 ###
 ### PLOT AXES
@@ -84,7 +123,7 @@ p = gmt.GMTPlot('deagg.ps')
 os.remove('gmt.conf')
 # setup axes
 p.spacial('X', (x_min, x_max, y_min, y_max, 0, z_max), \
-        sizing = '%si/%si' % (x_len, y_len), z = 'Z%si' % (z_len), \
+        sizing = '%si/%si' % (X_LEN, Y_LEN), z = 'Z%si' % (Z_LEN), \
         p = '150/30', x_shift = '2', y_shift = 2)
 p.ticks(axis = 'x', major = x_inc, minor = None, \
         label = 'Rupture Distance (km)', sides = 's')
@@ -104,19 +143,16 @@ p.path('\n>\n'.join(gridlines), is_file = False, width = '0.5p', z = True)
 ###
 ### PLOT CONTENTS
 ###
-symbol = 'o%si/%sib' % (float(x_len) / len(bins_x) * 0.9, \
-                        float(y_len) / len(bins_x) * 0.9)
-
-x = np.arange(blocks.shape[0]) * dx + 0.5 * dx
-y = np.arange(blocks.shape[1]) * dy + 0.5 * dy + y_min
-elayer = np.column_stack((np.repeat(x, len(y)), np.tile(y, len(x)), blocks[:, :, -2].flatten(), np.zeros(len(x) * len(y))))
+cpt = mkstemp(suffix = '.cpt')[1]
+gmt.makecpt(','.join(EPSILON_COLOURS), cpt, \
+            0, len(EPSILON_COLOURS), inc = 1)
 gmt_in = BytesIO()
-np.savetxt(gmt_in, elayer, fmt = '%.6f')
-print gmt_in.getvalue()
-# X Y TOP CPT BASE
-#p.points(gmt_in.getvalue(), is_file = False, shape = symbol, size = None, z = True, fill = 'blue', line = None)
-p.points('85 8.125 33 -10000 11\n85 8.125 11 0 0', is_file = False, shape = symbol, z = True, size = None, line = None, cpt = '/home/nesi00213/PlottingData/cpt/nz_topo_grey1.cpt')
-print symbol
+np.savetxt(gmt_in, gmt_rows, fmt = '%.6f')
+p.points(gmt_in.getvalue(), is_file = False, z = True, line = None, \
+        shape = 'o', size = '%si/%sib' % (float(X_LEN) / len(bins_x) * 0.9, \
+                                          float(Y_LEN) / len(bins_x) * 0.9), \
+        cpt = cpt)
+os.remove(cpt)
 
 ###
 ### SAVE
