@@ -306,9 +306,9 @@ def timeslice(job, meta):
                 fill = 'p30+bdarkbrown+fbrown+r%s' % (meta['dpi']))
 
     proj(True)
-    p.basemap(road = None, highway = None, topo = gmt.TOPO_LOW)
+    p.basemap()
     if job['sim_time'] == -3:
-        p.topo(gmt.TOPO_LOW, cpt = gmt.CPTS['nztopo-grey1'], \
+        p.topo(gmt.TOPO_HIGH, cpt = gmt.CPTS['nztopo-grey1'], \
                 transparency = (1 - job['proportion']) * 100)
 
     # simulation domain
