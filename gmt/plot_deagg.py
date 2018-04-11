@@ -149,8 +149,8 @@ gmt.makecpt(','.join(EPSILON_COLOURS), cpt, \
 gmt_in = BytesIO()
 np.savetxt(gmt_in, gmt_rows, fmt = '%.6f')
 p.points(gmt_in.getvalue(), is_file = False, z = True, line = None, \
-        shape = 'o', size = '%si/%sib' % (float(X_LEN) / len(bins_x) * 0.9, \
-                                          float(Y_LEN) / len(bins_x) * 0.9), \
+        shape = 'o', size = '%si/%sib' % (float(X_LEN) / len(bins_x) - 0.05, \
+                                          float(Y_LEN) / len(bins_x) - 0.05), \
         cpt = cpt)
 os.remove(cpt)
 
