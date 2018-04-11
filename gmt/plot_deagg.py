@@ -82,6 +82,7 @@ rrup_mag_e_c[:, 1] = np.digitize(rrup_mag_e_c[:, 1], bins_y)
 rrup_mag_e_c[:, 2] = np.digitize(rrup_mag_e_c[:, 2], bins_z)
 
 # combine duplicate bins
+# TODO: change datatype to int?
 blocks = np.zeros(tuple(map(int, \
                   np.append(np.max(rrup_mag_e_c[:, :3], axis = 0) + 1, 2))))
 unique = np.unique(rrup_mag_e_c[:, :3], axis = 0)
@@ -148,10 +149,10 @@ gmt.makecpt(','.join(EPSILON_COLOURS), cpt, \
             0, len(EPSILON_COLOURS), inc = 1)
 gmt_in = BytesIO()
 np.savetxt(gmt_in, gmt_rows, fmt = '%.6f')
-p.points(gmt_in.getvalue(), is_file = False, z = True, line = None, \
+p.points(gmt_in.getvalue(), is_file = False, z = True, line = 'black', \
         shape = 'o', size = '%si/%sib' % (float(X_LEN) / len(bins_x) - 0.05, \
                                           float(Y_LEN) / len(bins_x) - 0.05), \
-        cpt = cpt)
+        line_thickness = '0.5p', cpt = cpt)
 os.remove(cpt)
 
 ###
