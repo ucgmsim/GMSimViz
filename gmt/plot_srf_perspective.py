@@ -317,7 +317,6 @@ def timeslice(job, meta):
     if os.path.isfile('%s/xyts/corners.gmt' % (meta['wd'])):
         p.path('%s/xyts/corners.gmt' % (meta['wd']), close = True, \
                 width = '2p', split = '-', colour = '60/60/60')
-    p.sites(gmt.sites_major)
 
     # srf plane outline
     p.path(meta['gmt_bottom'], is_file = False, colour = 'black@30', width = '1p', \
@@ -445,7 +444,8 @@ def timeslice(job, meta):
                     crop_grd = '%s/plane_%d_mask_xy.grd' % (swd, s))
     # ground motion must be in geographic projection due to 3D Z scaling
     proj(True, shift = False)
-    # srf hypocentre above slip, below ground motion
+    # site labels and srf hypocentre above slip, below ground motion
+    p.sites(gmt.sites_major)
     p.points('%s %s %s\n' % (meta['hlon'], meta['hlat'], meta['hdepth']), \
             is_file = False, shape = 'a', size = 0.35, line = 'black', \
             line_thickness = '1p', z = True, clip = False)
