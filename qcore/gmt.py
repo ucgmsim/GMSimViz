@@ -2042,7 +2042,8 @@ class GMTPlot:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
-    def topo(self, topo_file, topo_file_illu = None, cpt = 'gray'):
+    def topo(self, topo_file, topo_file_illu = None, cpt = 'gray', \
+            transparency = 0):
         """
         Creates a topography surface using topo files and a colour palette.
         topo_file: file containing topography data
@@ -2062,6 +2063,8 @@ class GMTPlot:
         # Q here makes NaN transparent
         cmd = [GMT, 'grdimage', topo_file, '-I%s' % (topo_file_illu), \
                 '-C%s' % (cpt), '-J', '-R', '-K', '-O', '-Q', self.z]
+        if transparency > 0:
+            cmd.append('-t%s' % (transparency))
         if self.p:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
@@ -2161,7 +2164,8 @@ class GMTPlot:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
-    def ticks(self, major = '60m', minor = '30m', sides = 'ws'):
+    def ticks(self, axis = None, major = '60m', minor = '30m', \
+            gridline = None, sides = 'ws', label = None):
         """
         Draws map ticks around the edge.
         Note if map doesn't have a left or bottom margin, these will be cut.
@@ -2178,7 +2182,12 @@ class GMTPlot:
                 sides = '%s%s' % (sides, direction.lower())
 
         cmd = [GMT, 'psbasemap', '-J', '-R', '-K', '-O', self.z, \
-                '-Ba%sf%s%s' % (major, minor, sides)]
+                '-B%s%s%s%s%s' % (str(axis) * (axis != None), \
+                    'a%s' % (str(major)) * (major != None), \
+                    'f%s' % (str(minor)) * (minor != None), \
+                    'g%s' % (str(gridline)) * (gridline != None), \
+                    '+l%s' % (str(label)) * (label != None))]
+        cmd.append('-B%s' % (sides))
         if self.p:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
@@ -2476,7 +2485,7 @@ class GMTPlot:
                     length, thickness, '+h' * horiz, dx, dy)
             if arrow_f or arrow_b:
                 pos_spec = '%s+e%s%s' % \
-                        (pos_spec, 'f' * arrow_f, 'b' * arrow_b)
+                        (pos_spec, 'f' * int(arrow_f), 'b' * int(arrow_b))
             if align != None:
                 pos_spec = '%s+j%s' % (pos_spec, align)
         cmd.append(pos_spec)
