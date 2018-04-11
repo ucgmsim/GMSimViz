@@ -58,7 +58,7 @@ elif x_max < 225:
 elif x_max < 335:
     x_inc = 30
 elif x_max < 445:
-    x_tick = 40
+    x_inc = 40
 else:
     x_inc = 50
 
