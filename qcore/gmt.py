@@ -2485,7 +2485,7 @@ class GMTPlot:
                     length, thickness, '+h' * horiz, dx, dy)
             if arrow_f or arrow_b:
                 pos_spec = '%s+e%s%s' % \
-                        (pos_spec, 'f' * arrow_f, 'b' * arrow_b)
+                        (pos_spec, 'f' * int(arrow_f), 'b' * int(arrow_b))
             if align != None:
                 pos_spec = '%s+j%s' % (pos_spec, align)
         cmd.append(pos_spec)
