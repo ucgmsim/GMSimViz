@@ -381,6 +381,7 @@ def timeslice(job, meta):
                     * z_scale * math.cos(math.radians(job['tilt']))
             xyv[:, 2] = np.memmap('%s/sliptss_%d.bin' % (meta['wd'], i), \
                     dtype = 'f', shape = (len(subfaults), meta['sr_len']))[:, srt]
+            del subfaults
             # region
             x_min, y_min = np.min(xyv[:, :2], axis = 0)
             x_max, y_max = np.max(xyv[:, :2], axis = 0)
@@ -412,6 +413,7 @@ def timeslice(job, meta):
             p2 = xyv[meta['planes'][i]['nstrike'] + 1, :2]
             search = math.sqrt(abs(xyv[0, 0] - p2[0]) ** 2 \
                     + abs(xyv[0, 1] - p2[1]) ** 2) * 1.1
+            del xyv
             rc = gmt.table2grd('%s/slip_%d.bin' % (swd, i), \
                     '%s/slip_%d.grd' % (swd, i), \
                     file_input = True, grd_type = 'nearneighbor', \
@@ -805,6 +807,7 @@ if len(sys.argv) > 1:
     meta['srf_dt'] = ddt
     meta['sr_len'] = ts_sr
     meta['n_plane'] = len(slip_pos)
+    del slip_pos, slip_rate
     # prepare cpt
     meta['srf_wd'] = os.path.join(gmt_temp, 'srf')
     if not os.path.isdir(meta['srf_wd']):
@@ -812,6 +815,7 @@ if len(sys.argv) > 1:
     seg_slips = srf.srf2llv_py(args.srf_file, value = 'slip')
     all_vs = np.concatenate((seg_slips))[:, -1]
     percentile = np.percentile(all_vs, 95)
+    del seg_slips, all_vs
     # round percentile significant digits for colour pallete
     if percentile < 1000:
         # 1 sf
