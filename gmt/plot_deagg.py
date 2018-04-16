@@ -23,6 +23,7 @@ if npv[0] < 1 or (npv[0] == 1 and npv[1] < 13):
     exit(1)
 
 from qcore import gmt
+import gmt
 
 X_LEN = 4.5
 Y_LEN = 4.0
@@ -127,12 +128,10 @@ os.remove('gmt.conf')
 p.spacial('X', (0, x_max, y_min, y_max, 0, z_max), \
         sizing = '%si/%si' % (X_LEN, Y_LEN), z = 'Z%si' % (Z_LEN), \
         p = '%s/%s' % (180 - ROT, 90 - TILT), x_shift = '2', y_shift = 2)
-p.ticks(axis = 'x', major = x_inc, minor = None, \
-        label = 'Rupture Distance (km)', sides = 's')
-p.ticks(axis = 'y', major = y_inc, minor = None, \
-        label = 'Magnitude', sides = 'e')
-p.ticks(axis = 'z', major = z_inc, minor = None, gridline = z_inc, \
-        label = '%Contribution', sides = 'z')
+p.ticks_multi(['xa%s+lRupture Distance (km)' % (x_inc), \
+               'ya%s+lMagnitude' % (y_inc), \
+               'za%sg%s+l%%Contribution' % (z_inc, z_inc), \
+               'wESnZ' ])
 # GMT won't plot gridlines without box, manually add gridlines
 gridlines = []
 for z in xrange(z_inc, z_max + z_inc, z_inc):
@@ -158,13 +157,13 @@ p.points(gmt_in.getvalue(), is_file = False, z = True, line = 'black', \
 ###
 ### PLOT LEGEND
 ###
-# x y diffs from start to end
+# x y diffs from start to end, alternatively run multiple GMT commands with -X
 angle = math.radians(ROT)
 x_end = (X_LEN + math.cos(angle) * math.sin(angle) \
                  * (Y_LEN - math.tan(angle) * X_LEN)) / X_LEN
 y_end = math.tan(angle) * x_end * X_LEN * (y_max - y_min) / Y_LEN
 x_end *= x_max
-# x y diffs at start
+# x y diffs at start, alternatively set -D(dz)
 dip = (LEGEND_SPACE) / math.cos(math.radians(TILT)) + math.sin(angle) * X_LEN
 x0 = dip * math.sin(angle) * (x_max / X_LEN)
 y0 = y_min - dip * math.cos(angle) * ((y_max - y_min) / Y_LEN)
@@ -178,6 +177,7 @@ p.points('\n'.join(legend_boxes), is_file = False, z = True, line = 'black', \
         shape = 'o', size = '%si/%sib0' % (Z_LEN / 10.0, Z_LEN / 10.0), \
         line_thickness = '0.5p', cpt = cpt, clip = False)
 os.remove(cpt)
+# text of legend
 
 ###
 ### SAVE
