@@ -13,7 +13,8 @@ from argparse import ArgumentParser
 from io import BytesIO
 import math
 import os
-from tempfile import mkstemp
+from shutil import rmtree
+from tempfile import mkdtemp
 
 import numpy as np
 # requires fairly new version of numpy for axis parameter in np.unique
@@ -39,8 +40,20 @@ EPSILON_COLOURS = ['215/38/3', '252/94/62', '252/180/158', '254/220/210', \
 ###
 parser = ArgumentParser()
 parser.add_argument('deagg_file', help = 'deagg file to plot')
+parser.add_argument('--out-name', help = 'basename excluding extention', \
+                    default = 'deagg')
+parser.add_argument('--out-dir', help = 'directory to store output', \
+                    default = '.')
+parser.add_argument('--dpi', help = 'dpi of raster output', \
+                    type = int, default = 300)
 args = parser.parse_args()
 assert(os.path.exists(args.deagg_file))
+if not os.path.exists(args.out_dir):
+    try:
+        os.makedirs(args.out_dir)
+    except OSError:
+        if not os.path.isdir(args.out_dir):
+            raise
 rrup_mag_e_c = np.loadtxt(args.deagg_file, skiprows = 4, usecols = (2, 1, 5, 4))
 
 
@@ -122,8 +135,9 @@ del blocks
 ###
 ### PLOT AXES
 ###
-p = gmt.GMTPlot('deagg.ps')
-os.remove('gmt.conf')
+wd = mkdtemp()
+p = gmt.GMTPlot('%s.ps' % os.path.join(wd, args.out_name))
+os.remove(os.path.join(wd, 'gmt.conf'))
 # setup axes
 p.spacial('X', (0, x_max, y_min, y_max, 0, z_max), \
         sizing = '%si/%si' % (X_LEN, Y_LEN), z = 'Z%si' % (Z_LEN), \
@@ -144,9 +158,9 @@ p.path('\n>\n'.join(gridlines), is_file = False, width = '0.5p', z = True)
 ###
 ### PLOT CONTENTS
 ###
-cpt = mkstemp(suffix = '.cpt')[1]
+cpt = os.path.join(wd, 'epsilon.cpt')
 gmt.makecpt(','.join(EPSILON_COLOURS), cpt, \
-            0, len(EPSILON_COLOURS), inc = 1)
+            0, len(EPSILON_COLOURS), inc = 1, wd = wd)
 gmt_in = BytesIO()
 np.savetxt(gmt_in, gmt_rows, fmt = '%.6f')
 p.points(gmt_in.getvalue(), is_file = False, z = True, line = 'black', \
@@ -160,9 +174,8 @@ p.points(gmt_in.getvalue(), is_file = False, z = True, line = 'black', \
 # x y diffs from start to end, alternatively run multiple GMT commands with -X
 angle = math.radians(ROT)
 x_end = (X_LEN + math.cos(angle) * math.sin(angle) \
-                 * (Y_LEN - math.tan(angle) * X_LEN)) / X_LEN
-y_end = math.tan(angle) * x_end * X_LEN * (y_max - y_min) / Y_LEN
-x_end *= x_max
+                 * (Y_LEN - math.tan(angle) * X_LEN)) / X_LEN * x_max
+y_end = math.tan(angle) * x_end / x_max * X_LEN * (y_max - y_min) / Y_LEN
 # x y diffs at start, alternatively set -D(dz)
 dip = (LEGEND_SPACE) / math.cos(math.radians(TILT)) + math.sin(angle) * X_LEN
 x0 = dip * math.sin(angle) * (x_max / X_LEN)
@@ -176,11 +189,12 @@ for i, x in enumerate(np.arange(0, 1.01, 1.0 / (len(EPSILON_COLOURS) - 1.0))):
 p.points('\n'.join(legend_boxes), is_file = False, z = True, line = 'black', \
         shape = 'o', size = '%si/%sib0' % (Z_LEN / 10.0, Z_LEN / 10.0), \
         line_thickness = '0.5p', cpt = cpt, clip = False)
-os.remove(cpt)
 # text of legend
 
 ###
 ### SAVE
 ###
 p.finalise()
-p.png(portrait = True, background = 'white', dpi = 300)
+p.png(portrait = True, background = 'white', \
+      dpi = args.dpi, out_dir = args.out_dir)
+rmtree(wd)
