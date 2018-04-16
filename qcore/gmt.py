@@ -2235,6 +2235,19 @@ class GMTPlot:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
 
+    def ticks_multi(self, b_specs):
+        """
+        Plot axes by giving raw GMT -B parameters in list.
+        b_specs: list of parameters to -B for plotting axes.
+        """
+        cmd = [GMT, 'psbasemap', '-J', '-R', '-K', '-O', self.z]
+        for spec in b_specs:
+            cmd.append('-B%s' % (spec))
+
+        if self.p:
+            cmd.append('-p')
+        Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+
     def points(self, in_data, is_file = True, shape = 't', size = 0.08, \
             fill = None, line = 'white', line_thickness = '0.8p', \
             cpt = None, cols = None, header = 0, z = False, clip = True):
