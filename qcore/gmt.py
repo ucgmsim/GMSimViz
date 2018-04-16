@@ -3115,7 +3115,7 @@ class GMTPlot:
 
     def png(self, out_dir = None, dpi = 96, clip = True, background = None, \
                 margin = [0], size = None, portrait = False, out_name = None, \
-                downscale = 1):
+                downscale = 1, create_dirs = False):
         """
         Renders a PNG from the PS.
         Unfortunately relatively slow.
@@ -3130,6 +3130,7 @@ class GMTPlot:
         portrait: rotate page right way up
         out_name: filename excluding prefix, default is same as input
         downscale: ghostscript DownScaleFactor (png | tiff)
+        create_dirs: allow creation of output directory if it does not exist
         """
         cmd = [GMT, psconvert, self.pspath, '-TG', '-E%s' % (dpi), \
                 '-Qg4', '-Qt4']
@@ -3143,8 +3144,24 @@ class GMTPlot:
                     str(size) * (size != None)))
         if portrait:
             cmd.append('-P')
+
+        # default output is the same location and basename as postscript
+        dirname = ''
         if out_name != None:
             cmd.append('-F%s' % (out_name))
+            dirname = os.path.dirname(out_name)
         elif out_dir != None:
             cmd.append('-D%s' % (os.path.abspath(out_dir)))
+            dirname = out_dir
+        # create output directory if it doesn't exist
+        if dirname != '' and not os.path.isdir(dirname):
+            if create_dirs:
+                try:
+                    os.makedirs(dirname)
+                except OSError:
+                    if not os.path.exists(dirname):
+                        raise
+            else:
+                raise OSError('out_dir does not exist: %s' % (dirname))
+
         Popen(cmd, cwd = self.wd).wait()
