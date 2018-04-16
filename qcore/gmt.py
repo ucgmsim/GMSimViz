@@ -3145,11 +3145,6 @@ class GMTPlot:
             cmd.append('-P')
         if out_name != None:
             cmd.append('-F%s' % (out_name))
-        else:
-            # default to output in same directory
-            if out_dir == None:
-                out_dir = os.path.dirname(self.pspath)
-            if out_dir == '':
-                out_dir = '.'
-            cmd.append('-D%s' % (out_dir))
+        elif out_dir != None:
+            cmd.append('-D%s' % (os.path.abspath(out_dir)))
         Popen(cmd, cwd = self.wd).wait()
