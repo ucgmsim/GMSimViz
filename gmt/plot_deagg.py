@@ -4,9 +4,7 @@ Plots deagg data.
 
 Requires:
 numpy >= 1.13 for numpy.unique(axis)
-
-TODO:
-automation in discretisation
+gmt from qcore
 """
 
 from argparse import ArgumentParser
@@ -24,7 +22,6 @@ if npv[0] < 1 or (npv[0] == 1 and npv[1] < 13):
     exit(1)
 
 from qcore import gmt
-import gmt
 
 X_LEN = 4.5
 Y_LEN = 4.0
@@ -32,8 +29,11 @@ Z_LEN = 2.5
 ROT = 30
 TILT = 60
 LEGEND_SPACE = 0.7
+LEGEND_EXPAND = 1.25
 EPSILON_COLOURS = ['215/38/3', '252/94/62', '252/180/158', '254/220/210', \
                    '217/217/255', '151/151/255', '0/0/255', '0/0/170']
+EPSILON_LABELS = ['@~e@~<-2', '-2@~e@~<-1', '-1<@~e@~<-0.5', '-0.5<@~e@~<0', \
+                  '0<@~e@~<0.5', '0.5<@~e@~<1', '1<@~e@~<2', '2<@~e@~']
 
 ###
 ### LOAD DATA
@@ -46,8 +46,13 @@ parser.add_argument('--out-dir', help = 'directory to store output', \
                     default = '.')
 parser.add_argument('--dpi', help = 'dpi of raster output', \
                     type = int, default = 300)
+parser.add_argument('--mag-min', help = 'minimum magnitude', \
+                    type = float, default = 5.0)
+parser.add_argument('--mag-max', help = 'maximum magnitude', \
+                    type = float, default = 9.0)
 args = parser.parse_args()
 assert(os.path.exists(args.deagg_file))
+assert(args.mag_min < args.mag_max)
 if not os.path.exists(args.out_dir):
     try:
         os.makedirs(args.out_dir)
@@ -60,12 +65,8 @@ rrup_mag_e_c = np.loadtxt(args.deagg_file, skiprows = 4, usecols = (2, 1, 5, 4))
 ###
 ### PROCESS DATA
 ###
-# TODO: automate, logic from given original code missing
-dx = 10
-dy = 0.25
-
 # x axis
-x_max = int(math.ceil(max(rrup_mag_e_c[:, 0] / float(dx)))) * dx
+x_max = max(rrup_mag_e_c[:, 0])
 if x_max < 115:
     x_inc = 10
 elif x_max < 225:
@@ -76,14 +77,17 @@ elif x_max < 445:
     x_inc = 40
 else:
     x_inc = 50
+dx = x_inc / 2.0
+x_max = math.ceil(x_max / float(dx)) * dx
 
 # y axis
-y_min = 5
-y_max = 9
+y_min = args.mag_min
+y_max = args.mag_max
 if y_max - y_min < 5:
     y_inc = 0.5
 else:
     y_inc = 1.0
+dy = y_inc / 2.0
 
 # bins to put data in
 bins_x = (np.arange(int(x_max / dx)) + 1) * dx
@@ -97,7 +101,6 @@ rrup_mag_e_c[:, 1] = np.digitize(rrup_mag_e_c[:, 1], bins_y)
 rrup_mag_e_c[:, 2] = np.digitize(rrup_mag_e_c[:, 2], bins_z)
 
 # combine duplicate bins
-# TODO: change datatype to int?
 blocks = np.zeros(tuple(map(int, \
                   np.append(np.max(rrup_mag_e_c[:, :3], axis = 0) + 1, 2))))
 unique = np.unique(rrup_mag_e_c[:, :3], axis = 0)
@@ -141,12 +144,12 @@ os.remove(os.path.join(wd, 'gmt.conf'))
 # setup axes
 p.spacial('X', (0, x_max, y_min, y_max, 0, z_max), \
         sizing = '%si/%si' % (X_LEN, Y_LEN), z = 'Z%si' % (Z_LEN), \
-        p = '%s/%s' % (180 - ROT, 90 - TILT), x_shift = '2', y_shift = 2)
+        p = '%s/%s' % (180 - ROT, 90 - TILT), x_shift = '5', y_shift = 5)
 p.ticks_multi(['xa%s+lRupture Distance (km)' % (x_inc), \
                'ya%s+lMagnitude' % (y_inc), \
                'za%sg%s+l%%Contribution' % (z_inc, z_inc), \
                'wESnZ' ])
-# GMT won't plot gridlines without box, manually add gridlines
+# GMT will not plot gridlines without box, manually add gridlines
 gridlines = []
 for z in xrange(z_inc, z_max + z_inc, z_inc):
     gridlines.append('0 %s %s\n0 %s %s\n%s %s %s' \
@@ -173,28 +176,38 @@ p.points(gmt_in.getvalue(), is_file = False, z = True, line = 'black', \
 ###
 # x y diffs from start to end, alternatively run multiple GMT commands with -X
 angle = math.radians(ROT)
+map_width = math.cos(angle) * X_LEN + math.sin(angle) * Y_LEN
 x_end = (X_LEN + math.cos(angle) * math.sin(angle) \
-                 * (Y_LEN - math.tan(angle) * X_LEN)) / X_LEN * x_max
+                 * (Y_LEN - math.tan(angle) * X_LEN)) / X_LEN \
+                 * x_max * LEGEND_EXPAND
 y_end = math.tan(angle) * x_end / x_max * X_LEN * (y_max - y_min) / Y_LEN
 # x y diffs at start, alternatively set -D(dz)
-dip = (LEGEND_SPACE) / math.cos(math.radians(TILT)) + math.sin(angle) * X_LEN
-x0 = dip * math.sin(angle) * (x_max / X_LEN)
-y0 = y_min - dip * math.cos(angle) * ((y_max - y_min) / Y_LEN)
-# legend cube definitions
+x_shift = map_width * (LEGEND_EXPAND - 1) * -0.5
+y_shift = (LEGEND_SPACE) / math.cos(math.radians(TILT)) \
+          + X_LEN * math.sin(angle)
+x0 = (y_shift * math.sin(angle) + x_shift * math.cos(angle)) * (x_max / X_LEN)
+y0 = y_min + (-y_shift * math.cos(angle) + x_shift * math.sin(angle)) \
+             * ((y_max - y_min) / Y_LEN)
+# legend definitions
 legend_boxes = []
+legend_labels = []
 for i, x in enumerate(np.arange(0, 1.01, 1.0 / (len(EPSILON_COLOURS) - 1.0))):
     legend_boxes.append('%s %s %s %s' % (x0 + x * x_end, y0 + x * y_end, \
                                          z_inc / 2.0, i))
-# cubes of legend
+    legend_labels.append('%s 0 %s' % (x, EPSILON_LABELS[i]))
+# cubes and labels of legend
 p.points('\n'.join(legend_boxes), is_file = False, z = True, line = 'black', \
         shape = 'o', size = '%si/%sib0' % (Z_LEN / 10.0, Z_LEN / 10.0), \
         line_thickness = '0.5p', cpt = cpt, clip = False)
-# text of legend
+p.spacial('X', (0, 1, 0, 1), sizing = '%si/1i' % (map_width * LEGEND_EXPAND), \
+          x_shift = '%si' % (x_shift), \
+          y_shift = '-%si' % (LEGEND_SPACE + 0.2))
+p.text_multi('\n'.join(legend_labels), is_file = False, justify = 'CT')
 
 ###
 ### SAVE
 ###
 p.finalise()
 p.png(portrait = True, background = 'white', \
-      dpi = args.dpi, out_dir = args.out_dir)
+      dpi = args.dpi, out_dir = args.out_dir, margin = [0.618, 1])
 rmtree(wd)
