@@ -1896,6 +1896,49 @@ class GMTPlot:
         tproc.communicate('%s %s %s\n' % (x, y, text))
         tproc.wait()
 
+    def text_multi(self, in_data, is_file = False, dx = 0, dy = 0, \
+            clip = False, angle = None, font = None, justify = None, \
+            fill = None):
+        """
+        Version of `text` where X and Y positions must be within input data.
+        in_data: file or string containing columns x, y, [options,] text
+        is_file: True if in_data is a filepath, False if given as string
+        dx: offset positions in X direction
+        dy: offset positions in Y direction
+        clip: True will hide contents outside region
+        angle*: font rotation
+        font*: font specification (size,fontname,colour)
+        justify*: text justification
+        fill: colour to fill text background
+        * can be an empty string (''), to read values from additional columns
+        """
+        cmd = [GMT, 'pstext', '-J', '-R', '-K', '-O', self.z]
+        if not clip:
+            cmd.append('-N')
+        if fill != None:
+            cmd.append('-G%s' % (fill))
+        if dx != 0 or dy != 0:
+            cmd.append('-D%s/%s' % (dx, dy))
+
+        # global font specification
+        text_spec = '-F'
+        if angle != None:
+            text_spec += '+a%s' % (angle)
+        if font != None:
+            text_spec += '+f%s' % (font)
+        if justify != None:
+            text_spec += '+j%s' % (justify)
+        if len(text_spec) > 2:
+            cmd.append(text_spec)
+
+        if is_file:
+            cmd.append(in_data)
+            Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+        else:
+            p = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
+            p.communicate(in_data)
+            p.wait()
+
     def sites(self, site_names, shape = 'c', size = 0.1, \
             width = 0.8, colour = 'black', \
             fill = 'gainsboro', transparency = 50, spacing = 0.08, \
@@ -2188,6 +2231,19 @@ class GMTPlot:
                     'g%s' % (str(gridline)) * (gridline != None), \
                     '+l%s' % (str(label)) * (label != None))]
         cmd.append('-B%s' % (sides))
+        if self.p:
+            cmd.append('-p')
+        Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
+
+    def ticks_multi(self, b_specs):
+        """
+        Plot axes by giving raw GMT -B parameters in list.
+        b_specs: list of parameters to -B for plotting axes.
+        """
+        cmd = [GMT, 'psbasemap', '-J', '-R', '-K', '-O', self.z]
+        for spec in b_specs:
+            cmd.append('-B%s' % (spec))
+
         if self.p:
             cmd.append('-p')
         Popen(cmd, stdout = self.psf, cwd = self.wd).wait()
@@ -3059,7 +3115,7 @@ class GMTPlot:
 
     def png(self, out_dir = None, dpi = 96, clip = True, background = None, \
                 margin = [0], size = None, portrait = False, out_name = None, \
-                downscale = 1):
+                downscale = 1, create_dirs = False):
         """
         Renders a PNG from the PS.
         Unfortunately relatively slow.
@@ -3074,6 +3130,7 @@ class GMTPlot:
         portrait: rotate page right way up
         out_name: filename excluding prefix, default is same as input
         downscale: ghostscript DownScaleFactor (png | tiff)
+        create_dirs: allow creation of output directory if it does not exist
         """
         cmd = [GMT, psconvert, self.pspath, '-TG', '-E%s' % (dpi), \
                 '-Qg4', '-Qt4']
@@ -3087,13 +3144,24 @@ class GMTPlot:
                     str(size) * (size != None)))
         if portrait:
             cmd.append('-P')
+
+        # default output is the same location and basename as postscript
+        dirname = ''
         if out_name != None:
             cmd.append('-F%s' % (out_name))
-        else:
-            # default to output in same directory
-            if out_dir == None:
-                out_dir = os.path.dirname(self.pspath)
-            if out_dir == '':
-                out_dir = '.'
-            cmd.append('-D%s' % (out_dir))
+            dirname = os.path.dirname(out_name)
+        elif out_dir != None:
+            cmd.append('-D%s' % (os.path.abspath(out_dir)))
+            dirname = out_dir
+        # create output directory if it doesn't exist
+        if dirname != '' and not os.path.isdir(dirname):
+            if create_dirs:
+                try:
+                    os.makedirs(dirname)
+                except OSError:
+                    if not os.path.exists(dirname):
+                        raise
+            else:
+                raise OSError('out_dir does not exist: %s' % (dirname))
+
         Popen(cmd, cwd = self.wd).wait()
