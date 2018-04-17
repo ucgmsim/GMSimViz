@@ -1,6 +1,8 @@
 # GMSimViz
 Automated 3D Visualization of Ground Motion Simulation with Generic Mapping Tools(GMT)
 
+----------				
+
 ## Table of contents
    * [Overview] (#overview)
    * [Installation] (#installation)
