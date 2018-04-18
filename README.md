@@ -15,12 +15,15 @@ Automated 3D Visualization of Ground Motion Simulation with Generic Mapping Tool
 ## Overview
 GMSimViz is an automation tool that produces an animated 3D visualization of geological faults, ground motion and other earthquake related data. It uses the Generic Mapping Tools(GMT) to create individual frames, and join them by FFmpeg to create a movie file.
 
+The full movie is available at https://youtu.be/qZkOTI4x_cc 
+
 ![](figures/kaikoura_fault_slip_distribution.jpg)
 ![](figures/kaikoura_ground_motion_hitting_wellington.jpg)
 ![](figures/kaikoura_peak_ground_velocity.jpg)
 ![](figures/kaikoura_landslide_susceptibility.jpg)
 ![](figures/kaikoura_liquefaction_susceptibility.jpg)
 ![](figures/kaikoura_transport_recovery.jpg)
+
 
 
 ## Dependencies
