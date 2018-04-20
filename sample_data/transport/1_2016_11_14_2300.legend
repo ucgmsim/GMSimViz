@@ -1,0 +1,16 @@
+# w-4i
+H 20p Helvetica-Bold 23:00 Day 1 (14 Nov 2016)
+G 1l
+L - Helvetica-Bold L Flights
+S 0.35i - 0.7i - 2p,orange,-. 0.8i @;grey;Temporary service@;;
+S 0.35i - 0.7i - 2p,green,-. 0.8i Regular service
+G 1l
+L - Helvetica-Bold L Ferries
+S 0.25i - 0.5i - 2p,red 0.6i No service
+S 0.25i - 0.5i - 2p,orange 0.6i @;grey;Restricted service@;;
+S 0.25i - 0.5i - 2p,green 0.6i @;grey;Full service@;;
+G 1l
+L - Helvetica-Bold L Roads
+S 0.25i - 0.5i - 2p,red 0.6i Closed
+S 0.25i - 0.5i - 2p,orange 0.6i Restricted
+S 0.25i - 0.5i - 2p,green 0.6i Open
