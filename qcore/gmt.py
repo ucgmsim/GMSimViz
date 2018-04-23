@@ -1870,7 +1870,7 @@ class GMTPlot:
 
     def text(self, x, y, text, dx = 0, dy = 0, align = 'CB', \
             size = '10p', font = 'Helvetica', colour = 'black', \
-            clip = False, box_fill = None, angle = 0):
+            clip = False, box_fill = None, angle = 0, z = False):
         """
         Add text to plot.
         x: x position
@@ -1888,17 +1888,22 @@ class GMTPlot:
         cmd = [GMT, 'pstext', '-J', '-R', '-K', '-O', self.z, \
                 '-D%s/%s' % (dx, dy), \
                 '-F+f%s,%s,%s+j%s+a%s' % (size, font, colour, align, angle)]
+        if self.p:
+            cmd.append('-p')
+        if z:
+            cmd.append('-Z')
         if not clip:
             cmd.append('-N')
         if box_fill != None:
             cmd.append('-G%s' % (box_fill))
+
         tproc = Popen(cmd, stdin = PIPE, stdout = self.psf, cwd = self.wd)
         tproc.communicate('%s %s %s\n' % (x, y, text))
         tproc.wait()
 
     def text_multi(self, in_data, is_file = False, dx = 0, dy = 0, \
             clip = False, angle = None, font = None, justify = None, \
-            fill = None):
+            fill = None, z = False):
         """
         Version of `text` where X and Y positions must be within input data.
         in_data: file or string containing columns x, y, [options,] text
@@ -1910,9 +1915,14 @@ class GMTPlot:
         font*: font specification (size,fontname,colour)
         justify*: text justification
         fill: colour to fill text background
+        z: True to include Z axis position in 3rd column
         * can be an empty string (''), to read values from additional columns
         """
         cmd = [GMT, 'pstext', '-J', '-R', '-K', '-O', self.z]
+        if self.p:
+            cmd.append('-p')
+        if z:
+            cmd.append('-Z')
         if not clip:
             cmd.append('-N')
         if fill != None:
