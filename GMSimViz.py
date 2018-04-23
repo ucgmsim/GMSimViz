@@ -1,4 +1,10 @@
 #!/usr/bin/env python2
+"""
+
+known issues:
+ - liquefaction/landslide etc. must contain values ~> 5% max of CPT
+   in simulation domain.
+"""
 
 from glob import glob
 import math
@@ -624,7 +630,7 @@ def timeslice(job, meta):
         legend_file = '%s.legend' % (os.path.splitext(job['overlay'])[0])
         if os.path.exists(legend_file):
             gmt.gmt_set(['FONT_ANNOT_PRIMARY', '12p'])
-            p.legend(legend_file, 'L', 'T', '4i', pos = 'rel', \
+            p.legend(os.path.abspath(legend_file), 'L', 'T', '4i', pos = 'rel', \
                     dx = 0.4, dy = + 0.2, transparency = job['transparency'], \
                     frame_fill = 'white@%s' % (65 + 0.35 * job['transparency']))
 
