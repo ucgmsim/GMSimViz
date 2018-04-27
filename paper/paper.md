@@ -8,9 +8,18 @@ authors:
 - name: Viktor Polak
    orcid: 0000-0000-0000-0000
    affiliation: "1"
+- name: Melody Zhu
+   orcid: 0000-0000-0000-0000
+   affiliation: "1"
+- name: Jason Motha
+   orcid: 0000-0000-0000-0000
+   affiliation: "1"
 - name: Brendon Bradley
    orcid: 0000-0000-0000-0000
    affiliation: 2
+- name: Hoby Razafindrakoto
+   orcid: 0000-0000-0000-0000
+   affiliation: 1
 affiliations:
 - name: QuakeCoRE, University of Canterbury, Christchurch, New Zealnd
    index: 1
@@ -32,3 +41,8 @@ GMSimViz extends the 3D support provided by GMT by using GMT datum to projection
 The output animation primarily contains the view of geological faults and ground motion. Users can optionally add map data for liquefaction and landslide probability as well as road network status data.
 
 The rendering process is computationally intensive, yet provides an excellent opportunity to compute in parallel. GMSimViz uses Message Passing Interface (MPI) to utilize a multi-core computer or High Performance Computing (HPC) facilities.
+
+# Acknowledgements
+Eric Thompson from USGS for collaborating with us and providing data and software relating liquefaction and landslide analysis.
+
+The Generic Mapping Tools team, especially Paul Wessel for GMT support and quickly fixing issues we ran into while using GMT.
