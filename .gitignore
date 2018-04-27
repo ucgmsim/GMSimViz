@@ -1,0 +1,7 @@
+build/
+dist/
+qcore.egg-info
+**/*.pyc
+**/*.coverage
+.cache/
+*.idea/
