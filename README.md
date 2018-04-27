@@ -73,5 +73,5 @@ For more details on parameters, run:
 
 The QuakeCoRE team would like to thank:
 
-USGS for providing data and software relating liquefaction and landslide analysis.\
+Eric Thompson from USGS for collaborating with us and providing data and software relating liquefaction and landslide analysis.\
 The Generic Mapping Tools team, especially Paul Wessel for GMT support and quickly fixing issues we ran into while using GMT.
