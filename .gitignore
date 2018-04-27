@@ -5,3 +5,4 @@ qcore.egg-info
 **/*.coverage
 .cache/
 *.idea/
+*.pyc
