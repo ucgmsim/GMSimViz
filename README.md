@@ -45,7 +45,10 @@ python2.7 python-numpy python-mpi4py python-h5py gmt ffmpeg
 
 At the time of writing, there is no bug-free version of GMT >= 5.2 for the scope of GMSimViz. It is expected that releases after 5.4.3 will work. Install development versions from the repository, instructions available at http://gmt.soest.hawaii.edu/projects/gmt/wiki/BuildingGMT . Works with r19922 but will likely break in the future with significant changes.
 
-The qcore library is installed with the following command in the repository root (requiring root priviledges). **Before installing**, edit the `qcore/config.json` file so that `GMT_DATA` has the full path to the resources folder.
+Download and extract the plotting resource zip file available at:\
+https://mega.nz/#!v9wHTTrI!WKE0qZAE8sC0dpKrpEx1skt4y8YBVeQhY6UlqGKlt6c
+
+The qcore library is installed with the following command in the repository root (requiring root priviledges). **Before installing**, edit the `qcore/config.json` file so that `GMT_DATA` has the full path to the resources folder from the step above.
 ```shell
 python2 setup.py install
 ```
