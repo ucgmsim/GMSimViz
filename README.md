@@ -65,8 +65,22 @@ Sample data is provided, it contains smaller data sets from multiple earthquakes
 ```shell
 ./GMSimViz.py sample_data/fault.srf -a -n28 --title "Sample Animation" --dpi 120 --downscale 8 -x sample_data/xyts.e3d --liquefaction-s sample_data/liquefaction_s.hdf5 --liquefaction-p sample_data/liquefaction_p.hdf5 --landslide-s sample_data/landslide_s.hdf5 --landslide-p sample_data/landslide_p.hdf5 --paths sample_data/transport
 ```
-Change `-n28` to the number of slave processes you want to use. If you don't have `python2` in your `env`, you may need to run with `python2 GMSimViz.py` or `python GMSimViz.py` instead of `./GMSimViz.py`. On a systems with 8 cores, `-n7` is a good choice.\
-For more details on parameters, run:
+If you don't have `python2` in your `env`, you may need to run with `python2 GMSimViz.py` or `python GMSimViz.py` instead of `./GMSimViz.py`.\
+Change `-n28` to the number of slave processes you want to use. On a systems with 8 cores, `-n7` is a good choice.\
+Most parameters in the above example are optional. Some provide more segments in the animation, others have defaults. Here is a summary of the sample command options:
+
+- `srf_file` first position, not optional. Path to a fault in standard rupture format containing the plane header (https://scec.usc.edu/scecpedia/Standard_Rupture_Format).
+- `-a` create animation instead of static image showing the slip distribution only. Will animate the progression of slip if no other input data are given.
+- `-n28` number of slave (worker) processes to start. 7 is a good choice for systems with only 8 cores. It is recommended to run on a machine with many cores.
+- `--title` title on the movie, the default is the basename of the SRF file.
+- `--dpi` dpi of output. Frames are 16 inches x 9 inches so 240 will produce 4k output.
+- `--downscale` render at higher resolution and then downscale. Prevents jitter in object positioning.
+- `-x` XYTS file. This is an output created by the EMOD3D software that simulates ground motion. This provides the simulation domain and ground motion data.
+- `--liquefaction-s` and `--landslide-s` Liquefaction and/or landslide suceptibility HDF5 file. Must have data under `model` as in given sample data.
+- `--liquefaction-p` and `--landslide-p` As above for the probability from given event.
+- `--paths` Transport network in GMT path format with optional GMT legend files as given in sample data.
+
+For details on more parameters, run:
 ```GMSimViz.py -h```
 
 ## Thanks
