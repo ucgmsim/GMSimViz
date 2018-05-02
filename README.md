@@ -17,12 +17,21 @@ GMSimViz is an automation tool that produces an animated 3D visualization of geo
 
 A fully featured result is available at https://youtu.be/qZkOTI4x_cc
 
-<img src="figures/kaikoura_fault_slip_distribution.jpg" width="400">
-<img src="figures/kaikoura_ground_motion_hitting_wellington.jpg" width="400">
-<img src="figures/kaikoura_peak_ground_velocity.jpg" width="400">
-<img src="figures/kaikoura_landslide_susceptibility.jpg" width="400">
-<img src="figures/kaikoura_liquefaction_susceptibility.jpg" width="400">
-<img src="figures/kaikoura_transport_recovery.jpg" width="400">
+<table style="width:100%">
+  <caption>Screenshots of a GMSimViz-generated animation</caption>
+  <tr>
+    <th><img src="figures/kaikoura_fault_slip_distribution.jpg" width="400"></th>
+    <th><img src="figures/kaikoura_ground_motion_hitting_wellington.jpg" width="400"></th>
+  </tr>
+  <tr>
+    <td><img src="figures/kaikoura_peak_ground_velocity.jpg" width="400"></td>
+    <td><img src="figures/kaikoura_landslide_susceptibility.jpg" width="400"></td>
+  </tr>
+  <tr>
+    <td><img src="figures/kaikoura_liquefaction_susceptibility.jpg" width="400"></td>
+    <td><img src="figures/kaikoura_transport_recovery.jpg" width="400"></td>
+  </tr>
+</table>
 
 ## Dependencies
 * Python (>=2.6) tested with 2.7
