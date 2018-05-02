@@ -17,12 +17,12 @@ GMSimViz is an automation tool that produces an animated 3D visualization of geo
 
 A fully featured result is available at https://youtu.be/qZkOTI4x_cc
 
-![](figures/kaikoura_fault_slip_distribution.jpg)
-![](figures/kaikoura_ground_motion_hitting_wellington.jpg)
-![](figures/kaikoura_peak_ground_velocity.jpg)
-![](figures/kaikoura_landslide_susceptibility.jpg)
-![](figures/kaikoura_liquefaction_susceptibility.jpg)
-![](figures/kaikoura_transport_recovery.jpg)
+![](figures/kaikoura_fault_slip_distribution.jpg = 400x)
+![](figures/kaikoura_ground_motion_hitting_wellington.jpg =400x)
+![](figures/kaikoura_peak_ground_velocity.jpg =400x)
+![](figures/kaikoura_landslide_susceptibility.jpg =400x)
+![](figures/kaikoura_liquefaction_susceptibility.jpg =400x)
+![](figures/kaikoura_transport_recovery.jpg =400x)
 
 
 
@@ -58,7 +58,7 @@ On systems where `python2` does not point to the Python 2 installation, try `pyt
 Currently Unsupported
 
 ## Issues & Bug Reports
-Various bugs have affected the features of GMT that are used by GMSimViz. There is no release of GMT (from 5.2.1 up to 5.4.3) that works without some issues. The latest tested and working revision is r19922.
+It is strongly recommended to use the latest version of GMT directoy obtained from its subversion repository. The latest verified revision  is r19922. Other versions are found to have issues with certain features that GMSimViz depends on.
 
 ## Sample Data
 Sample data is provided, it contains smaller data sets from multiple earthquakes to make a feature-full demo. To produce the sample animation with 8 processes, run the following from the repository location upon installation:
