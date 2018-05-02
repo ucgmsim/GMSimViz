@@ -142,8 +142,12 @@ def load_hdf5(h5file, basename, landmask = True):
     # calculate metadata
     x0, y0 = data[0, 0, :2]
     x1, y1 = data[1, 1, :2]
-    dx = '%.2fk' % (max(geo.ll_dist(x0, y0, x1, y0) * 0.6, 0.5))
-    dy = '%.2fk' % (max(geo.ll_dist(x0, y0, x0, y1) * 0.6, 0.5))
+    if meta['crude']:
+        max_res = 1
+    else:
+        max_res = 0.5
+    dx = '%.2fk' % (max(geo.ll_dist(x0, y0, x1, y0) * 0.6, max_res))
+    dy = '%.2fk' % (max(geo.ll_dist(x0, y0, x0, y1) * 0.6, max_res))
     region = (np.min(data[:, :, 0]), np.max(data[:, :, 0]), \
             np.min(data[:, :, 1]), np.max(data[:, :, 1]))
     # store data
@@ -312,10 +316,17 @@ def timeslice(job, meta):
                 fill = 'p30+bdarkbrown+fbrown+r%s' % (meta['dpi']))
 
     proj(True)
-    p.basemap()
+    if meta['crude']:
+        p.basemap(topo = None, highway = None, road = None, res = 'f')
+    else:
+        p.basemap()
     if job['sim_time'] == -3:
-        p.topo(gmt.TOPO_HIGH, cpt = gmt.CPTS['nztopo-grey1'], \
-                transparency = (1 - job['proportion']) * 100)
+        if meta['crude']:
+            p.land(fill = 'white', res = 'f')
+            p.water(res = 'f', oceans = False)
+        else:
+            p.topo(gmt.TOPO_HIGH, cpt = gmt.CPTS['nztopo-grey1'], \
+                    transparency = (1 - job['proportion']) * 100)
 
     # simulation domain
     if os.path.isfile('%s/xyts/corners.gmt' % (meta['wd'])):
@@ -365,7 +376,7 @@ def timeslice(job, meta):
         if job['transparency'] < 100:
             srf_data = gmt.srf2map(meta['srf_file'], swd, prefix = 'plane', \
                     value = 'slip', cpt_percentile = 95, wd = swd, \
-                    xy = True, dpu = meta['dpi'], \
+                    xy = True, dpu = meta['dpi'] / (1 + meta['crude'] * 0.2), \
                     pz = z_scale * math.cos(math.radians(job['tilt'])))
     elif job['sim_time'] >= 0:
         plot = 'timeseries'
@@ -403,10 +414,11 @@ def timeslice(job, meta):
                 for point in bounds:
                     bounds_f.write('%s %s\n' % tuple(point))
             # XY mask grid
+            res = (1.0 + meta['crude'] * 0.2) / meta['dpi']
             rc = gmt.grd_mask('%s/plane_%d_bounds.xy' % (swd, i), \
                     '%s/plane_%d_mask_xy.grd' % (swd, i), \
-                    geo = False, dx = 1.0 / meta['dpi'], \
-                    dy = 1.0 / meta['dpi'], region = regions_sr[i], wd = swd)
+                    geo = False, dx = res, dy = res, \
+                    region = regions_sr[i], wd = swd)
             if rc == gmt.STATUS_INVALID:
                 # bounds are likely of area = 0, do not procede
                 # caller should check if file below produced
@@ -424,7 +436,7 @@ def timeslice(job, meta):
                     '%s/slip_%d.grd' % (swd, i), \
                     file_input = True, grd_type = 'nearneighbor', \
                     region = regions_sr[i], \
-                    dx = 1.0 / meta['dpi'], dy = 1.0 / meta['dpi'], \
+                    dx = res, dy = res, \
                     wd = swd, geo = False, search = search, min_sectors = 2)
             if rc == gmt.STATUS_INVALID \
                     and os.path.exists('%s/slip_%d.grd' % (swd, i)):
@@ -680,6 +692,8 @@ def get_args():
     parser.add_argument('--temp', help = 'continue from previous temp dir')
     parser.add_argument('-k', '--keep-temp', help = 'don\'t delete temp dir', \
             action = 'store_true')
+    parser.add_argument('--crude', help = 'no topo, roads, low resolution data', \
+            action = 'store_true')
     parser.add_argument('--paths', help = 'standard road network input')
     parser.add_argument('--dpi', help = '[240]:4K 120:HD (frames are 16ix9i)', \
             type = int, default = 240)
@@ -783,7 +797,7 @@ if len(sys.argv) > 1:
             'gmt_bottom':gmt_bottom, 'gmt_top':gmt_top, 'animate':args.animate, \
             't_frames':int(args.mtime * args.framerate), 'srf_bounds':bounds, \
             'rot':args.rot, 'downscale':args.downscale, 'title':args.title, \
-            'dpi':args.dpi}
+            'dpi':args.dpi, 'crude':args.crude}
 
     # TODO: sliprate preparation should be an early task
     slip_end = srf.srf2llv_py(args.srf_file, value = 'ttotal')
