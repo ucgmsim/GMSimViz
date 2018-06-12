@@ -45,23 +45,27 @@ The GMSimViz depends on the following software packages.
 * GMT (>=r19922) requires release after 5.4.3 (currently unavailable) versions prior to r19922 will have bugs but GMSimViz is designed to work with GMT (>=5.2) tested with Ghostscript 9.18, 9.21 was found to produce glitches
 * FFMpeg built with image2/png, h.264 encoder support (standard installation) tested with version 3.3
 * Qcore library (self-contained) 
-* gawk 
+* gawk
 
 ### Linux
 Install the packages for the above mentioned dependencies (qcore library instructions later). Names vary between distribution repositories.  On Ubuntu or other Debian-based Linux distributions, most of the packages can be installed by the following command.
 ```shell
 sudo apt install python2.7 python-numpy python-mpi4py python-h5py ffmpeg gawk
 ```
+If you are using a Debian based distribution, you will also need to have installed the separated -dev packages in order to compile GMT.
+```shell
+sudo apt install libpng-dev
+```
 #### GMT
 
 GMT version earlier than 5.2 has some outstanding issues to work reliably with GMSimViz. A version later than 5.4.3 is recommended, and at the time of writing, the latest development source obtained directly from the  repository (A release r19922 fully verified) found to be the most reliable one.  Instructions for GMT installation is available at http://gmt.soest.hawaii.edu/projects/gmt/wiki/BuildingGMT .
 You should add PNG support.
 
-Make sure the `gmt` binary is in the path. If `gmt` is installed in, for example,  `/usr/local/bin`, add it to the path. 
+Make sure the `gmt` binary is in the PATH. If `gmt` is installed in `/usr/local/bin` and `gmt` is not already available in the PATH, add it to the PATH:
 ```shell
-export PATH=/usr/local/bin:$PATH
+export PATH=$PATH:/usr/local/bin
 ```
-Ideally, you can add the line above to your `.bashrc` to make it persistent.
+You can add the line above to `~/.bashrc` to make it persistent.
 
 
 Download the plotting resource GMSimViz_resources.zip file from https://goo.gl/mYFCQn
@@ -69,19 +73,18 @@ Extract this file to where GMSimViz is located.  This directory becomes `GMT_DAT
 
 #### QCore libaray
 
-The qcore library is bundled with GMSimViz. 
+The qcore library is bundled with GMSimViz.
 Edit the `qcore/config.json` file so that `GMT_DATA` has the full path to the resources folder from the step above.
 ```example
 {
-    "GMT_DATA" : "/home/seb56/QuakeCoRE/GMSimViz/resources",
-    "tools_dir": "/home/seb56/QuakeCoRE/GMSimViz/tools"
-}  
+    "GMT_DATA" : "/home/seb56/QuakeCoRE/GMSimViz/resources"
+}
 ```
-Install with the following command . 
+Install with the following command.
 ```shell
 sudo python2 setup.py install
 ```
-In case of no root priviledge, `--user` option can be used instead.
+In case of no root priviledge, `--user` option can be used.
 
 ```shell
 python2 setup.py install --user
@@ -89,7 +92,7 @@ python2 setup.py install --user
 On systems where `python2` does not point to the Python 2 installation, try `python` instead.
 
 ### Other systems
-Currently Unsupported
+Currently unsupported.
 
 
 ## Sample Data

@@ -1,7 +1,3 @@
 {
-    "ROOT" : "/nesi/projects/nesi00213",
-    "GMT_DATA" : "/nesi/projects/nesi00213/PlottingData",
-    "VEL_MOD" : "/nesi/projects/nesi00213/VelocityModel",
-    "wallclock" : "/nesi/projects/nesi00213/share/wallclock.sqlite",
-    "tools_dir" : "/nesi/projects/nesi00213/tools"
+    "GMT_DATA" : "/home/seb56/QuakeCoRE/GMSimViz/resources"
 }

@@ -8,9 +8,9 @@ from subprocess import Popen, PIPE
 
 import numpy as np
 
-from qcore.config import qconfig
-ll2xy_bin = os.path.join(qconfig['tools_dir'], 'll2xy')
-xy2ll_bin = os.path.join(qconfig['tools_dir'], 'xy2ll')
+#from qcore.config import qconfig
+#ll2xy_bin = os.path.join(qconfig['tools_dir'], 'll2xy')
+#xy2ll_bin = os.path.join(qconfig['tools_dir'], 'xy2ll')
 
 R_EARTH = 6378.139
 
