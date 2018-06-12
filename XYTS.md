@@ -7,8 +7,8 @@ File size can be derived knowing the format and the shape of time-series (all ne
 
 The gridpoints are based on a model which is an area with equidistant gridpoints in the X, Y, and Z directions. It is centred on a position (longitude, latitude) and may be rotated.
 
-1. simulation metadata
-    INTEGERS
+- simulation metadata
+    - **INTEGERS**
     - number of first x gridpoint
     - number of first y gridpoint
     - number of first z gridpoint
@@ -17,7 +17,7 @@ The gridpoints are based on a model which is an area with equidistant gridpoints
     - number of y gridpoints
     - number of z gridpoins (always 1 by definition of X-Y file)
     - number of timesteps
-    FLOATS
+    - **FLOATS**
     - x spacing between given gridpoints (km)
     - y spacing between given gridpoints (km)
     - original (pre-decimated) grid spacing between gridpoints used in simulation (km)
@@ -25,6 +25,6 @@ The gridpoints are based on a model which is an area with equidistant gridpoints
     - model rotation of gridpoints (degrees)
     - model centre latitude (degrees)
     - model centre longitude (degrees)
-2. timeseries
+- timeseries
     - float array of velocities in the dimentions of timesteps, components (x, y, z), y grid positions, x grid positions.
 
