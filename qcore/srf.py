@@ -20,7 +20,7 @@ from qcore.config import qconfig
 
 
 # binary paths
-srf2xyz = os.path.join(qconfig['tools_dir'], 'srf2xyz')
+#srf2xyz = os.path.join(qconfig['tools_dir'], 'srf2xyz')
 # assumption that all srf files contain 6 values per line
 VPL = 6.
 
