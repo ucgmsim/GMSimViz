@@ -131,6 +131,122 @@ def gp2ll(x, y, mlat, mlon, rot, nx, ny, hh):
     """
     return gp2ll_multi([[x, y]], mlat, mlon, rot, nx, ny, hh)[0]
 
+def gen_mat(mrot, mlon, mlat):
+    """
+    Precursor for xy2ll and ll2xy functions.
+    mrot: model rotation
+    mlon: model centre longitude
+    mlat: model centre latitude
+    """
+    arg = math.radians(mrot)
+    cosA = math.cos(arg)
+    sinA = math.sin(arg)
+
+    arg = math.radians(90.0 - mlat)
+    cosT = math.cos(arg)
+    sinT = math.sin(arg)
+
+    arg = math.radians(mlon)
+    cosP = math.cos(arg)
+    sinP = math.sin(arg)
+
+    amat = np.array([[cosA * cosT * cosP + sinA * sinP, \
+                      sinA * cosT * cosP - cosA * sinP, \
+                      sinT * cosP], \
+                     [cosA * cosT * sinP - sinA * cosP, \
+                      sinA * cosT * sinP + cosA * cosP, \
+                      sinT * sinP], \
+                     [-cosA * sinT, -sinA * sinT, cosT]], dtype = 'f')
+    ainv = amat.T * 1.0 / np.linalg.det(amat)
+
+    return amat.flatten(), ainv.flatten()
+
+def xy2ll(xy_km, amat):
+    """
+    Converts km offsets to longitude and latitude.
+    xy_km: 2D np array of [X, Y] offsets from origin (km)
+    amat: from gen_mat function
+    """
+    x = xy_km[:, 0] / R_EARTH
+    sinB = np.sin(x)
+    y = xy_km[:, 1] / R_EARTH
+    sinG = np.sin(y)
+    z = np.sqrt(1.0 + sinB * sinB * sinG * sinG)
+    xp = sinG * np.cos(x) * z
+    yp = sinB * np.cos(y) * z
+    zp = np.sqrt(1.0 - xp * xp - yp * yp)
+
+    xg = xp * amat[0] + yp * amat[1] + zp * amat[2]
+    yg = xp * amat[3] + yp * amat[4] + zp * amat[5]
+    zg = xp * amat[6] + yp * amat[7] + zp * amat[8]
+
+    lat = np.where(zg == 0.0, 0.0, \
+                   90.0 - np.degrees(np.arctan(np.sqrt(xg * xg + yg * yg) / zg)))
+    lat[np.where(zg < 0.0)] -= 180.0
+
+    lon = np.where(xg == 0.0, 0.0, \
+                   np.degrees(np.arctan(yg / xg)))
+    lon[np.where(xg < 0.0)] -= 180.0
+    lon[np.where(lon < -180.0)] += 360.0
+
+    return np.column_stack((lon, lat))
+
+def ll2xy(ll, ainv):
+    """
+    Converts longitude and latitude to km offsets.
+    ll: 2D np array of [lon, lat]
+    ainv: from gen_mat function
+    """
+    lon = np.radians(ll[:, 0])
+    lat = np.radians(90.0 - ll[:, 1])
+
+    xg = np.sin(lat) * np.cos(lon)
+    yg = np.sin(lat) * np.sin(lon)
+    zg = np.cos(lat)
+
+    xp = xg * ainv[0] + yg * ainv[1] + zg * ainv[2]
+    yp = xg * ainv[3] + yg * ainv[4] + zg * ainv[5]
+    zp = xg * ainv[6] + yg * ainv[7] + zg * ainv[8]
+
+    # X km offsets from centre origin, Y km offsets from centre origin
+    return np.column_stack((R_EARTH * np.arcsin(yp / np.sqrt(1.0 - xp * xp)), \
+                            R_EARTH * np.arcsin(xp / np.sqrt(1.0 - yp * yp))))
+
+def xy2gp(xy, nx, ny, hh):
+    """
+    Converts km offsets to grid points.
+    xy: 2D np array of [X, Y] offsets from origin (km)
+    nx: number of X grid positions
+    ny: number of Y grid positions
+    hh: grid spacing
+    """
+    gp = np.copy(xy)
+
+    # distance from corner
+    gp[:, 0] += (nx - 1) * hh * 0.5
+    gp[:, 1] += (ny - 1) * hh * 0.5
+
+    # gridpoint from top corner
+    gp /= hh
+
+    return np.round(gp).astype(np.int32, copy = False)
+
+def gp2xy(gp, nx, ny, hh):
+    """
+    Converts grid points to km offsets.
+    xy: 2D np array of [X, Y] gridpoints
+    nx: number of X grid positions
+    ny: number of Y grid positions
+    hh: grid spacing
+    """
+    xy = gp.astype(np.float32) * hh
+
+    # shift for centre origin
+    xy[:, 0] -= (nx - 1) * hh * 0.5
+    xy[:, 1] -= (ny - 1) * hh * 0.5
+
+    return xy
+
 def ll_shift(lat, lon, distance, bearing):
     """
     Shift lat/long by distance at bearing.

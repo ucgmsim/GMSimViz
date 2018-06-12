@@ -13,7 +13,7 @@ from math import radians, cos, sin
 
 import numpy as np
 
-from qcore.geo import gp2ll_multi
+from qcore import geo
 
 ###
 ### PROCESSING OF XYTS FILE
@@ -76,9 +76,9 @@ class XYTSFile:
         # xy dual component rotation matrix
         # must also flip vertical axis
         theta = radians(self.mrot)
-        self.rot_matrix = np.array([[cos(theta), -sin(theta), 0], \
-                [-sin(theta), -cos(theta), 0], \
-                [0, 0, -1]])
+        self.rot_matrix = np.array([[ cos(theta), -sin(theta),  0], \
+                                    [-sin(theta), -cos(theta),  0], \
+                                    [          0,           0, -1]])
 
         # save speed when only loaded to read metadata section
         if meta_only:
@@ -90,12 +90,13 @@ class XYTSFile:
                 shape = (self.nt, len(self.comps), self.ny, self.nx))
 
         # create longitude, latitude map for data
-        xy_points = np.mgrid[0:self.nx_sim:self.dxts, \
-                0:self.ny_sim:self.dyts] \
-                .reshape(2, -1, order = 'F').T.tolist()
-        ll_points = gp2ll_multi(xy_points, self.mlat, self.mlon, self.mrot, \
-                self.nx_sim, self.ny_sim, self.hh)
-        self.ll_map = np.array(ll_points).reshape(self.ny, self.nx, 2)
+        grid_points = np.mgrid[0:self.nx_sim:self.dxts, \
+                               0:self.ny_sim:self.dyts] \
+                      .reshape(2, -1, order = 'F').T
+        amat = geo.gen_mat(self.mrot, self.mlon, self.mlat)[0]
+        self.ll_map = geo.xy2ll(geo.gp2xy(grid_points, self.nx_sim, \
+                                          self.ny_sim, self.hh), amat) \
+                      .reshape(self.ny, self.nx, 2)
 
     def corners(self, gmt_format = False):
         """
