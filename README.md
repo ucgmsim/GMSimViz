@@ -121,6 +121,8 @@ The sample animation takes about 45 minutes with -n7 on a v4 E5-2620 (2.1 GHz). 
 For details on more parameters, run:
 ```GMSimViz.py -h```
 
+The SRF file format is available here: https://scec.usc.edu/scecpedia/Standard_Rupture_Format. The XYTS file format is described here: http://wiki.canterbury.ac.nz/display/QuakeCore/File+Formats+Used+On+GM#FileFormatsUsedOnGM-XYTS.e3dbinaryformat.
+
 ## Thanks
 
 The QuakeCoRE team would like to thank:
