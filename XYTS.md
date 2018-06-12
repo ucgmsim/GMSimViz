@@ -9,22 +9,22 @@ The gridpoints are based on a model which is an area with equidistant gridpoints
 
 - simulation metadata
     - **INTEGERS**
-    - number of first x gridpoint
-    - number of first y gridpoint
-    - number of first z gridpoint
-    - number of first timestep
-    - number of x gridpoints
-    - number of y gridpoints
-    - number of z gridpoins (always 1 by definition of X-Y file)
-    - number of timesteps
+        - number of first x gridpoint
+        - number of first y gridpoint
+        - number of first z gridpoint
+        - number of first timestep
+        - number of x gridpoints
+        - number of y gridpoints
+        - number of z gridpoins (always 1 by definition of X-Y file)
+        - number of timesteps
     - **FLOATS**
-    - x spacing between given gridpoints (km)
-    - y spacing between given gridpoints (km)
-    - original (pre-decimated) grid spacing between gridpoints used in simulation (km)
-    - timestep in timeseries (s)
-    - model rotation of gridpoints (degrees)
-    - model centre latitude (degrees)
-    - model centre longitude (degrees)
+        - x spacing between given gridpoints (km)
+        - y spacing between given gridpoints (km)
+        - original (pre-decimated) grid spacing between gridpoints used in simulation (km)
+        - timestep in timeseries (s)
+        - model rotation of gridpoints (degrees)
+        - model centre latitude (degrees)
+        - model centre longitude (degrees)
 - timeseries
     - float array of velocities in the dimentions of timesteps, components (x, y, z), y grid positions, x grid positions.
 
