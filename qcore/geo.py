@@ -4,13 +4,132 @@ Various tools which may be needed in various processes.
 
 from math import sin, asin, cos, atan, atan2, degrees, radians, sqrt, pi
 import os
+from subprocess import Popen, PIPE
 
 import numpy as np
+
+from qcore.config import qconfig
+ll2xy_bin = os.path.join(qconfig['tools_dir'], 'll2xy')
+xy2ll_bin = os.path.join(qconfig['tools_dir'], 'xy2ll')
 
 R_EARTH = 6378.139
 
 class InputError(Exception):
     pass
+
+def ll2gp_multi(coords, mlon, mlat, rot, nx, ny, hh, \
+        dx = 1, dy = 1, decimated = False, verbose = False, \
+        keep_outside = False):
+    """
+    Converts longitude/latitude positions to gridpoints.
+    Three main modes of operation:
+    1: No dx, dy (= 1): gridpoint
+    2: dx or dy != 1: closest gridpoint considering dx/dy
+    3: decimated: gridpoint number if only decimated points existed
+    coords: 2d list in format [[lon0, lat0], [lon1, lat1], ...]
+    keep_outside: False will remove values outside the sim domain,
+            True will replace those entries with None
+    """
+    # derived parameters
+    xlen = nx * hh
+    ylen = ny * hh
+    # where the x plane points
+    xazim = (rot + 90) % 360
+
+    # run binary, get output
+    # output is displacement (x, y) from center, in kilometres
+    cmd = [ll2xy_bin, 'mlat=%s' % (mlat), 'mlon=%s' % (mlon), \
+              'geoproj=1', 'center_origin=1', 'h=%s' % (hh), \
+              'xazim=%s' % (xazim), 'xlen=%s' % (xlen), 'ylen=%s' % (ylen)]
+    if verbose:
+        print(' '.join(cmd))
+    p_conv = Popen(cmd,
+            stdin = PIPE, stdout = PIPE)
+    stdout = p_conv.communicate( \
+            '\n'.join(['%s %s' % tuple(c) for c in coords]))[0]
+    xy = [map(float, line.split()) for line in stdout.rstrip().split('\n')]
+
+    # convert displacement to grid points
+    # has to be 'nx - 1', because the first gridpoint is offset 0km
+    # nx = 1400 means the greatest offset is 1399 * hh km
+    mid_x = (nx - 1) * hh * 0.5
+    mid_y = (ny - 1) * hh * 0.5
+    for i, c in enumerate(xy[::-1]):
+        # make the distance relative to top corner
+        # convert back to grid spacing
+        # gridpoints are discrete
+        c[0] = int(round((c[0] + mid_x) / hh))
+        c[1] = int(round((c[1] + mid_y) / hh))
+
+        # x values range from 0 -> nx - 1
+        if not (0 <= c[0] < nx and 0 <= c[1] < ny):
+            if keep_outside:
+                xy[-(i + 1)] = None
+            else:
+                # this is why xy is looped in reverse
+                xy.remove(c)
+            continue
+
+        if decimated:
+            c[0] //= dx
+            c[1] //= dy
+        else:
+            # closest gridpoint considering decimation
+            c[0] -= c[0] % dx
+            c[1] -= c[1] % dy
+
+    return xy
+
+def ll2gp(lat, lon, mlat, mlon, rot, nx, ny, hh, \
+        dx = 1, dy = 1, decimated = False, verbose = False):
+    """
+    Converts latitude/longitude to a gridpoint position.
+    """
+    try:
+        return ll2gp_multi([[lon, lat]], mlon, mlat, rot, nx, ny, hh, \
+                dx = dx, dy = dy, decimated = decimated, verbose = verbose, \
+                keep_outside = False)[0]
+    except IndexError:
+        raise InputError('Input outside simulation domain.')
+
+def gp2ll_multi(coords, mlat, mlon, rot, nx, ny, hh):
+    """
+    Converts gridpoint positions to longitude, latitude.
+    coords: 2d list in format [[x0, y0], [x1, y1], ...]
+    """
+    # derived parameters
+    xlen = nx * hh
+    ylen = ny * hh
+    # where the x plane points
+    xazim = (rot + 90) % 360
+
+    # convert gridpoint to offset km
+    max_x = (nx - 1) * hh
+    max_y = (ny - 1) * hh
+    for c in coords:
+        # length from corner
+        c[0] *= hh
+        c[1] *= hh
+        # length from centre origin
+        c[0] -= max_x * 0.5
+        c[1] -= max_y * 0.5
+
+    # run binary, get output
+    p_conv = Popen([xy2ll_bin, 'mlat=%s' % (mlat), 'mlon=%s' % (mlon), \
+            'geoproj=1', 'center_origin=1', 'h=%s' % (hh), \
+            'xazim=%s' % (xazim), 'xlen=%s' % (xlen), 'ylen=%s' % (ylen)], \
+            stdin = PIPE, stdout = PIPE)
+    stdout = p_conv.communicate( \
+            '\n'.join(['%s %s' % tuple(c) for c in coords]))[0]
+
+    # lon, lat
+    return [map(float, line.split()) for line in stdout.rstrip().split('\n')]
+
+def gp2ll(x, y, mlat, mlon, rot, nx, ny, hh):
+    """
+    Converts a gridpoint position to latitude/longitude.
+    """
+    return gp2ll_multi([[x, y]], mlat, mlon, rot, nx, ny, hh)[0]
 
 def gen_mat(mrot, mlon, mlat):
     """
@@ -19,17 +138,17 @@ def gen_mat(mrot, mlon, mlat):
     mlon: model centre longitude
     mlat: model centre latitude
     """
-    arg = math.radians(mrot)
-    cosA = math.cos(arg)
-    sinA = math.sin(arg)
+    arg = radians(mrot)
+    cosA = cos(arg)
+    sinA = sin(arg)
 
-    arg = math.radians(90.0 - mlat)
-    cosT = math.cos(arg)
-    sinT = math.sin(arg)
+    arg = radians(90.0 - mlat)
+    cosT = cos(arg)
+    sinT = sin(arg)
 
-    arg = math.radians(mlon)
-    cosP = math.cos(arg)
-    sinP = math.sin(arg)
+    arg = radians(mlon)
+    cosP = cos(arg)
+    sinP = sin(arg)
 
     amat = np.array([[cosA * cosT * cosP + sinA * sinP, \
                       sinA * cosT * cosP - cosA * sinP, \

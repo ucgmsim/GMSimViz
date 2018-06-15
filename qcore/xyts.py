@@ -93,9 +93,9 @@ class XYTSFile:
         grid_points = np.mgrid[0:self.nx_sim:self.dxts, \
                                0:self.ny_sim:self.dyts] \
                       .reshape(2, -1, order = 'F').T
-        amat = geo.gen_mat(self.mrot, self.mlon, self.mlat)[0]
+        self.amat = geo.gen_mat(self.mrot, self.mlon, self.mlat)[0]
         self.ll_map = geo.xy2ll(geo.gp2xy(grid_points, self.nx_sim, \
-                                          self.ny_sim, self.hh), amat) \
+                                          self.ny_sim, self.hh), self.amat) \
                       .reshape(self.ny, self.nx, 2)
 
     def corners(self, gmt_format = False):
@@ -110,14 +110,15 @@ class XYTSFile:
         # c4 =   x0 ymax
         # cannot just use self.ll_map as xmax, ymax for simulation domain
         # may have been decimated. sim nx 1400 (xmax 1399) with dxts 5 = 1395
-        xy_cnrs = [[0, 0], [self.nx_sim - 1, 0], \
-                [self.nx_sim - 1, self.ny_sim - 1], \
-                [0, self.ny_sim - 1]]
-        ll_cnrs = gp2ll_multi(xy_cnrs, self.mlat, self.mlon, self.mrot, \
-                self.nx_sim, self.ny_sim, self.hh)
-
+        gp_cnrs = np.array([[0, 0], \
+                            [self.nx_sim - 1, 0], \
+                            [self.nx_sim - 1, self.ny_sim - 1], \
+                            [0, self.ny_sim - 1]])
+        ll_cnrs = geo.xy2ll(geo.gp2xy(gp_cnrs, self.nx_sim, self.ny_sim, \
+                                      self.hh), self.amat)
         if not gmt_format:
             return ll_cnrs
+
         gmt_cnrs = '\n'.join([\
                 ' '.join(map(str, cnr)) for cnr in ll_cnrs])
         return ll_cnrs, gmt_cnrs
