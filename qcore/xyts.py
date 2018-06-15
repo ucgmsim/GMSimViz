@@ -116,7 +116,7 @@ class XYTSFile:
                             [0, self.ny_sim - 1]])
         amat = geo.gen_mat(self.mrot, self.mlon, self.mlat)[0]
         ll_cnrs = geo.xy2ll(geo.gp2xy(gp_cnrs, self.nx_sim, self.ny_sim, \
-                                      self.hh), amat)
+                                      self.hh), amat).tolist()
         if not gmt_format:
             return ll_cnrs
 
