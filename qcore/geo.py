@@ -3,8 +3,6 @@ Various tools which may be needed in various processes.
 """
 
 from math import sin, asin, cos, atan, atan2, degrees, radians, sqrt, pi
-import os
-from subprocess import Popen, PIPE
 
 import numpy as np
 
