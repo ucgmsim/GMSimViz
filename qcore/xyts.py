@@ -93,9 +93,9 @@ class XYTSFile:
         grid_points = np.mgrid[0:self.nx_sim:self.dxts, \
                                0:self.ny_sim:self.dyts] \
                       .reshape(2, -1, order = 'F').T
-        self.amat = geo.gen_mat(self.mrot, self.mlon, self.mlat)[0]
+        amat = geo.gen_mat(self.mrot, self.mlon, self.mlat)[0]
         self.ll_map = geo.xy2ll(geo.gp2xy(grid_points, self.nx_sim, \
-                                          self.ny_sim, self.hh), self.amat) \
+                                          self.ny_sim, self.hh), amat) \
                       .reshape(self.ny, self.nx, 2)
 
     def corners(self, gmt_format = False):
@@ -114,8 +114,9 @@ class XYTSFile:
                             [self.nx_sim - 1, 0], \
                             [self.nx_sim - 1, self.ny_sim - 1], \
                             [0, self.ny_sim - 1]])
+        amat = geo.gen_mat(self.mrot, self.mlon, self.mlat)[0]
         ll_cnrs = geo.xy2ll(geo.gp2xy(gp_cnrs, self.nx_sim, self.ny_sim, \
-                                      self.hh), self.amat)
+                                      self.hh), amat)
         if not gmt_format:
             return ll_cnrs
 
