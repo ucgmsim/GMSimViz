@@ -129,7 +129,7 @@ class XYTSFile:
         Returns simulation region as a tuple (x_min, x_max, y_min, y_max).
         corners: use pre-calculated corners if given
         """
-        if corners == None:
+        if corners is None:
             corners = self.corners()
         x_min, y_min = np.min(corners, axis = 0)
         x_max, y_max = np.max(corners, axis = 0)
