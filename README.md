@@ -5,8 +5,6 @@
    * [Overview](#overview)
    * [Dependencies](#dependencies)
    * [Installation](#installation)
-   * [Tutorial](tutorial.md)
-   * [Issues & Bug Reports](#issues--bug--reports)
    * [Sample Data](#sample-data)
    * [Thanks](#thanks)
 
