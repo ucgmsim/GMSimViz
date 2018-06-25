@@ -1,12 +1,4 @@
-# GMSimViz : Automated 3D Visualization of Ground Motion Simulation with Generic Mapping Tools(GMT)
-..
-
-## Table of contents
-   * [Overview](#overview)
-   * [Dependencies](#dependencies)
-   * [Installation](#installation)
-   * [Sample Data](#sample-data)
-   * [Thanks](#thanks)
+# GMSimViz: Automated 3D Visualization of Ground Motion Simulation with Generic Mapping Tools (GMT)
 
 ## Overview
 GMSimViz is an automation tool that produces an animated 3D visualization of geological faults, ground motion and other earthquake related data. It uses the Generic Mapping Tools(GMT) to create individual frames, and join them by FFmpeg to create a movie file.
