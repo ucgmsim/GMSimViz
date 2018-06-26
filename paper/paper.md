@@ -5,29 +5,29 @@ tags:
   - 3d visualization
   - automated workflow
 authors:
-- name: Viktor Polak
-   orcid: 0000-0000-0000-0000
-   affiliation: "1"
-- name: Melody Zhu
-   orcid: 0000-0000-0000-0000
-   affiliation: "1"
-- name: Sung Bae
-   orcid: 0000-0000-0000-0000
-   affiliation: "1"
-- name: Jason Motha
-   orcid: 0000-0000-0000-0000
-   affiliation: "1"
-- name: Brendon Bradley
-   orcid: 0000-0000-0000-0000
-   affiliation: 2
-- name: Hoby Razafindrakoto
-   orcid: 0000-0000-0000-0000
-   affiliation: 1
+  - name: Viktor Polak
+    orcid: 0000-0000-0000-0000
+    affiliation: "1"
+  - name: Melody Zhu
+    orcid: 0000-0000-0000-0000
+    affiliation: "1"
+  - name: Sung Bae
+    orcid: 0000-0000-0000-0000
+    affiliation: "1"
+  - name: Jason Motha
+    orcid: 0000-0000-0000-0000
+    affiliation: "1"
+  - name: Brendon Bradley
+    orcid: 0000-0000-0000-0000
+    affiliation: 2
+  - name: Hoby Razafindrakoto
+    orcid: 0000-0000-0000-0000
+    affiliation: 1
 affiliations:
-- name: QuakeCoRE, University of Canterbury, Christchurch, New Zealnd
-   index: 1
-- name: Department of Civil and Natural Resources Engineering, University of Canterbury, Christchurch, New Zealand
-   index: 2
+  - name: QuakeCoRE, University of Canterbury, Christchurch, New Zealnd
+    index: 1
+  - name: Department of Civil and Natural Resources Engineering, University of Canterbury, Christchurch, New Zealand
+    index: 2
 date: 22 March 2018
 bibliography: paper.bib
 ---
