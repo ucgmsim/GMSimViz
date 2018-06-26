@@ -24,7 +24,7 @@ authors:
     orcid: 0000-0000-0000-0000
     affiliation: 1
 affiliations:
-  - name: QuakeCoRE, University of Canterbury, Christchurch, New Zealnd
+  - name: QuakeCoRE, University of Canterbury, Christchurch, New Zealand
     index: 1
   - name: Department of Civil and Natural Resources Engineering, University of Canterbury, Christchurch, New Zealand
     index: 2
