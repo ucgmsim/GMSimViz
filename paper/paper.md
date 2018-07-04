@@ -12,16 +12,16 @@ authors:
     orcid: 0000-0000-0000-0000
     affiliation: "1"
   - name: Sung Bae
-    orcid: 0000-0000-0000-0000
+    orcid: 0000-0001-7670-8214
     affiliation: "1"
   - name: Jason Motha
     orcid: 0000-0000-0000-0000
     affiliation: "1"
   - name: Brendon Bradley
-    orcid: 0000-0000-0000-0000
+    orcid: 0000-0002-4450-314X
     affiliation: 2
   - name: Hoby Razafindrakoto
-    orcid: 0000-0000-0000-0000
+    orcid: 0000-0002-7717-280X
     affiliation: 1
 affiliations:
   - name: QuakeCoRE, University of Canterbury, Christchurch, New Zealand
