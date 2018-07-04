@@ -15,7 +15,7 @@ authors:
     orcid: 0000-0001-7670-8214
     affiliation: "1"
   - name: Jason Motha
-    orcid: 0000-0000-0000-0000
+    orcid: 0000-0003-0472-7939
     affiliation: "1"
   - name: Brendon Bradley
     orcid: 0000-0002-4450-314X
