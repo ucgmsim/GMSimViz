@@ -8,8 +8,8 @@ authors:
   - name: Viktor Polak
     orcid: 0000-0001-5442-2960
     affiliation: "1"
-  - name: Melody Zhu
-    orcid: 0000-0000-0000-0000
+  - name: Yuezhang Zhu
+    orcid: 0000-0001-7761-077X
     affiliation: "1"
   - name: Sung Bae
     orcid: 0000-0001-7670-8214
