@@ -29,9 +29,9 @@ A fully featured result is available at https://youtu.be/qZkOTI4x_cc
 The GMSimViz depends on the following software packages.
 
 * Python (>=2.6) tested with 2.7
-* Numpy for Python 2 (>= 1.10) tested with 1.10 and 1.13
-* MPI4Py for Python 2 and associated backend
-* H5Py for Python 2 and associated backend
+* Numpy for Python version used (>= 1.10) tested with 1.10 and 1.13
+* MPI4Py for Python version used and associated backend
+* H5Py for Python version used and associated backend
 * GMT (>=r19922) requires release after 5.4.3 (currently unavailable) versions prior to r19922 will have bugs but GMSimViz is designed to work with GMT (>=5.2) tested with Ghostscript 9.18, 9.21 was found to produce glitches
 * FFMpeg built with image2/png, h.264 encoder support (standard installation) tested with version 3.3
 * Qcore library (self-contained) 
@@ -58,31 +58,26 @@ export PATH=$PATH:/usr/local/bin
 You can add the line above to `~/.bashrc` to make it persistent.
 
 
-Download the plotting resource GMSimViz_resources.zip file from https://goo.gl/mYFCQn
-Extract this file to where GMSimViz is located.  This directory becomes `GMT_DATA` that you will set shortly.
-
 #### QCore libaray
 
 The qcore library is bundled with GMSimViz.
-Edit the `qcore/config.json` file so that `GMT_DATA` has the full path to the resources folder from the step above.
-```example
-{
-    "GMT_DATA" : "/home/seb56/QuakeCoRE/GMSimViz/resources"
-}
-```
+
+Download the plotting resource GMSimViz_resources.zip file from https://goo.gl/mYFCQn
+Extract this file to where GMSimViz is located.
+
 Install with the following command.
 ```shell
-sudo python2 setup.py install
+sudo python setup.py install
 ```
 In case of no root priviledge, `--user` option can be used.
 
 ```shell
-python2 setup.py install --user
+python setup.py install --user
 ```
-On systems where `python2` does not point to the Python 2 installation, try `python` instead.
+You may use `python2`, `python3`, `python2.7` etc. instead of `python` where you want to use a specific verision.
 
 ### Other systems
-Currently unsupported.
+Currently unsupported (we cannot give instructions but if the dependencies are met, GMSimViz should work).
 
 
 ## Sample Data
