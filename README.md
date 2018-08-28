@@ -28,10 +28,10 @@ A fully featured result is available at https://youtu.be/qZkOTI4x_cc
 ### Dependencies
 The GMSimViz depends on the following software packages.
 
-* Python (>=2.6) tested with 2.7
-* Numpy for Python version used (>= 1.10) tested with 1.10 and 1.13
-* MPI4Py for Python version used and associated backend
-* H5Py for Python version used and associated backend
+* Python (>=2.6) tested with 2.7 and 3.6
+* Numpy for Python version used (>= 1.10) tested with 1.10, 1.13 and 1.14
+* MPI4Py for Python version used and mpi backend (dependency of mpi4py)
+* H5Py for Python version used and hdf5 backend (dependency of h5py)
 * GMT (>=r19922) requires release after 5.4.3 (currently unavailable) versions prior to r19922 will have bugs but GMSimViz is designed to work with GMT (>=5.2) tested with Ghostscript 9.18, 9.21 was found to produce glitches
 * FFMpeg built with image2/png, h.264 encoder support (standard installation) tested with version 3.3
 * Qcore library (self-contained) 
@@ -48,8 +48,9 @@ sudo apt install libpng-dev
 ```
 #### GMT
 
-GMT version earlier than 5.2 has some outstanding issues to work reliably with GMSimViz. A version later than 5.4.3 is recommended, and at the time of writing, the latest development source obtained directly from the  repository (A release r19922 fully verified) found to be the most reliable one.  Instructions for GMT installation is available at http://gmt.soest.hawaii.edu/projects/gmt/wiki/BuildingGMT .
-You should add PNG support.
+GMT version earlier than 5.2 has some outstanding issues to work reliably with GMSimViz. A version later than 5.4.3 is recommended, and at the time of writing, the latest development source obtained directly from the  repository (A release r19922 fully verified) found to be the most reliable one.  Instructions for GMT installation is available at http://gmt.soest.hawaii.edu/projects/gmt/wiki/BuildingGMT . You should add PNG support.
+
+Version 5.4.3 will draw outlines of the fault plane and hypocentre location on the surface rather than at depth.
 
 Make sure the `gmt` binary is in the PATH. If `gmt` is installed in `/usr/local/bin` and `gmt` is not already available in the PATH, add it to the PATH:
 ```shell
@@ -63,7 +64,7 @@ You can add the line above to `~/.bashrc` to make it persistent.
 The qcore library is bundled with GMSimViz.
 
 Download the plotting resource GMSimViz_resources.zip file from https://goo.gl/mYFCQn
-Extract this file to where GMSimViz is located.
+Extract this file to where GMSimViz is located so that GMSimViz/resources exists.
 
 Install with the following command.
 ```shell
