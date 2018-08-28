@@ -110,8 +110,7 @@ def update_gmt_path(gmt_bin, wd = None):
     GMT = gmt_bin
     # retrieve version of GMT
     gmtp = Popen([GMT, '--version'], stdout = PIPE)
-    GMT_VERSION = gmtp.communicate()[0].rstrip()
-    gmtp.wait()
+    GMT_VERSION = gmtp.communicate()[0].rstrip().decode()
     GMT_MAJOR, GMT_MINOR = map(int, GMT_VERSION.split('.')[:2])
 
     psconvert = 'psconvert'
