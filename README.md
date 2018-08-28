@@ -29,9 +29,9 @@ A fully featured result is available at https://youtu.be/qZkOTI4x_cc
 The GMSimViz depends on the following software packages.
 
 * Python (>=2.6) tested with 2.7 and 3.6
-* Numpy for Python version used (>= 1.10) tested with 1.10, 1.13 and 1.14
-* MPI4Py for Python version used and mpi backend (dependency of mpi4py)
-* H5Py for Python version used and hdf5 backend (dependency of h5py)
+* Numpy (https://www.numpy.org https://pypi.org/project/numpy/) for Python version used (>= 1.10) tested with 1.10, 1.13 and 1.14
+* MPI4Py (https://bitbucket.org/mpi4py/ https://pypi.org/project/mpi4py/) for Python version used and mpi backend (https://www.open-mpi.org dependency of mpi4py)
+* H5Py (http://www.h5py.org/ https://pypi.org/project/h5py/) for Python version used and hdf5 backend (https://support.hdfgroup.org/HDF5/ dependency of h5py)
 * GMT (>=r19922) requires release after 5.4.3 (currently unavailable) versions prior to r19922 will have bugs but GMSimViz is designed to work with GMT (>=5.2) tested with Ghostscript 9.18, 9.21 was found to produce glitches
 * FFMpeg built with image2/png, h.264 encoder support (standard installation) tested with version 3.3
 * Qcore library (self-contained) 
