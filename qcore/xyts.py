@@ -25,7 +25,7 @@ class XYTSFile:
     t0 = 0: complete timeseries from t = 0
     """
 
-    def __init__(self, xyts_path, meta_only = False):
+    def __init__(self, xyts_path, meta_only=False):
         """
         Load metadata and optionally prepare gridpoint datum locations.
         xyts_path: path to the xyts.e3d file
@@ -33,27 +33,26 @@ class XYTSFile:
                 can't use timeslice (lon, lat, value) capability
         """
 
-        xytf = open(xyts_path, 'rb')
+        xytf = open(xyts_path, "rb")
 
         # determine endianness, an x-y timeslice has 1 z value
-        nz = np.fromfile(xytf, dtype = '>i4', count = 7)[-1]
+        nz = np.fromfile(xytf, dtype=">i4", count=7)[-1]
         if nz == 0x00000001:
-            endian = '>'
+            endian = ">"
         elif nz == 0x01000000:
-            endian = '<'
+            endian = "<"
         else:
             xytf.close()
-            raise ValueError('File is not an XY timeslice file: %s' \
-                    % (xyts_path))
+            raise ValueError("File is not an XY timeslice file: %s" % (xyts_path))
         xytf.seek(0)
 
         # read header
-        self.x0, self.y0, self.z0, self.t0, \
-                self.nx, self.ny, self.nz, self.nt = \
-                np.fromfile(xytf, dtype = '%si4' % (endian), count = 8)
-        self.dx, self.dy, self.hh, self.dt, \
-                self.mrot, self.mlat, self.mlon = \
-                np.fromfile(xytf, dtype = '%sf4' % (endian), count = 7)
+        self.x0, self.y0, self.z0, self.t0, self.nx, self.ny, self.nz, self.nt = np.fromfile(
+            xytf, dtype="%si4" % (endian), count=8
+        )
+        self.dx, self.dy, self.hh, self.dt, self.mrot, self.mlat, self.mlon = np.fromfile(
+            xytf, dtype="%sf4" % (endian), count=7
+        )
         xytf.close()
 
         # determine original sim parameters
@@ -64,41 +63,49 @@ class XYTSFile:
 
         # orientation of components
         self.dip = 0
-        self.comps = {'X':radians(90 + self.mrot), \
-                'Y':radians(self.mrot), \
-                'Z':radians(90 - self.dip)}
+        self.comps = {
+            "X": radians(90 + self.mrot),
+            "Y": radians(self.mrot),
+            "Z": radians(90 - self.dip),
+        }
         # rotation of components so Y is true north
-        self.cosR = cos(self.comps['X'])
-        self.sinR = sin(self.comps['X'])
+        self.cosR = cos(self.comps["X"])
+        self.sinR = sin(self.comps["X"])
         # simulation plane always flat, dip = 0
-        self.cosP = 0 # cos(self.comps['Z'])
-        self.sinP = 1 # sin(self.comps['Z'])
+        self.cosP = 0  # cos(self.comps['Z'])
+        self.sinP = 1  # sin(self.comps['Z'])
         # xy dual component rotation matrix
         # must also flip vertical axis
         theta = radians(self.mrot)
-        self.rot_matrix = np.array([[ cos(theta), -sin(theta),  0], \
-                                    [-sin(theta), -cos(theta),  0], \
-                                    [          0,           0, -1]])
+        self.rot_matrix = np.array(
+            [[cos(theta), -sin(theta), 0], [-sin(theta), -cos(theta), 0], [0, 0, -1]]
+        )
 
         # save speed when only loaded to read metadata section
         if meta_only:
             return
 
         # memory map for data section
-        self.data = np.memmap(xyts_path, dtype = '%sf4' % (endian), \
-                mode = 'r', offset = 60, \
-                shape = (self.nt, len(self.comps), self.ny, self.nx))
+        self.data = np.memmap(
+            xyts_path,
+            dtype="%sf4" % (endian),
+            mode="r",
+            offset=60,
+            shape=(self.nt, len(self.comps), self.ny, self.nx),
+        )
 
         # create longitude, latitude map for data
-        grid_points = np.mgrid[0:self.nx_sim:self.dxts, \
-                               0:self.ny_sim:self.dyts] \
-                      .reshape(2, -1, order = 'F').T
+        grid_points = (
+            np.mgrid[0 : self.nx_sim : self.dxts, 0 : self.ny_sim : self.dyts]
+            .reshape(2, -1, order="F")
+            .T
+        )
         amat = geo.gen_mat(self.mrot, self.mlon, self.mlat)[0]
-        self.ll_map = geo.xy2ll(geo.gp2xy(grid_points, self.nx_sim, \
-                                          self.ny_sim, self.hh), amat) \
-                      .reshape(self.ny, self.nx, 2)
+        self.ll_map = geo.xy2ll(
+            geo.gp2xy(grid_points, self.nx_sim, self.ny_sim, self.hh), amat
+        ).reshape(self.ny, self.nx, 2)
 
-    def corners(self, gmt_format = False):
+    def corners(self, gmt_format=False):
         """
         Retrieve corners of simulation domain.
         gmt_format: if True, also returns corners in GMT string format
@@ -110,33 +117,37 @@ class XYTSFile:
         # c4 =   x0 ymax
         # cannot just use self.ll_map as xmax, ymax for simulation domain
         # may have been decimated. sim nx 1400 (xmax 1399) with dxts 5 = 1395
-        gp_cnrs = np.array([[0, 0], \
-                            [self.nx_sim - 1, 0], \
-                            [self.nx_sim - 1, self.ny_sim - 1], \
-                            [0, self.ny_sim - 1]])
+        gp_cnrs = np.array(
+            [
+                [0, 0],
+                [self.nx_sim - 1, 0],
+                [self.nx_sim - 1, self.ny_sim - 1],
+                [0, self.ny_sim - 1],
+            ]
+        )
         amat = geo.gen_mat(self.mrot, self.mlon, self.mlat)[0]
-        ll_cnrs = geo.xy2ll(geo.gp2xy(gp_cnrs, self.nx_sim, self.ny_sim, \
-                                      self.hh), amat).tolist()
+        ll_cnrs = geo.xy2ll(
+            geo.gp2xy(gp_cnrs, self.nx_sim, self.ny_sim, self.hh), amat
+        ).tolist()
         if not gmt_format:
             return ll_cnrs
 
-        gmt_cnrs = '\n'.join([\
-                ' '.join(map(str, cnr)) for cnr in ll_cnrs])
+        gmt_cnrs = "\n".join([" ".join(map(str, cnr)) for cnr in ll_cnrs])
         return ll_cnrs, gmt_cnrs
 
-    def region(self, corners = None):
+    def region(self, corners=None):
         """
         Returns simulation region as a tuple (x_min, x_max, y_min, y_max).
         corners: use pre-calculated corners if given
         """
         if corners is None:
             corners = self.corners()
-        x_min, y_min = np.min(corners, axis = 0)
-        x_max, y_max = np.max(corners, axis = 0)
+        x_min, y_min = np.min(corners, axis=0)
+        x_max, y_max = np.max(corners, axis=0)
 
         return (x_min, x_max, y_min, y_max)
 
-    def tslice_get(self, step, comp = -1, outfile = None):
+    def tslice_get(self, step, comp=-1, outfile=None):
         """
         Retrieve timeslice data.
         Based on logic in WccFormat/src/ts2xyz.c
@@ -144,10 +155,8 @@ class XYTSFile:
         comp: timestep component -1:sqrt(x^2 + y^2 + z^2), 0:x, 1:y, 2:z
         """
         # loading x, y, z all the time not significant
-        y = self.data[step, 0, :, :] * self.cosR \
-                - self.data[step, 1, :, :] * self.sinR
-        x = self.data[step, 0, :, :] * self.sinR \
-                + self.data[step, 1, :, :] * self.cosR
+        y = self.data[step, 0, :, :] * self.cosR - self.data[step, 1, :, :] * self.sinR
+        x = self.data[step, 0, :, :] * self.sinR + self.data[step, 1, :, :] * self.cosR
         z = self.data[step, 2, :, :] * -1
 
         if comp < 0:
@@ -166,7 +175,7 @@ class XYTSFile:
         else:
             wanted.astype(np.float32).tofile(outfile)
 
-    def pgv(self, mmi = False, pgvout = None, mmiout = None):
+    def pgv(self, mmi=False, pgvout=None, mmiout=None):
         """
         Retrieve PGV map.
         mmi: also calculate MMI
@@ -176,16 +185,28 @@ class XYTSFile:
         # PGV as timeslices reduced to maximum value at each point
         pgv = np.zeros(self.nx * self.ny)
         for ts in xrange(self.t0, self.nt):
-            pgv = np.maximum( \
-                    np.sqrt(np.sum(np.power(np.dot( \
-                    self.data[ts, :, :, :].reshape(3, -1).T, \
-                    self.rot_matrix ), 2), axis = 1)), pgv)
+            pgv = np.maximum(
+                np.sqrt(
+                    np.sum(
+                        np.power(
+                            np.dot(
+                                self.data[ts, :, :, :].reshape(3, -1).T, self.rot_matrix
+                            ),
+                            2,
+                        ),
+                        axis=1,
+                    )
+                ),
+                pgv,
+            )
 
         # modified marcalli intensity formula
         if mmi:
-            mmiv = np.where(np.log10(pgv) < 0.53, \
-                    3.78 + 1.47 * np.log10(pgv), \
-                    2.89 + 3.16 * np.log10(pgv))
+            mmiv = np.where(
+                np.log10(pgv) < 0.53,
+                3.78 + 1.47 * np.log10(pgv),
+                2.89 + 3.16 * np.log10(pgv),
+            )
 
         # transform to give longitude, latitude, pgv value
         pgv = np.vstack((self.ll_map.reshape(-1, 2).T, pgv)).T
