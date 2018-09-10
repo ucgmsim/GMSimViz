@@ -277,7 +277,7 @@ def timeslice(job, meta):
         "%s_perspective%s.ps"
         % (
             os.path.splitext(os.path.basename(meta["srf_file"]))[0],
-            "_%.4d" % (i) * (job["seq"] != None),
+            "_%.4d" % (i) * (job["seq"] is not None),
         ),
     )
     if os.path.exists(
@@ -692,7 +692,7 @@ def timeslice(job, meta):
     elif plot == "timeseries":
         cpt_label = ""
         y = scale_p
-        if meta["xyts_file"] != None:
+        if meta["xyts_file"] is not None:
             x0 = WINDOW_L * 2.0
             x1 = scale_margin
             diff = x1 - x0
@@ -1006,7 +1006,7 @@ def get_args():
     except AssertionError:
         sys.exit("Could not find SRF: %s" % (args.srf_file))
     # xyts is optional
-    if args.xyts != None:
+    if args.xyts is not None:
         try:
             args.xyts = os.path.abspath(args.xyts)
             assert os.path.isfile(args.xyts)
@@ -1019,10 +1019,10 @@ def get_args():
         args.landslide_s,
         args.landslide_p,
     ]:
-        if filepath != None and not os.path.exists(filepath):
+        if filepath is not None and not os.path.exists(filepath):
             sys.exit("Could not find liquefaction/landslide file: %s" % (filepath))
     # paths optional
-    if args.paths != None:
+    if args.paths is not None:
         if not os.path.isdir(args.paths):
             sys.exit("Could not find path directory: %s" % (args.paths))
         path_sort = lambda n: map(
@@ -1080,7 +1080,7 @@ if len(sys.argv) > 1:
     )
 
     # working directory
-    if args.temp != None:
+    if args.temp is not None:
         gmt_temp = os.path.abspath(args.temp)
         print("Resuming from: %s" % (gmt_temp))
     else:
@@ -1167,7 +1167,7 @@ if len(sys.argv) > 1:
     frames_gm = 0
     final_azimuth = 180
     # xyts quick preparation
-    if xyts_file != None:
+    if xyts_file is not None:
         if not os.path.isdir(os.path.join(gmt_temp, "xyts")):
             os.makedirs(os.path.join(gmt_temp, "xyts"))
         xfile = xyts.XYTSFile(xyts_file, meta_only=True)
@@ -1185,7 +1185,7 @@ if len(sys.argv) > 1:
             msg_list.append([load_xyts, meta])
             msg_deps += 1
             frames_gm = int(xfile.dt * (xfile.nt - 0.6) * args.framerate)
-            if args.gm_cut != None:
+            if args.gm_cut is not None:
                 frames_gm = min(frames_gm, int(args.gm_cut * args.framerate))
         # ground motion 3D Z extent based on sim domain size
         # final size also depends on map tilt angle
@@ -1235,19 +1235,19 @@ if len(sys.argv) > 1:
     diff_azimuth /= frames_azimuth
 
     # prepare other data
-    if args.liquefaction_s != None:
+    if args.liquefaction_s is not None:
         region_liquefaction_s, poi_liquefaction_s = load_hdf5(
             args.liquefaction_s, "%s/overlay/liquefaction_s" % (gmt_temp)
         )
-    if args.liquefaction_p != None:
+    if args.liquefaction_p is not None:
         region_liquefaction_p, poi_liquefaction_p = load_hdf5(
             args.liquefaction_p, "%s/overlay/liquefaction_p" % (gmt_temp)
         )
-    if args.landslide_s != None:
+    if args.landslide_s is not None:
         region_landslide_s, poi_landslide_s = load_hdf5(
             args.landslide_s, "%s/overlay/landslide_s" % (gmt_temp)
         )
-    if args.landslide_p != None:
+    if args.landslide_p is not None:
         region_landslide_p, poi_landslide_p = load_hdf5(
             args.landslide_p, "%s/overlay/landslide_p" % (gmt_temp)
         )
@@ -1431,21 +1431,21 @@ if len(sys.argv) > 1:
         # - landslide probability
         frames_sep = meta["t_frames"] * 2 + pause_frames
         frames2pgv = frames2now
-        frames2liquefaction_s = frames2pgv + frames_sep * (args.xyts != None)
+        frames2liquefaction_s = frames2pgv + frames_sep * (args.xyts is not None)
         frames2liquefaction_p = frames2liquefaction_s + frames_sep * (
-            args.liquefaction_s != None
+            args.liquefaction_s is not None
         )
         frames2landslide_s = frames2liquefaction_p + frames_sep * (
-            args.liquefaction_p != None
+            args.liquefaction_p is not None
         )
         frames2landslide_p = frames2landslide_s + frames_sep * (
-            args.landslide_s != None
+            args.landslide_s is not None
         )
-        frames2now = frames2landslide_p + frames_sep * (args.landslide_p != None)
+        frames2now = frames2landslide_p + frames_sep * (args.landslide_p is not None)
         for i in xrange(meta["t_frames"] * (frames2now != frames2pgv)):
             scale_t = i / (meta["t_frames"] - 1.0)
             over_t = 100 - (100 - OVERLAY_T) * scale_t
-            if args.xyts != None:
+            if args.xyts is not None:
                 msgs.append(
                     [
                         timeslice,
@@ -1465,7 +1465,7 @@ if len(sys.argv) > 1:
                         meta,
                     ]
                 )
-            if args.liquefaction_s != None:
+            if args.liquefaction_s is not None:
                 msgs.append(
                     [
                         timeslice,
@@ -1485,7 +1485,7 @@ if len(sys.argv) > 1:
                         meta,
                     ]
                 )
-            if args.liquefaction_p != None:
+            if args.liquefaction_p is not None:
                 msgs.append(
                     [
                         timeslice,
@@ -1505,7 +1505,7 @@ if len(sys.argv) > 1:
                         meta,
                     ]
                 )
-            if args.landslide_s != None:
+            if args.landslide_s is not None:
                 msgs.append(
                     [
                         timeslice,
@@ -1525,7 +1525,7 @@ if len(sys.argv) > 1:
                         meta,
                     ]
                 )
-            if args.landslide_p != None:
+            if args.landslide_p is not None:
                 msgs.append(
                     [
                         timeslice,
@@ -1546,28 +1546,28 @@ if len(sys.argv) > 1:
                     ]
                 )
         # pause, reverse frames for animation
-        if args.xyts != None:
+        if args.xyts is not None:
             op_list.append(["DUP", frames2pgv + i, pause_frames])
             op_list.append(["REV", frames2pgv, meta["t_frames"], pause_frames])
-        if args.liquefaction_s != None:
+        if args.liquefaction_s is not None:
             op_list.append(["DUP", frames2liquefaction_s + i, pause_frames])
             op_list.append(
                 ["REV", frames2liquefaction_s, meta["t_frames"], pause_frames]
             )
-        if args.liquefaction_p != None:
+        if args.liquefaction_p is not None:
             op_list.append(["DUP", frames2liquefaction_p + i, pause_frames])
             op_list.append(
                 ["REV", frames2liquefaction_p, meta["t_frames"], pause_frames]
             )
-        if args.landslide_s != None:
+        if args.landslide_s is not None:
             op_list.append(["DUP", frames2landslide_s + i, pause_frames])
             op_list.append(["REV", frames2landslide_s, meta["t_frames"], pause_frames])
-        if args.landslide_p != None:
+        if args.landslide_p is not None:
             op_list.append(["DUP", frames2landslide_p + i, pause_frames])
             op_list.append(["REV", frames2landslide_p, meta["t_frames"], pause_frames])
 
         # stage 7 paths such as road network
-        if args.paths != None:
+        if args.paths is not None:
             # first status
             poi_paths0 = gmt.simplify_segs(args.path_files[0])
             poi_paths = []
