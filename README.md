@@ -28,17 +28,16 @@ A fully featured result is available at https://youtu.be/qZkOTI4x_cc
 ### Dependencies
 The GMSimViz depends on the following software packages.
 
-* Python (>=2.6) tested with 2.7 and 3.6
-* Numpy (https://www.numpy.org https://pypi.org/project/numpy/) for Python version used (>= 1.10) tested with 1.10, 1.13 and 1.14
-* MPI4Py (https://bitbucket.org/mpi4py/ https://pypi.org/project/mpi4py/) for Python version used and mpi backend (https://www.open-mpi.org dependency of mpi4py)
-* H5Py (http://www.h5py.org/ https://pypi.org/project/h5py/) for Python version used and hdf5 backend (https://support.hdfgroup.org/HDF5/ dependency of h5py)
+* Python (>=2.7) tested with 2.7 and 3.6. Which version do I have? Run `/usr/bin/env python --version`.
+* Numpy (https://www.numpy.org https://pypi.org/project/numpy/) for Python version (>= 1.10) tested with 1.10, 1.13 and 1.14
+* MPI4Py (https://bitbucket.org/mpi4py/ https://pypi.org/project/mpi4py/) for Python version and mpi backend (https://www.open-mpi.org dependency of mpi4py)
+* H5Py (http://www.h5py.org/ https://pypi.org/project/h5py/) for Python version and hdf5 backend (https://support.hdfgroup.org/HDF5/ dependency of h5py)
 * GMT (>=r19922) requires release after 5.4.3 (currently unavailable) versions prior to r19922 will have bugs but GMSimViz is designed to work with GMT (>=5.2) tested with Ghostscript 9.18, 9.21 was found to produce glitches
 * FFMpeg built with image2/png, h.264 encoder support (standard installation) tested with version 3.3
-* Qcore library (self-contained) 
 * gawk
 
 ### Linux
-Install the packages for the above mentioned dependencies (qcore library instructions later). Names vary between distribution repositories.  On Ubuntu or other Debian-based Linux distributions, most of the packages can be installed by the following command.
+Install the packages for the above mentioned dependencies. Names vary between distribution repositories.  On Ubuntu or other Debian-based Linux distributions, most of the packages can be installed by the following command. If your system default Python is version 3, install the `python3-*` packages instead of `python-*`.
 ```shell
 sudo apt install python2.7 python-numpy python-mpi4py python-h5py ffmpeg gawk
 ```
@@ -48,9 +47,9 @@ sudo apt install libpng-dev
 ```
 #### GMT
 
-GMT version earlier than 5.2 has some outstanding issues to work reliably with GMSimViz. A version later than 5.4.3 is recommended, and at the time of writing, the latest development source obtained directly from the  repository (A release r19922 fully verified) found to be the most reliable one.  Instructions for GMT installation is available at http://gmt.soest.hawaii.edu/projects/gmt/wiki/BuildingGMT . You should add PNG support.
+GMT version earlier than 5.2 has some outstanding issues to work reliably with GMSimViz. A version later than 5.4.3 is recommended, and at the time of writing, the latest development source obtained directly from the  repository (A release r19922 fully verified).  Instructions for GMT installation is available at http://gmt.soest.hawaii.edu/projects/gmt/wiki/BuildingGMT . You should compile with PNG support enabled (check configure output, make sure headers are available).
 
-Version 5.4.3 will draw outlines of the fault plane and hypocentre location on the surface rather than at depth.
+If you want to use the latest stable release at time of writing, version 5.4.3 will draw outlines of the fault plane and hypocentre location on the surface rather than at depth (bug).
 
 Make sure the `gmt` binary is in the PATH. If `gmt` is installed in `/usr/local/bin` and `gmt` is not already available in the PATH, add it to the PATH:
 ```shell
@@ -59,9 +58,7 @@ export PATH=$PATH:/usr/local/bin
 You can add the line above to `~/.bashrc` to make it persistent.
 
 
-#### QCore libaray
-
-The qcore library is bundled with GMSimViz.
+#### GMSimViz
 
 Download the plotting resource GMSimViz_resources.zip file from https://goo.gl/mYFCQn
 Extract this file to where GMSimViz is located so that GMSimViz/resources exists.
@@ -84,7 +81,7 @@ Currently unsupported (we cannot give instructions but if the dependencies are m
 ## Sample Data
 Sample data is provided, it contains smaller data sets from multiple earthquakes to make a feature-full demo. To produce the sample animation with 8 processes, run the following from the repository location upon installation:
 ```shell
-python2 ./GMSimViz.py sample_data/fault.srf -a --crude -n7 --title "Sample Animation" --dpi 120 --downscale 1 -x sample_data/xyts.e3d --liquefaction-s sample_data/liquefaction_s.hdf5 --liquefaction-p sample_data/liquefaction_p.hdf5 --landslide-s sample_data/landslide_s.hdf5 --landslide-p sample_data/landslide_p.hdf5 --paths sample_data/transport
+gmsimviz sample_data/fault.srf -a --crude -n7 --title "Sample Animation" --dpi 120 --downscale 1 -x sample_data/xyts.e3d --liquefaction-s sample_data/liquefaction_s.hdf5 --liquefaction-p sample_data/liquefaction_p.hdf5 --landslide-s sample_data/landslide_s.hdf5 --landslide-p sample_data/landslide_p.hdf5 --paths sample_data/transport
 ```
 If you don't have `python2` in your `env`, you may need to run with `python2 GMSimViz.py` or `python GMSimViz.py` instead of `./GMSimViz.py`.\
 Most parameters in the above example are optional. Some provide more segments in the animation, others have defaults. Here is a summary of the sample command options:
