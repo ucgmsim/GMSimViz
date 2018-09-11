@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 """
 
 known issues:
@@ -23,10 +23,10 @@ except ImportError:
     print("Missing h5py module.")
     print("Will not be able to plot liquefaction or landslide.")
 
-import qcore.geo as geo
-import qcore.gmt as gmt
-import qcore.srf as srf
-import qcore.xyts as xyts
+import gmsimviz.geo as geo
+import gmsimviz.gmt as gmt
+import gmsimviz.srf as srf
+import gmsimviz.xyts as xyts
 
 MASTER = 0
 TILT_MIN = 40

@@ -15,12 +15,8 @@ from subprocess import Popen, PIPE
 
 import numpy as np
 
-from qcore import geo
-from qcore.config import qconfig
+from gmsimviz import geo
 
-
-# binary paths
-# srf2xyz = os.path.join(qconfig['tools_dir'], 'srf2xyz')
 # assumption that all srf files contain 6 values per line
 VPL = 6.0
 
@@ -488,44 +484,6 @@ def srf2corners(srf, cnrs="cnrs.txt"):
             cf.write("> plane %s:\n" % (i))
             for corner in plane:
                 cf.write("%s %s\n" % corner)
-
-
-def srf2llv(srf, seg=-1, value="slip", lonlatdep=True, depth=False):
-    """
-    Get longitude, latitude, depth (optional) and value of 'type'
-    srf: filepath of SRF file
-    seg: which segmentsto read (-1 for all)
-    type: which parameter to read
-    depth: whether to also include depth at point
-    """
-    proc = Popen(
-        [
-            srf2xyz,
-            "calc_xy=0",
-            "lonlatdep=%d" % (lonlatdep),
-            "dump_slip=0",
-            "infile=%s" % (srf),
-            "type=%s" % (value),
-            "nseg=%d" % (seg),
-        ],
-        stdout=PIPE,
-    )
-    out, err = proc.communicate()
-    code = proc.wait()
-    # process output
-    llv = np.fromstring(out, dtype="f4", sep=" ")
-
-    # create a slice filter if depth not wanted
-    # longitude, latitude, depth, value
-    if not depth:
-        mask = np.array([True, True, False, True])
-    else:
-        mask = np.array([True, True, True, True])
-
-    if lonlatdep:
-        # output from srf2xyz is 4 columns wide
-        return np.reshape(llv, (len(llv) // 4, 4))[:, mask]
-    return np.reshape(llv, (len(llv) // 3, 3))
 
 
 def srf2llv_py(srf, value="slip", seg=-1, lonlat=True, depth=False, flip_rake=False):
