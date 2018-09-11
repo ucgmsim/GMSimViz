@@ -1,8 +1,5 @@
 build/
 dist/
-qcore.egg-info
-**/*.pyc
-**/*.coverage
-.cache/
-*.idea/
+*.egg-info
 *.pyc
+gmsimviz/config.json

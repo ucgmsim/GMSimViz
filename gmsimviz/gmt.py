@@ -19,16 +19,16 @@ from time import time
 
 import numpy as np
 
-from qcore.config import qconfig
+from gmsimviz.config import config
 
 # only needed if plotting fault planes direct from SRF
 try:
-    from qcore import srf
+    from gmsimviz import srf
 except ImportError:
     print("srf.py not found. will not be able to plot faults from SRF.")
 # only needed for some functions
 try:
-    import qcore.geo as geo
+    import gmsimviz.geo as geo
 except ImportError:
     print("geo.py not found. some functions will not work.")
 
@@ -49,7 +49,7 @@ STATUS_INVALID = 1
 # GMT 5.2+ argument mapping
 GMT52_POS = {"map": "g", "plot": "x", "norm": "n", "rel": "j", "rel_out": "J"}
 
-GMT_DATA = qconfig["GMT_DATA"]
+GMT_DATA = config["GMT_DATA"]
 # LINZ DATA
 LINZ_COAST = {
     "150k": os.path.join(GMT_DATA, "Paths/lds-nz-coastlines-and-islands/150k.gmt")
@@ -1793,11 +1793,11 @@ def fill_space_oblique(
     if abs(space_x - real_width) > 0.4 / dpi or abs(space_y - real_height) > 0.4 / dpi:
         # hasn't shown up before, need to verify if verification is required
         print(
-            "[qcore.gmt.fill_space_oblique] accuracy anomaly detected (%d)"
+            "[gmsimviz.gmt.fill_space_oblique] accuracy anomaly detected (%d)"
             % (recursion)
         )
         if recursion >= 49:
-            print("[qcore.gmt.fill_space_oblique] FAILED")
+            print("[gmsimviz.gmt.fill_space_oblique] FAILED")
             return tuple(region)
         return fill_space_oblique(
             lon0,
