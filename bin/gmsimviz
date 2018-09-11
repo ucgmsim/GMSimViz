@@ -845,7 +845,7 @@ def timeslice(job, meta):
     p.image(
         "R",
         "T",
-        os.path.join(os.path.dirname(__file__), "quakecore-logo.png"),
+        os.path.join(os.path.dirname(geo.__file__), "quakecore-logo.png"),
         width="2.5i",
         pos="rel",
         dx=WINDOW_R - 0.15,
