@@ -82,7 +82,7 @@ Currently unsupported (we cannot give instructions but if the dependencies are m
 Sample data is provided, it contains smaller data sets from multiple earthquakes to make a feature-full demo. 
 
 The most simplest output is a single frame (image) facing the fault plane. This case only requires the SRF file as the parameter:
-<img src="figures/fault_perspective.jpg" width="400">
+<img src="figures/fault_perspective.png" width="400">
 ```shell
 gmsimviz sample_data/fault.srf
 ```
