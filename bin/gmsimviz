@@ -990,6 +990,8 @@ def get_args():
     ###
     ### validate
     ###
+    if not args.animate:
+        args.nproc = 1
     # default title is based on the required argument
     if args.title == None:
         args.title = os.path.basename(args.srf_file)
@@ -1398,8 +1400,10 @@ if len(sys.argv) > 1:
         diff_azimuth_return = geo.angle_diff(final_azimuth, 180) / frames_return
         if frames_gm == 0:
             msgs = msg_list
+            zoom = 1.618
         else:
             msgs = msg_list_post_xyts
+            zoom = 1.2
         for i in xrange(frames_return):
             scale_t = 1 - min(1, i / (meta["t_frames"] - 1.0))
             over_t = 100 - (100 - OVERLAY_T) * scale_t
@@ -1416,7 +1420,7 @@ if len(sys.argv) > 1:
                         "sim_time": max(frames_sr, frames_gm) / args.framerate,
                         "transparency": over_t,
                         "scale_x": 1.0,
-                        "view": (poi_gm, 1.2),
+                        "view": (poi_gm, zoom),
                     },
                     meta,
                 ]
