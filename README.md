@@ -35,11 +35,12 @@ The GMSimViz depends on the following software packages.
 * GMT (>=r19922) requires release after 5.4.3 (currently unavailable) versions prior to r19922 will have bugs but GMSimViz is designed to work with GMT (>=5.2) tested with Ghostscript 9.18, 9.21 was found to produce glitches
 * FFMpeg built with image2/png, h.264 encoder support (standard installation) tested with version 3.3
 * gawk
+* git (to download GMSimViz)
 
 ### Linux
 Install the packages for the above mentioned dependencies. Names vary between distribution repositories.  On Ubuntu or other Debian-based Linux distributions, most of the packages can be installed by the following command. If your system default Python is version 3, install the `python3-*` packages instead of `python-*`.
 ```shell
-sudo apt install python2.7 python-numpy python-mpi4py python-h5py ffmpeg gawk
+sudo apt install python2.7 python-numpy python-mpi4py python-h5py ffmpeg gawk git
 ```
 If you are using a Debian based distribution, you will also need to have installed the separated -dev packages in order to compile GMT.
 ```shell
@@ -59,6 +60,11 @@ You can add the line above to `~/.bashrc` to make it persistent.
 
 
 #### GMSimViz
+
+Download GMSimViz:
+```shell
+git clone git@github.com:ucgmsim/GMSimViz.git
+```
 
 Download the plotting resource GMSimViz_resources.zip file from https://goo.gl/mYFCQn
 Extract this file to where GMSimViz is located so that GMSimViz/resources exists.
