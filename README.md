@@ -105,20 +105,20 @@ gmsimviz sample_data/fault.srf -a --crude -n7 --title "Sample Animation" --dpi 1
 
 Here are details for command options:
 
-- `srf_file` first position, not optional. Path to a fault in standard rupture format containing the plane header (https://scec.usc.edu/scecpedia/Standard_Rupture_Format).
+- `srf_file` not optional. Path to a fault in standard rupture format containing the plane header (https://scec.usc.edu/scecpedia/Standard_Rupture_Format).
 - `-a` create animation instead of static image showing the slip distribution only. Will animate the progression of slip if no other input data are given.
-- `--crude` this will produce a quick result. No topography or roads are plotted, low resolution coastlines are used and overlays have lower resolutions. This is required for faults outside of the New Zealand area because the higher resolution topography is only available here. Alternatively, replace the topography files with your own.
-- `-n28` number of slave (worker) processes to start. 7 is a good choice for systems with only 8 cores. It is recommended to run on a machine with many cores.
-- `-f10` set the framerate of the animation.
-- `--title` title on the movie, the default is the basename of the SRF file.
+- `--crude` this will produce a quick result. No topography or roads are plotted, low resolution coastlines are used and overlays have lower resolutions. This is required for faults outside of the New Zealand area because the higher resolution topography is only available here. Alternatively, replace the topography files in the resources directory with your own.
+- `-n` number of slave (worker) processes to start. Minimum is 1, 7 is a good choice for systems with only 8 cores. It is recommended to run on a machine with many cores.
+- `-f` set the framerate of the animation eg: 30. The minimum is 5 and each frame is independent so a framerate of 60 would take roughly twice as long as 30.
+- `--title` title on the movie, the default is the basename of the SRF file. In the screenshots at the top of the page, the title is "Kaikoura 2016".
 - `--dpi` dpi of output. Frames are 16 inches x 9 inches so 240 will produce 4k output, 120 for FullHD.
 - `--downscale` render at higher resolution and then downscale. Prevents jitter in object positioning. 8 is ideal for a smooth result.
-- `-x` XYTS file. This is an output created by the EMOD3D software that simulates ground motion. This provides the simulation domain and ground motion data.
-- `--liquefaction-s` and `--landslide-s` Liquefaction and/or landslide suceptibility HDF5 file. Must have data under `model` as in given sample data.
+- `-x` XYTS file. This is an output created by the EMOD3D software that simulates ground motion. This provides the simulation domain and ground motion data. The XYTS file format is described [here](./XYTS.md)
+- `--liquefaction-s` and `--landslide-s` Liquefaction and/or landslide suceptibility HDF5 file. Longitude and latitude is stored as an array under 'x' and 'y' respectively. `model` is a 2D array containing the actual values in the shape (y, x).
 - `--liquefaction-p` and `--landslide-p` As above for the probability from given event.
-- `--paths` Transport network in GMT path format with optional GMT legend files as given in sample data.
-- `--gm-cut` Cut the time series of the xyts file given with `-x` short to this many seconds.
-- `-t` Sets the time (s) for major animation transitions such as when originally facing the slip distribution.
+- `--paths` Folder containing transport network in GMT path format (with .gmt extention, colour and pen data in path headers) with optional GMT legend files (same basename with .legend extention). Files are sorted numerically, underscore separators can be used. Sample data provided.
+- `--gm-cut` Cut the time series of the xyts file given with `-x` short to this many seconds. Eg if the xyts timeseries is 300 seconds but nothing happens after 200, use --gm-cut 200.
+- `-t` Sets the time (s) for major animation transitions such as when originally facing the slip distribution from initial camera position.
 - `-m` Sets the minor tranition time (s) for transitioning between different segments of the animation.
 - `-p` Sets the time (s) to pause for when showing an image such as fault under ground and liquefaction/landslide images.
 - `-d` Sets the delay (s) at the start of the animation before the camera starts moving.
@@ -129,8 +129,6 @@ Here are details for command options:
 
 To list the parameters, run:
 ```GMSimViz.py -h```
-
-The SRF file format is available here: https://scec.usc.edu/scecpedia/Standard_Rupture_Format. The XYTS file format is described [here](./XYTS.md).
 
 ## Thanks
 
