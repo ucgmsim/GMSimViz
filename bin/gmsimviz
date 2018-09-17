@@ -260,40 +260,67 @@ def load_hdf5(h5file, basename, landmask=True):
         pois = np.transpose((h["lon"][...][arglon], h["lat"][...][arglat]))
     return region, pois
 
-
-def timeslice(job, meta):
+def frame_paths(seq, wd, srf_file):
     """
-    Render image in animation.
+    Return working directory for frame.
     """
-
-    if job["seq"] == None:
+    if seq == None:
         i = 0
     else:
-        i = job["seq"]
+        i = seq
     # working directory for current image
-    swd = os.path.join(meta["wd"], "_%.4d_" % (i))
+    swd = os.path.join(wd, "_%.4d_" % (i))
     gmt_ps = os.path.join(
         swd,
         "%s_perspective%s.ps"
         % (
-            os.path.splitext(os.path.basename(meta["srf_file"]))[0],
-            "_%.4d" % (i) * (job["seq"] is not None),
+            os.path.splitext(os.path.basename(srf_file))[0],
+            "_%.4d" % (i) * (seq is not None),
         ),
     )
     if os.path.exists(
-        "%s/%s.png" % (meta["wd"], os.path.splitext(os.path.basename(gmt_ps))[0])
+        "%s/%s.png" % (wd, os.path.splitext(os.path.basename(gmt_ps))[0])
     ):
         print("Sequence %d found." % (i))
-        return
+        return None, gmt_ps
+
     if os.path.isdir(swd):
         rmtree(swd)
     os.makedirs(swd)
 
+    return swd, gmt_ps
+
+
+def frame_basemap(frame, crude, paths, proportion):
+    """
+    Draws basemap on plot, frame.
+    crude: True for internal GMT (low) resolution geographic data.
+    paths: True if this frame is for plotting path data.
+    proportion: proportion of transition to path data.
+    """
+    if crude:
+        frame.basemap(topo=None, highway=None, road=None, res="f")
+    else:
+        frame.basemap()
+    if paths:
+        if crude:
+            frame.land(fill="white", res="f")
+            frame.water(res="f", oceans=False)
+        else:
+            frame.topo(
+                gmt.TOPO_HIGH,
+                cpt=gmt.CPTS["nztopo-grey1"],
+                transparency=(1 - proportion) * 100,
+            )
+
+def frame_window(job, meta, swd):
+    """
+    Determine current frame view window size, shape and contents.
+    """
     # allow fixed rotation (north azimuth)
     if meta["rot"] != 1000.0:
         job["azimuth"] = (meta["rot"] + 180) % 360
 
-    # final view window
     lon1, lat1, dlon1, dlat1 = gmt.region_fit_oblique(
         job["view"][0], job["azimuth"] - 90, wd=swd
     )
@@ -334,9 +361,9 @@ def timeslice(job, meta):
         return_region="llur",
         wd=swd,
     )
-    map_width, map_height = gmt.map_dimentions(
+    map_height = gmt.map_dimentions(
         projection=projection, region=llur, wd=swd
-    )
+    )[1]
     map_height *= math.sin(math.radians(job["tilt"]))
     # determine km per inch near centre of page for Z axis scaling
     mid_x = PAGE_WIDTH / 2.0
@@ -362,6 +389,19 @@ def timeslice(job, meta):
         v_tilt = math.asin(job["tilt"] / meta["map_tilt"])
         a_tilt = math.sin(math.radians(meta["map_tilt"]))
         z_scale = -1.0 / km_inch * (a_tilt + (1 - a_tilt) * math.cos(v_tilt))
+
+    return lon1, lat1, llur, map_height, z_scale
+
+def timeslice(job, meta):
+    """
+    Render image in animation.
+    """
+
+    swd, gmt_ps = frame_paths(job["seq"], meta["wd"], meta["srf_file"])
+    if swd is None:
+        return
+
+    lon1, lat1, llur, map_height, z_scale = frame_window(job, meta, swd)
 
     # begin plot
     p = gmt.GMTPlot(gmt_ps)
@@ -409,20 +449,12 @@ def timeslice(job, meta):
         )
 
     proj(True)
-    if meta["crude"]:
-        p.basemap(topo=None, highway=None, road=None, res="f")
-    else:
-        p.basemap()
-    if job["sim_time"] == -3:
-        if meta["crude"]:
-            p.land(fill="white", res="f")
-            p.water(res="f", oceans=False)
-        else:
-            p.topo(
-                gmt.TOPO_HIGH,
-                cpt=gmt.CPTS["nztopo-grey1"],
-                transparency=(1 - job["proportion"]) * 100,
-            )
+    frame_basemap(
+        p,
+        meta["crude"],
+        job["sim_time"] == -3,
+        job["proportion"] if job["sim_time"] == -3 else 0,
+    )
 
     # simulation domain
     if os.path.isfile("%s/xyts/corners.gmt" % (meta["wd"])):
@@ -915,6 +947,7 @@ def timeslice(job, meta):
     # temporary storage can get very large
     rmtree(swd)
 
+
 def validate_args(args):
     # only need one worker to do a single frame
     if not args.animate:
@@ -960,6 +993,7 @@ def validate_args(args):
         args.path_files = sorted(glob("%s/*.gmt" % (args.paths)), key=path_sort)
 
     return args
+
 
 def get_args():
     from argparse import ArgumentParser
@@ -1031,7 +1065,7 @@ def get_args():
         "--dpi", help="[240]:4K 120:HD (frames are 16ix9i)", type=int, default=240
     )
 
-    return validate_args(parser.parse_args()):
+    return validate_args(parser.parse_args())
 
 
 ###
