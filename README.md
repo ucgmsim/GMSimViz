@@ -128,7 +128,7 @@ Here are details for command options:
 - `-k` Keeps the temporary directory (containing all frames) once animation is complete.
 
 To list the parameters, run:
-```GMSimViz.py -h```
+```gmsimviz -h```
 
 ## Thanks
 
