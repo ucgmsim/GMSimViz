@@ -915,6 +915,51 @@ def timeslice(job, meta):
     # temporary storage can get very large
     rmtree(swd)
 
+def validate_args(args):
+    # only need one worker to do a single frame
+    if not args.animate:
+        args.nproc = 1
+    # default title is based on the required argument
+    if args.title == None:
+        args.title = os.path.basename(args.srf_file)
+    # minor transitions must complete within major transition time
+    if args.mtime > args.time:
+        sys.exit("Failed constraints (mtime <= time).")
+    # minimum framerate currently enforced for safety
+    if args.framerate < 5:
+        sys.exit("Framerate too low: %s" % (args.framerate))
+    # srf file must exist
+    try:
+        args.srf_file = os.path.abspath(args.srf_file)
+        assert os.path.isfile(args.srf_file)
+    except AssertionError:
+        sys.exit("Could not find SRF: %s" % (args.srf_file))
+    # xyts is optional
+    if args.xyts is not None:
+        try:
+            args.xyts = os.path.abspath(args.xyts)
+            assert os.path.isfile(args.xyts)
+        except AssertionError:
+            sys.exit("Could not find XYTS: %s" % (args.xyts))
+    # liquefaction / landslide also optional
+    for filepath in [
+        args.liquefaction_s,
+        args.liquefaction_p,
+        args.landslide_s,
+        args.landslide_p,
+    ]:
+        if filepath is not None and not os.path.exists(filepath):
+            sys.exit("Could not find liquefaction/landslide file: %s" % (filepath))
+    # paths optional
+    if args.paths is not None:
+        if not os.path.isdir(args.paths):
+            sys.exit("Could not find path directory: %s" % (args.paths))
+        path_sort = lambda n: map(
+            int, os.path.basename(os.path.splitext(n)[0]).split("_")
+        )
+        args.path_files = sorted(glob("%s/*.gmt" % (args.paths)), key=path_sort)
+
+    return args
 
 def get_args():
     from argparse import ArgumentParser
@@ -985,54 +1030,8 @@ def get_args():
     parser.add_argument(
         "--dpi", help="[240]:4K 120:HD (frames are 16ix9i)", type=int, default=240
     )
-    args = parser.parse_args()
 
-    ###
-    ### validate
-    ###
-    if not args.animate:
-        args.nproc = 1
-    # default title is based on the required argument
-    if args.title == None:
-        args.title = os.path.basename(args.srf_file)
-    # minor transitions must complete within major transition time
-    if args.mtime > args.time:
-        sys.exit("Failed constraints (mtime <= time).")
-    # minimum framerate currently enforced for safety
-    if args.framerate < 5:
-        sys.exit("Framerate too low: %s" % (args.framerate))
-    # srf file must exist
-    try:
-        args.srf_file = os.path.abspath(args.srf_file)
-        assert os.path.isfile(args.srf_file)
-    except AssertionError:
-        sys.exit("Could not find SRF: %s" % (args.srf_file))
-    # xyts is optional
-    if args.xyts is not None:
-        try:
-            args.xyts = os.path.abspath(args.xyts)
-            assert os.path.isfile(args.xyts)
-        except AssertionError:
-            sys.exit("Could not find XYTS: %s" % (args.xyts))
-    # liquefaction / landslide also optional
-    for filepath in [
-        args.liquefaction_s,
-        args.liquefaction_p,
-        args.landslide_s,
-        args.landslide_p,
-    ]:
-        if filepath is not None and not os.path.exists(filepath):
-            sys.exit("Could not find liquefaction/landslide file: %s" % (filepath))
-    # paths optional
-    if args.paths is not None:
-        if not os.path.isdir(args.paths):
-            sys.exit("Could not find path directory: %s" % (args.paths))
-        path_sort = lambda n: map(
-            int, os.path.basename(os.path.splitext(n)[0]).split("_")
-        )
-        args.path_files = sorted(glob("%s/*.gmt" % (args.paths)), key=path_sort)
-
-    return args
+    return validate_args(parser.parse_args()):
 
 
 ###
