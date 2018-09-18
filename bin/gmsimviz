@@ -260,6 +260,13 @@ def load_hdf5(h5file, basename, landmask=True):
         pois = np.transpose((h["lon"][...][arglon], h["lat"][...][arglat]))
     return region, pois
 
+
+def frame_init(gmt_ps)
+    # begin plot
+    p = gmt.GMTPlot(gmt_ps)
+    # use custom page size
+    gmt.gmt_defaults(wd=os.path.basename(gmt_ps), ps_media="Custom_%six%si" % (PAGE_WIDTH, PAGE_HEIGHT))
+
 def frame_paths(seq, wd, srf_file):
     """
     Return working directory for frame.
@@ -313,6 +320,7 @@ def frame_basemap(frame, crude, paths, proportion):
                 transparency=(1 - proportion) * 100,
             )
 
+
 def frame_window(job, meta, swd):
     """
     Determine current frame view window size, shape and contents.
@@ -361,9 +369,7 @@ def frame_window(job, meta, swd):
         return_region="llur",
         wd=swd,
     )
-    map_height = gmt.map_dimentions(
-        projection=projection, region=llur, wd=swd
-    )[1]
+    map_height = gmt.map_dimentions(projection=projection, region=llur, wd=swd)[1]
     map_height *= math.sin(math.radians(job["tilt"]))
     # determine km per inch near centre of page for Z axis scaling
     mid_x = PAGE_WIDTH / 2.0
@@ -390,7 +396,138 @@ def frame_window(job, meta, swd):
         a_tilt = math.sin(math.radians(meta["map_tilt"]))
         z_scale = -1.0 / km_inch * (a_tilt + (1 - a_tilt) * math.cos(v_tilt))
 
-    return lon1, lat1, llur, map_height, z_scale
+    return {'c_lon':lon1, 'c_lat':lat1, 'llur':llur, 'height':map_height, 'z_scale':z_scale, 'tilt':job['tilt'], 'azimuth':job['azimuth']}
+
+def frame_proj(frame, window, projected, shift=True):
+    # shortcut to switch between geographic and plot projections
+    if projected:
+        frame.spacial(
+            "OA",
+            window['llur'],
+            lon0=window['c_lon'],
+            lat0=window['c_lat'],
+            z="z%s" % (z_scale),
+            sizing="%s/%s" % (window["azimuth"] - 90, PAGE_WIDTH),
+            p="180/%s/0" % (window["tilt"]),
+            y_shift=(not shift) * PAGE_HEIGHT
+            + shift * (PAGE_HEIGHT - window['height']) / 2.0,
+        )
+    else:
+        frame.spacial(
+            "X",
+            (0, PAGE_WIDTH, (not shift) * -PAGE_HEIGHT, PAGE_HEIGHT),
+            sizing="%s/%s" % (PAGE_WIDTH, PAGE_HEIGHT + (not shift) * PAGE_HEIGHT),
+            y_shift=(not shift) * -PAGE_HEIGHT
+            + shift * (window['height'] - PAGE_HEIGHT) / 2.0,
+        )
+
+def frame_background(frame, job, meta):
+    # draw sky and earth if map tilted beyond page filling point
+    if job["tilt"] < meta["map_tilt"]:
+        frame.spacial("X", (0, 1, -1, 1), sizing="%s/%s" % (PAGE_WIDTH, PAGE_HEIGHT))
+        frame.path(
+            "0 0\n1 0\n1 1\n0 1",
+            is_file=False,
+            close=True,
+            width=None,
+            fill="p50+bskyblue+fwhite+r%s" % (meta["dpi"]),
+        )
+        frame.path(
+            "0 0\n1 0\n1 -1\n0 -1",
+            is_file=False,
+            close=True,
+            width=None,
+            fill="p30+bdarkbrown+fbrown+r%s" % (meta["dpi"]),
+        )
+
+def frame_outlines(frame, meta):
+    # draw outlines of items on frame
+
+    # simulation domain
+    if os.path.isfile("%s/xyts/corners.gmt" % (meta["wd"])):
+        frame.path(
+            "%s/xyts/corners.gmt" % (meta["wd"]),
+            close=True,
+            width="2p",
+            split="-",
+            colour="60/60/60",
+        )
+
+    # srf plane outline
+    frame.path(
+        meta["gmt_bottom"],
+        is_file=False,
+        colour="black@30",
+        width="1p",
+        split="-",
+        close=True,
+        z=True,
+    )
+    # srf plane top edges
+    frame.path(meta["gmt_top"], is_file=False, colour="black", width="2p", z=True)
+
+def frame_logo(frame, right_margin, logo=None):
+    if logo is None:
+        logo = os.path.join(os.path.dirname(geo.__file__), "quakecore-logo.png")
+    frame.image(
+        "R",
+        "T",
+        os.path.join(logo),
+        width="2.5i",
+        pos="rel",
+        dx=right_margin - 0.15,
+        dy=-0.15,
+    )
+
+
+def frame_op(op, prefix, seq_from, seq_to):
+    # frame operations shortcut
+    op(
+        "%s_perspective_%.4d.png" % (prefix, seq_from),
+        "%s_perspective_%.4d.png" % (prefix, seq_to),
+    )
+
+
+def frame_op_batch(op_list, prefix):
+    # frame operation instructions
+    for op in op_list:
+        if op[0] == "DUP":
+            # 'DUP', dup_frame, dup_count (negative to dup backwards)
+            for i in xrange(1, op[2] + 1) if (op[2] >= 0) else xrange(op[2], 0, 1):
+                frame_op(copy, prefix, op[1], op[1] + i)
+        elif op[0] == "REV":
+            # 'REV', seq_from, seq_len, rev_gap
+            for i in xrange(op[2]):
+                frame_op(copy, prefix, op[1] + i, op[1] + op[2] * 2 + op[3] - 1 - i)
+        elif op[0] == "SHIFT":
+            # 'SHIFT', seq_from, seq_len, shift
+            for i in (
+                xrange(op[1] + op[2] - 1, op[1] - 1, -1)
+                if (op[3] > 0)
+                else xrange(op[1], op[1] + op[2])
+            ):
+                frame_op(move, prefix, i, i + op[3])
+
+
+def frame_finalise(prefix, anim=False, fps=10, clean=False):
+    if anim:
+        # output movie
+        gmt.make_movie(
+            "%s_perspective_%%04d.png" % (prefix),
+            os.path.basename(prefix),
+            fps=fps,
+            codec="libx264",
+        )
+    else:
+        # take result out of temp
+        move(
+            "%s_perspective.png" % (prefix),
+            "%s_perspective.png" % (os.path.basename(prefix)),
+        )
+    # cleanup
+    if clean:
+        rmtree(os.path.dirname(prefix))
+
 
 def timeslice(job, meta):
     """
@@ -401,83 +538,17 @@ def timeslice(job, meta):
     if swd is None:
         return
 
-    lon1, lat1, llur, map_height, z_scale = frame_window(job, meta, swd)
-
-    # begin plot
-    p = gmt.GMTPlot(gmt_ps)
-    # use custom page size
-    gmt.gmt_defaults(wd=swd, ps_media="Custom_%six%si" % (PAGE_WIDTH, PAGE_HEIGHT))
-    # shortcut to switch between geographic and plot projections
-    def proj(projected, shift=True):
-        if projected:
-            p.spacial(
-                "OA",
-                llur,
-                lon0=lon1,
-                lat0=lat1,
-                z="z%s" % (z_scale),
-                sizing="%s/%s" % (job["azimuth"] - 90, PAGE_WIDTH),
-                p="180/%s/0" % (job["tilt"]),
-                y_shift=(not shift) * PAGE_HEIGHT
-                + shift * (PAGE_HEIGHT - map_height) / 2.0,
-            )
-        else:
-            p.spacial(
-                "X",
-                (0, PAGE_WIDTH, (not shift) * -PAGE_HEIGHT, PAGE_HEIGHT),
-                sizing="%s/%s" % (PAGE_WIDTH, PAGE_HEIGHT + (not shift) * PAGE_HEIGHT),
-                y_shift=(not shift) * -PAGE_HEIGHT
-                + shift * (map_height - PAGE_HEIGHT) / 2.0,
-            )
-
-    # draw sky and earth if map tilted beyond page filling point
-    if job["tilt"] < meta["map_tilt"]:
-        p.spacial("X", (0, 1, -1, 1), sizing="%s/%s" % (PAGE_WIDTH, PAGE_HEIGHT))
-        p.path(
-            "0 0\n1 0\n1 1\n0 1",
-            is_file=False,
-            close=True,
-            width=None,
-            fill="p50+bskyblue+fwhite+r%s" % (meta["dpi"]),
-        )
-        p.path(
-            "0 0\n1 0\n1 -1\n0 -1",
-            is_file=False,
-            close=True,
-            width=None,
-            fill="p30+bdarkbrown+fbrown+r%s" % (meta["dpi"]),
-        )
-
-    proj(True)
+    window = frame_window(job, meta, swd)
+    p = frame_init(gmt_ps)
+    frame_background(p, job, meta)
+    frame_proj(p, window, True)
     frame_basemap(
         p,
         meta["crude"],
         job["sim_time"] == -3,
         job["proportion"] if job["sim_time"] == -3 else 0,
     )
-
-    # simulation domain
-    if os.path.isfile("%s/xyts/corners.gmt" % (meta["wd"])):
-        p.path(
-            "%s/xyts/corners.gmt" % (meta["wd"]),
-            close=True,
-            width="2p",
-            split="-",
-            colour="60/60/60",
-        )
-
-    # srf plane outline
-    p.path(
-        meta["gmt_bottom"],
-        is_file=False,
-        colour="black@30",
-        width="1p",
-        split="-",
-        close=True,
-        z=True,
-    )
-    # srf plane top edges
-    p.path(meta["gmt_top"], is_file=False, colour="black", width="2p", z=True)
+    frame_outlines(p, meta)
 
     # path plot such as road network
     if job["sim_time"] == -3:
@@ -611,7 +682,7 @@ def timeslice(job, meta):
                 os.remove("%s/slip_%d.grd" % (swd, i))
 
     # slip distribution has been reprojected onto x, y of page area
-    proj(False, shift=False)
+    frame_proj(p, window, False, shift=False)
     if plot == "slip" and job["transparency"] < 100:
         for s in xrange(len(srf_data[1])):
             if not os.path.exists("%s/plane_%d_slip_xy.grd" % (swd, s)):
@@ -633,7 +704,7 @@ def timeslice(job, meta):
                 crop_grd="%s/plane_%d_mask_xy.grd" % (swd, s),
             )
     # ground motion must be in geographic projection due to 3D Z scaling
-    proj(True, shift=False)
+    frame_proj(p, window, True, shift=False)
     # site labels and srf hypocentre above slip, below ground motion
     p.sites(gmt.sites_major)
     p.points(
@@ -668,7 +739,7 @@ def timeslice(job, meta):
         "1.8i",
         pos="rel",
         dxp=PAGE_WIDTH / 2.0 - 1.8,
-        dyp=map_height / 2.0 - 2.2 * (map_height / PAGE_HEIGHT),
+        dyp=window['height'] / 2.0 - 2.2 * (window['height'] / PAGE_HEIGHT),
         fill="white@80",
         clearance="0.2i",
         pen="thick,red",
@@ -695,7 +766,7 @@ def timeslice(job, meta):
     ###
     ### map overlay border, labels, legends etc...
     ###
-    proj(False)
+    frame_proj(p, window, False)
     p.background(
         PAGE_WIDTH,
         PAGE_HEIGHT,
@@ -874,21 +945,13 @@ def timeslice(job, meta):
         )
 
     # add QuakeCoRE logo
-    p.image(
-        "R",
-        "T",
-        os.path.join(os.path.dirname(geo.__file__), "quakecore-logo.png"),
-        width="2.5i",
-        pos="rel",
-        dx=WINDOW_R - 0.15,
-        dy=-0.15,
-    )
+    frame_logo(WINDOW_R)
 
     ###
     ### projection of the inner area to draw map ticks, legend
     ###
     p.spacial(
-        "OA%s/%s/%s/" % (lon1, lat1, job["azimuth"] - 90),
+        "OA%s/%s/%s/" % (window['c_lon'], window['c_lat'], job["azimuth"] - 90),
         (
             str(llur_i[0][0]),
             str(llur_i[0][1]),
@@ -1796,57 +1859,19 @@ if len(sys.argv) > 1:
         comm.send(obj=msg, dest=slave_id)
         in_progress[slave_id] = msg
 
-    # gather, print reports from slaves
+    # gather reports from slaves
     reports = comm.gather(None, root=MPI.ROOT)
     # stop mpi
     comm.Disconnect()
 
-    # output files prefix
-    basename = os.path.splitext(os.path.basename(args.srf_file))[0]
-    # frame operations shortcut
-    def frame_op(op, seq_from, seq_to):
-        op(
-            "%s/%s_perspective_%.4d.png" % (gmt_temp, basename, seq_from),
-            "%s/%s_perspective_%.4d.png" % (gmt_temp, basename, seq_to),
-        )
-
-    # frame operation instructions
-    for op in op_list:
-        if op[0] == "DUP":
-            # 'DUP', dup_frame, dup_count (negative to dup backwards)
-            for i in xrange(1, op[2] + 1) if (op[2] >= 0) else xrange(op[2], 0, 1):
-                frame_op(copy, op[1], op[1] + i)
-        elif op[0] == "REV":
-            # 'REV', seq_from, seq_len, rev_gap
-            for i in xrange(op[2]):
-                frame_op(copy, op[1] + i, op[1] + op[2] * 2 + op[3] - 1 - i)
-        elif op[0] == "SHIFT":
-            # 'SHIFT', seq_from, seq_len, shift
-            for i in (
-                xrange(op[1] + op[2] - 1, op[1] - 1, -1)
-                if (op[3] > 0)
-                else xrange(op[1], op[1] + op[2])
-            ):
-                frame_op(move, i, i + op[3])
-
-    if args.animate:
-        # output movie
-        gmt.make_movie(
-            "%s/%s_perspective_%%04d.png" % (gmt_temp, basename),
-            basename,
-            fps=args.framerate,
-            codec="libx264",
-        )
-    else:
-        # take result out of temp
-        move(
-            "%s/%s_perspective.png" % (gmt_temp, basename),
-            "%s_perspective.png" % (basename),
-        )
-
-    # cleanup
-    if not args.keep_temp:
-        rmtree(gmt_temp)
+    # output file processing
+    prefix = os.path.join(
+        gmt_temp, os.path.splitext(os.path.basename(args.srf_file))[0]
+    )
+    frame_op_batch(op_list, prefix)
+    frame_finalise(
+        prefix, anim=args.animate, fps=args.framerate, clean=not args.keep_temp
+    )
 
 ###
 ### SLAVE
