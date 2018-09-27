@@ -563,7 +563,7 @@ def frame_sliprate(job, meta, window, wd):
             os.remove("%s/slip_%d.grd" % (wd, i))
 
 
-def frame_logo(frame, right_margin, logo=None):
+def frame_logo(frame, logo=None):
     if logo is None:
         logo = os.path.join(os.path.dirname(geo.__file__), "quakecore-logo.png")
     frame.image(
@@ -572,7 +572,7 @@ def frame_logo(frame, right_margin, logo=None):
         os.path.join(logo),
         width="2.5i",
         pos="rel",
-        dx=right_margin - 0.15,
+        dx=WINDOW_R - 0.15,
         dy=-0.15,
     )
 
@@ -637,36 +637,36 @@ def frame_type(sim_time):
         return "timeseries"
 
 
-def frame_srf_surface(frame, plot_type, n_plane, transparency, wd, srf_wd):
+def frame_srf_surface(frame, plot_type, n_plane, transparency, srf_wd):
     if plot_type == "slip" and transparency < 100:
         # show total slip
         for s in range(n_plane):
-            if not os.path.exists("%s/plane_%d_slip_xy.grd" % (wd, s)):
+            if not os.path.exists("%s/plane_%d_slip_xy.grd" % (frame.wd, s)):
                 continue
             frame.overlay(
-                "%s/plane_%d_slip_xy.grd" % (wd, s),
+                "%s/plane_%d_slip_xy.grd" % (frame.wd, s),
                 "%s/slip.cpt" % (srf_wd),
                 transparency=transparency,
-                crop_grd="%s/plane_%d_mask_xy.grd" % (wd, s),
+                crop_grd="%s/plane_%d_mask_xy.grd" % (frame.wd, s),
             )
     elif plot_type == "timeseries":
         # show cumulative slip current sim_time
         for s in range(n_plane):
-            if not os.path.exists("%s/slip_%d.grd" % (wd, s)):
+            if not os.path.exists("%s/slip_%d.grd" % (frame.wd, s)):
                 continue
             frame.overlay(
-                "%s/slip_%d.grd" % (wd, s),
+                "%s/slip_%d.grd" % (frame.wd, s),
                 "%s/slip.cpt" % (srf_wd),
                 transparency=transparency,
-                crop_grd="%s/plane_%d_mask_xy.grd" % (wd, s),
+                crop_grd="%s/plane_%d_mask_xy.grd" % (frame.wd, s),
             )
 
 
-def frame_proj_base(frame, plot, job, meta, window, swd):
+def frame_proj_base(frame, plot, job, meta, window):
     # base items dependent on plot type
 
     # defaults
-    scale_p_final = 1.0
+    scale_y_final = 1.0
     srf_data = None
 
     if plot == "paths":
@@ -681,7 +681,7 @@ def frame_proj_base(frame, plot, job, meta, window, swd):
         if job["proportion"] >= 1:
             path_file = job["overlay"]
         else:
-            path_file = "%s/path_subselection.gmt" % (swd)
+            path_file = "%s/path_subselection.gmt" % (frame.wd)
             gmt.proportionate_segs(job["overlay"], path_file, job["proportion"])
         # expected pen style to be defined in segment headers with -Wpen
         frame.path(path_file)
@@ -700,23 +700,23 @@ def frame_proj_base(frame, plot, job, meta, window, swd):
         frame.clip()
     # load srf plane data
     elif plot == "slip":
-        scale_p_final = 0.7
+        scale_y_final = 0.7
         if job["transparency"] < 100:
             srf_data = gmt.srf2map(
                 meta["srf_file"],
-                swd,
+                frame.wd,
                 prefix="plane",
                 value="slip",
                 cpt_percentile=95,
-                wd=swd,
+                wd=frame.wd,
                 xy=True,
                 dpu=meta["dpi"] / (1 + meta["crude"] * 0.2),
                 pz=window["z_scale"] * math.cos(math.radians(job["tilt"])),
             )
     elif plot == "timeseries":
-        frame_sliprate(job, meta, window, swd)
+        frame_sliprate(job, meta, window, frame.wd)
 
-    return scale_p_final, srf_data
+    return scale_y_final, srf_data
 
 
 def frame_proj_items(frame, job, meta, window):
@@ -763,77 +763,87 @@ def frame_proj_items(frame, job, meta, window):
     )
 
 
-def timeslice(job, meta):
-    """
-    Render image in animation.
-    """
-
-    swd, gmt_ps = frame_paths(job["seq"], meta["wd"], meta["srf_file"])
-    if swd is None:
-        return
-
-    window = frame_window(job, meta, swd)
-    p = frame_init(gmt_ps)
-    # general background contents
-    frame_background(p, job, meta)
-    frame_proj(p, window, True)
-    frame_basemap(
-        p,
-        meta["crude"],
-        job["sim_time"] == -3,
-        job["proportion"] if job["sim_time"] == -3 else 0,
-    )
-    frame_outlines(p, meta)
-    # different main items
-    plot = frame_type(job["sim_time"])
-    scale_p_final, srf_data = frame_proj_base(p, plot, job, meta, window, swd)
-    # slip distribution has been reprojected onto x, y of page area
-    frame_proj(p, window, False, shift=False)
-    frame_srf_surface(
-        p, plot, meta["n_plane"], job["transparency"], swd, meta["srf_wd"]
-    )
-    # ground motion must be in geographic projection due to 3D Z scaling
-    frame_proj(p, window, True, shift=False)
-    frame_proj_items(p, job, meta, window)
-
+def frame_border_init(scale_y_final, transition, tilt, wd):
     # calculate inner region for map ticks
     # manually adjusted y as mapproject -I not compatible with -p
-    scale_p = job["scale_t"] * scale_p_final
-    window_b = max(WINDOW_B, scale_p)
+    scale_y = transition * scale_y_final
+    window_b = max(WINDOW_B, scale_y)
     # also include lr for better auto tick increment calculation
     llur_i = gmt.mapproject_multi(
         [
-            [WINDOW_L, window_b / math.sin(math.radians(job["tilt"]))],
+            [WINDOW_L, window_b / math.sin(math.radians(tilt))],
             [
                 PAGE_WIDTH - WINDOW_R,
-                (PAGE_HEIGHT - WINDOW_T) / math.sin(math.radians(job["tilt"])),
+                (PAGE_HEIGHT - WINDOW_T) / math.sin(math.radians(tilt)),
             ],
-            [PAGE_WIDTH - WINDOW_R, window_b / math.sin(math.radians(job["tilt"]))],
+            [PAGE_WIDTH - WINDOW_R, window_b / math.sin(math.radians(tilt))],
         ],
         inverse=True,
-        wd=swd,
+        wd=wd,
     )
 
-    ###
-    ### map overlay border, labels, legends etc...
-    ###
-    frame_proj(p, window, False)
-    p.background(
+    return scale_y, window_b, llur_i
+
+
+def frame_border(frame, window_b, job, meta):
+    # fill border space
+    frame.background(
         PAGE_WIDTH,
         PAGE_HEIGHT,
         spacial=False,
         window=(WINDOW_L, WINDOW_R, WINDOW_T, window_b),
         colour="white@50",
     )
+    # title
+    frame.text(
+        PAGE_WIDTH / 2.0,
+        PAGE_HEIGHT,
+        meta["title"],
+        align="RM",
+        size=26,
+        dy=WINDOW_T / -2.0,
+        dx=-0.2,
+    )
+    # subtitle
+    if "subtitle" in job:
+        frame.text(
+            PAGE_WIDTH / 2.0,
+            PAGE_HEIGHT,
+            job["subtitle"],
+            align="LM",
+            size=24,
+            dy=WINDOW_T / -2.0,
+            dx=0.2,
+            colour="black@%s" % (max(OVERLAY_T, job["transparency"])),
+        )
+    # sim time
+    if job["sim_time"] >= 0 and job["transparency"] < 100:
+        frame.text(
+            PAGE_WIDTH - WINDOW_R,
+            PAGE_HEIGHT - WINDOW_T,
+            "%.3fs" % (job["sim_time"]),
+            size="24p",
+            align="BR",
+            font="Courier",
+            dx=-0.2 - 2.2,
+            dy=0.1,
+            colour="black@%s" % (job["transparency"]),
+        )
+    # add QuakeCoRE logo
+    frame_logo(frame)
+
+
+def frame_scales(frame, job, meta, plot, scale_y):
+
     # middle of scale
-    cpt_y = scale_p - 0.5 * SCALE_SIZE - SCALE_PAD
+    cpt_y = scale_y - 0.5 * SCALE_SIZE - SCALE_PAD
     # space before scale starts
     scale_margin = (PAGE_WIDTH - SCALE_WIDTH) / 2.0
     if plot == "slip":
         cpt_label = "Slip (cm)"
-        p.cpt_scale(
+        frame.cpt_scale(
             PAGE_WIDTH / 2.0,
-            scale_p,
+            scale_y,
             "%s/slip.cpt" % (meta["srf_wd"]),
             length=SCALE_WIDTH,
             align="CT",
@@ -845,7 +855,7 @@ def timeslice(job, meta):
         )
     elif plot == "timeseries":
         cpt_label = ""
-        y = scale_p
+        y = scale_y
         if meta["xyts_file"] is not None:
             x0 = WINDOW_L * 2.0
             x1 = scale_margin
@@ -855,7 +865,7 @@ def timeslice(job, meta):
             length1 = SCALE_WIDTH
             diff = length1 - length0
             length = length0 + diff * job["scale_x"]
-            p.cpt_scale(
+            frame.cpt_scale(
                 x,
                 y,
                 "%s/xyts/gm.cpt" % (meta["wd"]),
@@ -872,7 +882,7 @@ def timeslice(job, meta):
         else:
             x = scale_margin
             length = SCALE_WIDTH
-        p.cpt_scale(
+        frame.cpt_scale(
             x,
             y,
             "%s/slip.cpt" % (meta["srf_wd"]),
@@ -905,9 +915,9 @@ def timeslice(job, meta):
             major = 0.05
             minor = 0.0125
             cross_tick = 0.0125
-        p.cpt_scale(
+        frame.cpt_scale(
             PAGE_WIDTH / 2.0,
-            scale_p,
+            scale_y,
             "%s/overlay/%s.cpt" % (meta["wd"], job["overlay"]),
             length=SCALE_WIDTH,
             align="CT",
@@ -922,87 +932,54 @@ def timeslice(job, meta):
     # cpt label
     try:
         assert cpt_label != ""
-        p.text(scale_margin, cpt_y, cpt_label, align="RM", dx=-SCALE_PAD, size=16)
+        frame.text(scale_margin, cpt_y, cpt_label, align="RM", dx=-SCALE_PAD, size=16)
     except (AssertionError, NameError):
         pass
 
-    # title
-    p.text(
-        PAGE_WIDTH / 2.0,
-        PAGE_HEIGHT,
-        meta["title"],
-        align="RM",
-        size=26,
-        dy=WINDOW_T / -2.0,
-        dx=-0.2,
-    )
-    # subtitle
-    if "subtitle" in job:
-        p.text(
-            PAGE_WIDTH / 2.0,
-            PAGE_HEIGHT,
-            job["subtitle"],
-            align="LM",
-            size=24,
-            dy=WINDOW_T / -2.0,
-            dx=0.2,
-            colour="black@%s" % (max(OVERLAY_T, job["transparency"])),
-        )
-    # sim time
-    if job["sim_time"] >= 0 and job["transparency"] < 100:
-        p.text(
-            PAGE_WIDTH - WINDOW_R,
-            PAGE_HEIGHT - WINDOW_T,
-            "%.3fs" % (job["sim_time"]),
-            size="24p",
-            align="BR",
-            font="Courier",
-            dx=-0.2 - 2.2,
-            dy=0.1,
-            colour="black@%s" % (job["transparency"]),
-        )
+    return scale_margin, cpt_y
 
-    if plot == "slip" and job["transparency"] < 100:
-        # box-and-whisker slip distribution
-        scale_start = scale_margin
-        scale_factor = 1.0 / meta["slip_cpt_max"] * SCALE_WIDTH
-        # max point should not be off the page, leave space for label
-        max_x = scale_start + min(srf_data[2]["max"] * scale_factor, SCALE_WIDTH + 1.0)
-        p.epoints(
-            "%s %s %s %s %s %s"
-            % (
-                scale_start + srf_data[2]["50p"] * scale_factor,
-                cpt_y,
-                scale_start + srf_data[2]["min"] * scale_factor,
-                scale_start + srf_data[2]["25p"] * scale_factor,
-                scale_start + srf_data[2]["75p"] * scale_factor,
-                max_x,
-            ),
-            is_file=False,
-            xy="X",
-            asymmetric=True,
-            width=SCALE_SIZE,
-            colour="blue",
-            line_width="2p",
-        )
-        # label max
-        p.text(
-            max_x,
+
+def frame_scale_distribution(frame, srf_data, scale_margin, cpt_y, cpt_max):
+    # box-and-whisker slip distribution
+
+    scale_start = scale_margin
+    scale_factor = 1.0 / cpt_max * SCALE_WIDTH
+    # max point should not be off the page, leave space for label
+    max_x = scale_start + min(srf_data[2]["max"] * scale_factor, SCALE_WIDTH + 1.0)
+    frame.epoints(
+        "%s %s %s %s %s %s"
+        % (
+            scale_start + srf_data[2]["50p"] * scale_factor,
             cpt_y,
-            "%.1f" % (srf_data[2]["max"]),
-            size="16p",
-            align="LM",
-            dx=SCALE_PAD,
-        )
+            scale_start + srf_data[2]["min"] * scale_factor,
+            scale_start + srf_data[2]["25p"] * scale_factor,
+            scale_start + srf_data[2]["75p"] * scale_factor,
+            max_x,
+        ),
+        is_file=False,
+        xy="X",
+        asymmetric=True,
+        width=SCALE_SIZE,
+        colour="blue",
+        line_width="2p",
+    )
+    # label max
+    frame.text(
+        max_x,
+        cpt_y,
+        "%.1f" % (srf_data[2]["max"]),
+        size="16p",
+        align="LM",
+        dx=SCALE_PAD,
+    )
 
-    # add QuakeCoRE logo
-    frame_logo(p, WINDOW_R)
 
-    ###
-    ### projection of the inner area to draw map ticks, legend
-    ###
-    p.spacial(
-        "OA%s/%s/%s/" % (window["c_lon"], window["c_lat"], job["azimuth"] - 90),
+def frame_iproj(frame, window, llur_i, window_b):
+    """
+    Set projection of the inner area to draw map ticks, legend.
+    """
+    frame.spacial(
+        "OA%s/%s/%s/" % (window["c_lon"], window["c_lat"], window["azimuth"] - 90),
         (
             str(llur_i[0][0]),
             str(llur_i[0][1]),
@@ -1010,11 +987,13 @@ def timeslice(job, meta):
             "%sr" % (llur_i[1][1]),
         ),
         sizing=PAGE_WIDTH - WINDOW_L - WINDOW_R,
-        p="180/%s/0" % (job["tilt"]),
+        p="180/%s/0" % (window["tilt"]),
         x_shift=WINDOW_L,
         y_shift=window_b,
     )
 
+
+def frame_ticks(frame, labels=True):
     # MAP_FRAME_TYPE also changes cpt scales so cannot be globally set
     gmt.gmt_set(
         [
@@ -1025,30 +1004,78 @@ def timeslice(job, meta):
             "MAP_ANNOT_OBLIQUE",
             "1",
         ],
-        wd=swd,
+        wd=frame.wd,
     )
-    if job["tilt"] < meta["map_tilt"]:
-        # don't show tick marks but still draw border line
-        p.ticks(major=0, minor=0)
+    if labels:
+        frame.ticks(major="1d", minor="0.2d")
     else:
-        p.ticks(major="1d", minor="0.2d")
+        # don't show tick marks but still draw border line
+        frame.ticks(major=0, minor=0)
 
-    # draw legend on top
+
+def frame_legend(frame, overlay, transparency):
+    legend_file = "%s.legend" % (os.path.splitext(overlay)[0])
+    if os.path.exists(legend_file):
+        gmt.gmt_set(["FONT_ANNOT_PRIMARY", "12p"])
+        p.legend(
+            os.path.abspath(legend_file),
+            "L",
+            "T",
+            "4i",
+            pos="rel",
+            dx=0.4,
+            dy=0.2,
+            transparency=transparency,
+            frame_fill="white@%s" % (65 + 0.35 * transparency),
+        )
+
+
+def timeslice(job, meta):
+    """
+    Render image in animation.
+    """
+
+    swd, gmt_ps = frame_paths(job["seq"], meta["wd"], meta["srf_file"])
+    if swd is None:
+        return
+
+    window = frame_window(job, meta, swd)
+    p = frame_init(gmt_ps)
+    # general background contents
+    frame_background(p, job, meta)
+    frame_proj(p, window, True)
+    frame_basemap(
+        p,
+        meta["crude"],
+        job["sim_time"] == -3,
+        job["proportion"] if job["sim_time"] == -3 else 0,
+    )
+    frame_outlines(p, meta)
+    # different main items
+    plot = frame_type(job["sim_time"])
+    scale_y_final, srf_data = frame_proj_base(p, plot, job, meta, window)
+    # slip distribution has been reprojected onto x, y of page area
+    frame_proj(p, window, False, shift=False)
+    frame_srf_surface(p, plot, meta["n_plane"], job["transparency"], meta["srf_wd"])
+    # ground motion must be in geographic projection due to 3D Z scaling
+    frame_proj(p, window, True, shift=False)
+    frame_proj_items(p, job, meta, window)
+
+    # start plotting external items relative to border
+    scale_y, window_b, llur_i = frame_border_init(
+        scale_y_final, job["scale_t"], job["tilt"], swd
+    )
+    frame_proj(p, window, False)
+    frame_border(p, window_b, job, meta)
+    scale_margin, cpt_y = frame_scales(p, job, meta, plot, scale_y)
+    if plot == "slip" and job["transparency"] < 100:
+        frame_scale_distribution(p, srf_data, scale_margin, cpt_y, meta["slip_cpt_max"])
+
+    # start plotting internal items relative to border
+    frame_iproj(p, window, llur_i, window_b)
+    frame_ticks(p, labels=job["tilt"] >= meta["map_tilt"])
     if plot == "paths":
-        legend_file = "%s.legend" % (os.path.splitext(job["overlay"])[0])
-        if os.path.exists(legend_file):
-            gmt.gmt_set(["FONT_ANNOT_PRIMARY", "12p"])
-            p.legend(
-                os.path.abspath(legend_file),
-                "L",
-                "T",
-                "4i",
-                pos="rel",
-                dx=0.4,
-                dy=+0.2,
-                transparency=job["transparency"],
-                frame_fill="white@%s" % (65 + 0.35 * job["transparency"]),
-            )
+        frame_legend(p, job["overlay"], job["transparency"])
 
     # finish, clean up
     p.finalise()
