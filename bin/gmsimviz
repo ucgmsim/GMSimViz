@@ -1209,23 +1209,7 @@ def get_args():
     return validate_args(parser.parse_args())
 
 
-###
-### MASTER
-###
-if len(sys.argv) > 1:
-    # process arguements
-    args = get_args()
-    nproc = args.nproc
-    xyts_file = args.xyts
-
-    # list of work for slaves to do
-    msg_list = []
-    # list of work prepared earlier but needs dependencies before run
-    msg_list_post_xyts = []
-    # post processing instructions
-    op_list = []
-    # dependencies for tasks yet to be added
-    msg_deps = 0
+def load_meta(args):
 
     # load plane data
     try:
@@ -1233,7 +1217,7 @@ if len(sys.argv) > 1:
     except (ValueError, IndexError):
         sys.exit("Failed to read SRF: %s" % (args.srf_file))
     # information from plane data
-    avg_strike = geo.avg_wbearing([(p["strike"], p["length"]) for p in planes])
+    avg_strike = geo.avg_wbearing([(p["strike"], p["length"]) for p in planes]
     avg_dip = planes[0]["dip"]
     s_azimuth = avg_strike + 90
     map_tilt = max(90 - avg_dip, TILT_MAX)
@@ -1245,9 +1229,6 @@ if len(sys.argv) > 1:
         for point in plane:
             poi_srf.append(point)
     hlon, hlat, hdepth = srf.get_hypo(args.srf_file, depth=True)
-    top_left = bounds[0][0]
-    top_right = bounds[-1][1]
-    top_mid = geo.ll_mid(top_left[0], top_left[1], top_right[0], top_right[1])
     gmt_bottom = "\n>\n".join(
         ["\n".join([" ".join(map(str, b)) for b in p]) for p in bounds]
     )
@@ -1260,9 +1241,7 @@ if len(sys.argv) > 1:
         gmt_temp = os.path.abspath(args.temp)
         print("Resuming from: %s" % (gmt_temp))
     else:
-        gmt_temp = mkdtemp(
-            prefix="_GMT_WD_PERSPECTIVE_", dir=os.path.dirname(args.srf_file)
-        )
+        gmt_temp = mkdtemp(prefix="_GMSimViz_")
 
     # common information passed to frame processes
     meta = {
@@ -1285,51 +1264,76 @@ if len(sys.argv) > 1:
         "crude": args.crude,
     }
 
+    return meta, poi_srf
+
+
+###
+### MASTER
+###
+if len(sys.argv) > 1:
+    # process arguements
+    args = get_args()
+    nproc = args.nproc
+    xyts_file = args.xyts
+
+    # list of work for slaves to do
+    msg_list = []
+    # list of work prepared earlier but needs dependencies before run
+    msg_list_post_xyts = []
+    # post processing instructions
+    op_list = []
+    # dependencies for tasks yet to be added
+    msg_deps = 0
+
+    meta, poi_srf = load_meta(args)
+
     # TODO: sliprate preparation should be an early task
-    slip_end = srf.srf2llv_py(args.srf_file, value="ttotal")
-    rup_time = max([max(slip_end[p][:, 2]) for p in xrange(len(slip_end))])
+    slip_end = srf.srf2llv_py(args.srf_file, value="ttotal") # LOCAL VAR
+    rup_time = max([max(slip_end[p][:, 2]) for p in xrange(len(slip_end))]) # LOCAL VAR
     # internal dt
-    srf_dt = srf.srf_dt(args.srf_file)
+    srf_dt = srf.srf_dt(args.srf_file) # LOCAL VAR
     # frames per slip rate increment
-    fpdt = 1 / (srf_dt * args.framerate)
+    fpdt = 1 / (srf_dt * args.framerate) # LOCAL VAR
     # decimation of srf slip rate dt to show
-    srf_ddt = max(1, math.floor(fpdt))
+    srf_ddt = max(1, math.floor(fpdt)) # LOCAL VAR
     # desimated dt
-    ddt = srf_ddt * srf_dt
-    ts_sr = int(math.ceil(rup_time / ddt))
-    time_sr = ts_sr * ddt
+    ddt = srf_ddt * srf_dt # META VAR
+    ts_sr = int(math.ceil(rup_time / ddt)) # META VAR
+    time_sr = ts_sr * ddt # LOCAL VAR
     # frames containing slip rates
-    frames_sr = int(time_sr * args.framerate)
+    frames_sr = int(time_sr * args.framerate) # used later
     # TODO: possibly interpolate in future
-    spec_sr = "slipts-%s-%s" % (ddt, time_sr)
-    slip_pos, slip_rate = srf.srf2llv_py(args.srf_file, value=spec_sr, depth=True)
+    spec_sr = "slipts-%s-%s" % (ddt, time_sr) # LOCAL VAR
+    slip_pos, slip_rate = srf.srf2llv_py(args.srf_file, value=spec_sr, depth=True) # LOCAL VAR
     meta["planes"] = srf.read_header(args.srf_file, idx=True)
     for plane in xrange(len(slip_pos)):
         slip_pos[plane].astype(np.float32).tofile(
-            os.path.join(gmt_temp, "subfaults_%d.bin" % (plane))
+            os.path.join(meta["wd"], "subfaults_%d.bin" % (plane))
         )
         slip_rate[plane].astype(np.float32).tofile(
-            os.path.join(gmt_temp, "sliptss_%d.bin" % (plane))
+            os.path.join(meta["wd"], "sliptss_%d.bin" % (plane))
         )
     meta["srf_dt"] = ddt
     meta["sr_len"] = ts_sr
     meta["n_plane"] = len(slip_pos)
     del slip_pos, slip_rate
+
+def
     # prepare cpt
-    meta["srf_wd"] = os.path.join(gmt_temp, "srf")
+    meta["srf_wd"] = os.path.join(meta["wd"], "srf")
     if not os.path.isdir(meta["srf_wd"]):
         os.makedirs(meta["srf_wd"])
-    seg_slips = srf.srf2llv_py(args.srf_file, value="slip")
-    all_vs = np.concatenate((seg_slips))[:, -1]
-    percentile = np.percentile(all_vs, 95)
+    seg_slips = srf.srf2llv_py(args.srf_file, value="slip") # LOCAL VAR
+    all_vs = np.concatenate((seg_slips))[:, -1] # LOCAL VAR
+    percentile = np.percentile(all_vs, 95) # LOCAL VAR
     del seg_slips, all_vs
     # round percentile significant digits for colour pallete
     if percentile < 1000:
         # 1 sf
-        cpt_max = round(percentile, -int(math.floor(math.log10(abs(percentile)))))
+        cpt_max = round(percentile, -int(math.floor(math.log10(abs(percentile))))) # META VAR
     else:
         # 2 sf
-        cpt_max = round(percentile, 1 - int(math.floor(math.log10(abs(percentile)))))
+        cpt_max = round(percentile, 1 - int(math.floor(math.log10(abs(percentile))))) # META VAR
     meta["slip_cpt_max"] = cpt_max
     gmt.makecpt(
         gmt.CPTS["slip"],
@@ -1344,14 +1348,14 @@ if len(sys.argv) > 1:
     final_azimuth = 180
     # xyts quick preparation
     if xyts_file is not None:
-        if not os.path.isdir(os.path.join(gmt_temp, "xyts")):
-            os.makedirs(os.path.join(gmt_temp, "xyts"))
+        if not os.path.isdir(os.path.join(meta["wd"], "xyts")):
+            os.makedirs(os.path.join(meta["wd"], "xyts"))
         xfile = xyts.XYTSFile(xyts_file, meta_only=True)
         xcnrs = xfile.corners(gmt_format=True)
         xregion = xfile.region(corners=xcnrs[0])
         # TODO: just use dx?
         xres = "%sk" % (xfile.hh * xfile.dxts * 3.0 / 5.0)
-        with open("%s/xyts/corners.gmt" % (gmt_temp), "w") as xpath:
+        with open("%s/xyts/corners.gmt" % (meta["wd"]), "w") as xpath:
             xpath.write(xcnrs[1])
         poi_gm = xcnrs[0]
         meta["xyts_region"] = xregion
@@ -1413,19 +1417,19 @@ if len(sys.argv) > 1:
     # prepare other data
     if args.liquefaction_s is not None:
         region_liquefaction_s, poi_liquefaction_s = load_hdf5(
-            args.liquefaction_s, "%s/overlay/liquefaction_s" % (gmt_temp)
+            args.liquefaction_s, "%s/overlay/liquefaction_s" % (meta["wd"])
         )
     if args.liquefaction_p is not None:
         region_liquefaction_p, poi_liquefaction_p = load_hdf5(
-            args.liquefaction_p, "%s/overlay/liquefaction_p" % (gmt_temp)
+            args.liquefaction_p, "%s/overlay/liquefaction_p" % (meta["wd"])
         )
     if args.landslide_s is not None:
         region_landslide_s, poi_landslide_s = load_hdf5(
-            args.landslide_s, "%s/overlay/landslide_s" % (gmt_temp)
+            args.landslide_s, "%s/overlay/landslide_s" % (meta["wd"])
         )
     if args.landslide_p is not None:
         region_landslide_p, poi_landslide_p = load_hdf5(
-            args.landslide_p, "%s/overlay/landslide_p" % (gmt_temp)
+            args.landslide_p, "%s/overlay/landslide_p" % (meta["wd"])
         )
 
     # tasks
@@ -1944,7 +1948,7 @@ if len(sys.argv) > 1:
 
     # output file processing
     prefix = os.path.join(
-        gmt_temp, os.path.splitext(os.path.basename(args.srf_file))[0]
+        meta["wd"], os.path.splitext(os.path.basename(args.srf_file))[0]
     )
     frame_op_batch(op_list, prefix)
     frame_finalise(
