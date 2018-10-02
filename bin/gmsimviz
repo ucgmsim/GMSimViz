@@ -1632,7 +1632,8 @@ def add_frames_overlays(work, meta, movements, args):
         args.landslide_s is not None,
         args.landslide_p is not None,
     )
-    movements["region_xyts"] = meta["xyts_region"]
+    if available[0]:
+        movements["region_xyts"] = meta["xyts_region"]
     regions = (
         "region_xyts",
         "region_liq_s",
@@ -1898,6 +1899,7 @@ if len(sys.argv) > 1:
     frames_sr = load_sliprate(args.srf_file, args.framerate, meta)
     load_slip_cpt(meta)
     movements = load_xyts_meta(args, meta, work, poi_srf)
+    movements["frames_sr"] = frames_sr
     load_overlays(args, movements, meta["wd"])
     # tasks
     if not args.animate:
