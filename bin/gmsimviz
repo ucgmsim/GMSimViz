@@ -1017,7 +1017,7 @@ def frame_legend(frame, overlay, transparency):
     legend_file = "%s.legend" % (os.path.splitext(overlay)[0])
     if os.path.exists(legend_file):
         gmt.gmt_set(["FONT_ANNOT_PRIMARY", "12p"])
-        p.legend(
+        frame.legend(
             os.path.abspath(legend_file),
             "L",
             "T",
@@ -1664,12 +1664,12 @@ def add_frames_overlays(work, meta, movements, args):
             over_t = 100 - (100 - OVERLAY_T) * scale_t
 
             if args.xyts is not None:
-                msgs.append(
+                work["msgs"].append(
                     [
                         timeslice,
                         {
-                            "azimuth": azimuth,
-                            "tilt": tilt,
+                            "azimuth": 180,
+                            "tilt": 90,
                             "scale_t": scale_t,
                             "seq": movements["frames2now"] + i,
                             "sim_time": -2,
@@ -1720,8 +1720,8 @@ def add_frames_network(work, meta, movements, path_files):
             [
                 timeslice,
                 {
-                    "azimuth": azimuth,
-                    "tilt": tilt,
+                    "azimuth": 180,
+                    "tilt": 90,
                     "scale_t": 0,
                     "seq": movements["frames2now"] + i,
                     "sim_time": -3,
@@ -1746,8 +1746,8 @@ def add_frames_network(work, meta, movements, path_files):
             [
                 timeslice,
                 {
-                    "azimuth": azimuth,
-                    "tilt": tilt,
+                    "azimuth": 180,
+                    "tilt": 90,
                     "scale_t": 0,
                     "seq": movements["frames2now"],
                     "sim_time": -3,
@@ -1770,8 +1770,8 @@ def add_frames_network(work, meta, movements, path_files):
             [
                 timeslice,
                 {
-                    "azimuth": azimuth,
-                    "tilt": tilt,
+                    "azimuth": 180,
+                    "tilt": 90,
                     "scale_t": 0,
                     "seq": movements["frames2now"] + i,
                     "sim_time": -3,
