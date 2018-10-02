@@ -1605,6 +1605,61 @@ def add_frames_camera_reset(work, meta, movements):
     movements["frames2now"] += frames_return
 
 
+def add_frames_overlays(work, meta, movements, args):
+    # stage 6 fade in, pause, fade out of:
+    # - PGV
+    # - liquefaction susceptibility
+    # - liquefaction probability
+    # - landslide susceptibility
+    # - landslide probability
+    frames_sep = meta["t_frames"] * 2 + meta["pause_frames"]
+    available = args.xyts is not None, \
+                args.liquefaction_s is not None, \
+                args.liquefaction_p is not None, \
+                args.landslide_s is not None, \
+                args.landslide_p is not None
+    movements['region_xyts'] = meta["xyts_region"]
+    regions = "region_xyts", 'region_liq_s', 'region_liq_p', 'region_land_s', 'region_land_p'
+    overlays = "pgv", "liquefaction_s", "liquefaction_p", "landslide_s", "landslide_p"
+    labels = "Peak Ground Velocity (cm/s)", "Liquefaction Hazard Susceptibility", "Liquefaction Hazard Probability", "Landslide Hazard Susceptibility", "Liquefaction Hazard Probability"
+    subtitles = "PGV", \
+                "Liquefaction Susceptibility", \
+                "Liquefaction Probability", \
+                "Landslide Susceptibility", \
+                "Landslide Probability"
+    pois = 'poi_gm', 'poi_liq_s', 'poi_liq_p', 'poi_land_s', 'poi_land_p'
+
+    for x in np.where(available)[0]:
+        for i in xrange(meta["t_frames"]):
+            scale_t = i / (meta["t_frames"] - 1.0)
+            over_t = 100 - (100 - OVERLAY_T) * scale_t
+
+            if args.xyts is not None:
+                msgs.append(
+                    [
+                        timeslice,
+                        {
+                            "azimuth": azimuth,
+                            "tilt": tilt,
+                            "scale_t": scale_t,
+                            "seq": movements["frames2now"] + i,
+                            "sim_time": -2,
+                            "region": movements[regions[x]],
+                            "transparency": over_t,
+                            "overlay": overlays[x],
+                            "cpt_label": labels[x],
+                            "subtitle": subtitles[x],
+                            "view": (movements[pois[x]], 1.2, scale_t, movements['poi_gm'], 1.2),
+                        },
+                        meta,
+                    ]
+                )
+        # pause, reverse frames for animation
+        work["ops"].append(["DUP", movements["frames2now"] + meta["t_frames"] - 1, meta["pause_frames"]])
+        work["ops"].append(["REV", movements["frames2now"], meta["t_frames"], meta["pause_frames"]])
+        movements["frames2now"] += frames_sep
+
+
 ###
 ### MASTER
 ###
@@ -1629,155 +1684,8 @@ if len(sys.argv) > 1:
         if movements["frames_gm"] > 0:
             add_frames_slip_progress(work, meta, movements)
         add_frames_camera_reset(work, meta, movements)
+        add_frames_overlay(work, meta, movements, args)
 
-
-def add_frames_overlays(work, meta, movements):
-    # stage 6 fade in, pause, fade out of:
-    # - PGV
-    # - liquefaction susceptibility
-    # - liquefaction probability
-    # - landslide susceptibility
-    # - landslide probability
-    frames_sep = meta["t_frames"] * 2 + meta["pause_frames"]
-    frames2pgv = frames2now
-    frames2liquefaction_s = frames2pgv + frames_sep * (args.xyts is not None)
-    frames2liquefaction_p = frames2liquefaction_s + frames_sep * (
-        args.liquefaction_s is not None
-    )
-    frames2landslide_s = frames2liquefaction_p + frames_sep * (
-        args.liquefaction_p is not None
-    )
-    frames2landslide_p = frames2landslide_s + frames_sep * (
-        args.landslide_s is not None
-    )
-    frames2now = frames2landslide_p + frames_sep * (args.landslide_p is not None)
-    for i in xrange(meta["t_frames"] * (frames2now != frames2pgv)):
-        scale_t = i / (meta["t_frames"] - 1.0)
-        over_t = 100 - (100 - OVERLAY_T) * scale_t
-        if args.xyts is not None:
-            msgs.append(
-                [
-                    timeslice,
-                    {
-                        "azimuth": azimuth,
-                        "tilt": tilt,
-                        "scale_t": scale_t,
-                        "seq": frames2pgv + i,
-                        "sim_time": -2,
-                        "region": meta["xyts_region"],
-                        "transparency": over_t,
-                        "overlay": "pgv",
-                        "cpt_label": "Peak Ground Velocity (cm/s)",
-                        "subtitle": "PGV",
-                        "view": (movements['poi_gm'], 1.2, scale_t, movements['poi_gm'], 1.2),
-                    },
-                    meta,
-                ]
-            )
-        if args.liquefaction_s is not None:
-            msgs.append(
-                [
-                    timeslice,
-                    {
-                        "azimuth": azimuth,
-                        "tilt": tilt,
-                        "scale_t": scale_t,
-                        "seq": frames2liquefaction_s + i,
-                        "sim_time": -2,
-                        "region": movements['region_liq_s'],
-                        "transparency": over_t,
-                        "overlay": "liquefaction_s",
-                        "cpt_label": "Liquefaction Hazard Susceptibility",
-                        "subtitle": "Liquefaction Susceptibility",
-                        "view": (movements['poi_liq_s'], 1.2, scale_t, movements['poi_gm'], 1.2),
-                    },
-                    meta,
-                ]
-            )
-        if args.liquefaction_p is not None:
-            msgs.append(
-                [
-                    timeslice,
-                    {
-                        "azimuth": azimuth,
-                        "tilt": tilt,
-                        "scale_t": scale_t,
-                        "seq": frames2liquefaction_p + i,
-                        "sim_time": -2,
-                        "region": movements['region_liq_p'],
-                        "transparency": over_t,
-                        "overlay": "liquefaction_p",
-                        "cpt_label": "Liquefaction Hazard Probability",
-                        "subtitle": "Liquefaction Probability",
-                        "view": (movements['poi_liq_p'], 1.2, scale_t, movements['poi_gm'], 1.2),
-                    },
-                    meta,
-                ]
-            )
-        if args.landslide_s is not None:
-            msgs.append(
-                [
-                    timeslice,
-                    {
-                        "azimuth": azimuth,
-                        "tilt": tilt,
-                        "scale_t": scale_t,
-                        "seq": frames2landslide_s + i,
-                        "sim_time": -2,
-                        "region": movements['region_land_s'],
-                        "transparency": over_t,
-                        "overlay": "landslide_s",
-                        "cpt_label": "Landslide Hazard Susceptibility",
-                        "subtitle": "Landslide Susceptibility",
-                        "view": (movements['poi_land_s'], 1.2, scale_t, movements['poi_gm'], 1.2),
-                    },
-                    meta,
-                ]
-            )
-        if args.landslide_p is not None:
-            msgs.append(
-                [
-                    timeslice,
-                    {
-                        "azimuth": azimuth,
-                        "tilt": tilt,
-                        "scale_t": scale_t,
-                        "seq": frames2landslide_p + i,
-                        "sim_time": -2,
-                        "region": movements['region_land_p'],
-                        "transparency": over_t,
-                        "overlay": "landslide_p",
-                        "cpt_label": "Landslide Hazard Probability",
-                        "subtitle": "Landslide Probability",
-                        "view": (movements['poi_land_p'], 1.2, scale_t, movements['poi_gm'], 1.2),
-                    },
-                    meta,
-                ]
-            )
-    # pause, reverse frames for animation
-    if args.xyts is not None:
-        work["ops"].append(["DUP", frames2pgv + i, meta["pause_frames"]])
-        work["ops"].append(["REV", frames2pgv, meta["t_frames"], meta["pause_frames"]])
-    if args.liquefaction_s is not None:
-        work["ops"].append(["DUP", frames2liquefaction_s + i, meta["pause_frames"]])
-        work["ops"].append(
-            ["REV", frames2liquefaction_s, meta["t_frames"], meta["pause_frames"]]
-        )
-    if args.liquefaction_p is not None:
-        work["ops"].append(["DUP", frames2liquefaction_p + i, meta["pause_frames"]])
-        work["ops"].append(
-            ["REV", frames2liquefaction_p, meta["t_frames"], meta["pause_frames"]]
-        )
-    if args.landslide_s is not None:
-        work["ops"].append(["DUP", frames2landslide_s + i, meta["pause_frames"]])
-        work["ops"].append(
-            ["REV", frames2landslide_s, meta["t_frames"], meta["pause_frames"]]
-        )
-    if args.landslide_p is not None:
-        work["ops"].append(["DUP", frames2landslide_p + i, meta["pause_frames"]])
-        work["ops"].append(
-            ["REV", frames2landslide_p, meta["t_frames"], meta["pause_frames"]]
-        )
 
         # stage 7 paths such as road network
         if args.paths is not None:
