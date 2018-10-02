@@ -1396,6 +1396,7 @@ def load_xyts_meta(args, meta, work, poi_srf):
         "poi_srf": poi_srf,
         "poi_gm": poi_gm,
         "frames2now": 0,
+        "fps": args.framerate,
     }
 
 
@@ -1438,6 +1439,7 @@ def add_frames_single(work, meta, poi):
 
 
 def add_frames_face_slip(work, meta, movements, frames):
+    # stage 1 face slip
     for i in xrange(frames):
         if meta['s_azimuth'] <= 180:
             azimuth = 180 - (i / float(frames - 1)) * (180 - meta['s_azimuth'])
@@ -1464,6 +1466,145 @@ def add_frames_face_slip(work, meta, movements, frames):
     movements["frames2now"] += frames
 
 
+def add_frames_dip_slip(work, meta, movements):
+    # stage 2 dip below surface
+    frames_dip = meta["pause_frames"]
+    for i in xrange(frames_dip):
+        tilt2 = 90 - (90 - TILT_DIP) * (i + 1.0) / frames_dip
+        tiltv = math.sin(math.radians(tilt2)) * meta['map_tilt']
+        work["msgs"].append(
+            [
+                timeslice,
+                {
+                    "azimuth": meta['s_azimuth'],
+                    "tilt": tiltv,
+                    "scale_t": 1,
+                    "seq": movements['frames2now'] + i,
+                    "sim_time": -1,
+                    "transparency": OVERLAY_T,
+                    "view": (movements['poi_srf'], 1.618),
+                    "subtitle": "Fault Slip Distribution",
+                },
+                meta,
+            ]
+        )
+    # pause, then reverse frames
+    work["ops"].append(["DUP", movements["frames2now"] + i, meta["pause_frames"]])
+    work["ops"].append(["REV", movements["frames2now"], frames_dip, meta["pause_frames"]])
+    # frames will be duplicated in reverse and paused
+    movements["frames2now"] += frames_dip * 3
+
+
+def add_frames_slip_fade(work, meta, movements):
+    # stage 3 slip fadeout
+    frames_fade = meta["t_frames"]
+    for i in xrange(frames_fade):
+        scale_t = 1 - i / (frames_fade - 1.0)
+        over_t = 100 - (100 - OVERLAY_T) * scale_t
+        work["msgs"].append(
+            [
+                timeslice,
+                {
+                    "azimuth": meta['s_azimuth'],
+                    "tilt": meta["map_tilt"],
+                    "scale_t": scale_t,
+                    "seq": movements["frames2now"] + i,
+                    "sim_time": -1,
+                    "transparency": over_t,
+                    "view": (movements['poi_srf'], 1.618),
+                    "subtitle": "Fault Slip Distribution",
+                },
+                meta,
+            ]
+        )
+    movements["frames2now"] += frames_fade
+    # for tasks added later (with xyts file), reference to time = 0
+    movements["frames2sim"] = movements["frames2now"]
+
+    # tanh linear gap fill over effective range tanh(-3 -> 3)
+    tanh_gap = (0.5 + 0.5 * math.tanh(-3)) / 3.0
+    # frame index to zoom progression (zoom out within 12.5 seconds)
+    if movements['frames_gm'] / movements["fps"] >= 12.5:
+        # zfac must be a float
+        movements['zoom_out'] = 12.5 * movements["fps"] * 0.2, tanh_gap
+    else:
+        movements['zoom_out'] = movements['frames_gm'] * 0.618 * 0.2, tanh_gap
+
+
+def i2p(zfacs, i):
+    """
+    Converts frame number to zoom progression.
+    zfacs: progression per frame, tanh offset at 0
+    i: frame number
+    """
+    return min(
+        1.0, 0.5 + 0.5 * math.tanh(i / zfacs[0] - 3) + zfacs[1] * (i / zfacs[0] - 3)
+    )
+
+
+def add_frames_slip_progress(work, meta, movements):
+    # stage 4 slip animation if no xyts
+    for i in xrange(movements["frames_sr"]):
+        sim_time = float(i) / movements['fps']
+        if i >= movements['frames_azimuth']:
+            azimuth = movements['final_azimuth']
+        else:
+            azimuth = meta['s_azimuth'] + i * movements['diff_azimuth']
+        scale_t = min(float(i), meta["t_frames"]) / meta["t_frames"]
+        work["msgs"].append(
+            [
+                timeslice,
+                {
+                    "azimuth": azimuth,
+                    "tilt": meta['map_tilt'],
+                    "scale_t": scale_t,
+                    "seq": movements["frames2now"] + i,
+                    "transparency": OVERLAY_T,
+                    "sim_time": sim_time,
+                    "view": (movements['poi_srf'], 1.618),
+                    "subtitle": "Cumulative Slip",
+                },
+                meta,
+            ]
+        )
+    # must work if there will be later tasks or not
+    movements["frames2now"] += max(movements['frames_gm'], movements["frames_sr"])
+
+
+def add_frames_camera_reset(work, meta, movements):
+    # stage 5 camera reset
+    frames_return = meta["t_frames"] * 4
+    diff_azimuth_return = geo.angle_diff(movements['final_azimuth'], 180) / frames_return
+    if movements['frames_gm'] == 0:
+        msgs = work["msgs"]
+        zoom = 1.618
+    else:
+        msgs = work["msgs_post_ts"]
+        zoom = 1.2
+    for i in xrange(frames_return):
+        scale_t = 1 - min(1, i / (meta["t_frames"] - 1.0))
+        over_t = 100 - (100 - OVERLAY_T) * scale_t
+        azimuth = movements['final_azimuth'] + i * diff_azimuth_return
+        tilt = 90 - (1 - (i / float(frames_return - 1))) * (90 - meta["map_tilt"])
+        msgs.append(
+            [
+                timeslice,
+                {
+                    "azimuth": azimuth,
+                    "tilt": tilt,
+                    "scale_t": scale_t,
+                    "seq": movements["frames2now"] + i,
+                    "sim_time": max(movements["frames_sr"], movements['frames_gm']) / movements["fps"],
+                    "transparency": over_t,
+                    "scale_x": 1.0,
+                    "view": (movements['poi_gm'], zoom),
+                },
+                meta,
+            ]
+        )
+    movements["frames2now"] += frames_return
+
+
 ###
 ### MASTER
 ###
@@ -1484,115 +1625,36 @@ if len(sys.argv) > 1:
     else:
         add_frames_face_slip(work, meta, movements,  int(args.time * args.framerate))
         add_frames_dip_slip(work, meta, movements)
+        add_frames_slip_fade(work, meta, movements)
+        if movements["frames_gm"] > 0:
+            add_frames_slip_progress(work, meta, movements)
+        add_frames_camera_reset(work, meta, movements)
 
-def add_frames_dip_slip(work, meta, movements):
-    # stage 2 dip below surface
-    frames_dip = meta["pause_frames"]
-    for i in xrange(frames_dip):
-        tilt2 = 90 - (90 - TILT_DIP) * (i + 1.0) / frames_dip
-        tiltv = math.sin(math.radians(tilt2)) * meta['map_tilt']
-        work["msgs"].append(
-            [
-                timeslice,
-                {
-                    "azimuth": meta['s_azimuth'],
-                    "tilt": tiltv,
-                    "scale_t": 1,
-                    "seq": frames2now + i,
-                    "sim_time": -1,
-                    "transparency": OVERLAY_T,
-                    "view": (movements['poi_srf'], 1.618),
-                    "subtitle": "Fault Slip Distribution",
-                },
-                meta,
-            ]
-        )
-    # pause, then reverse frames
-    work["ops"].append(["DUP", frames2now + i, meta["pause_frames"]])
-    work["ops"].append(["REV", frames2now, frames_dip, meta["pause_frames"]])
-    # frames will be duplicated in reverse and paused
-    frames2now += frames_dip * 3
 
-        # stage 3 slip fadeout
-        frames_fade = meta["t_frames"]
-        for i in xrange(frames_fade):
-            scale_t = 1 - i / (frames_fade - 1.0)
-            over_t = 100 - (100 - OVERLAY_T) * scale_t
-            work["msgs"].append(
-                [
-                    timeslice,
-                    {
-                        "azimuth": meta['s_azimuth'],
-                        "tilt": map_tilt,
-                        "scale_t": scale_t,
-                        "seq": frames2now + i,
-                        "sim_time": -1,
-                        "transparency": over_t,
-                        "view": (movements['poi_srf'], 1.618),
-                        "subtitle": "Fault Slip Distribution",
-                    },
-                    meta,
-                ]
-            )
-        frames2now += frames_fade
-
-        # for tasks added later (with xyts file), reference to time = 0
-        frames2sim = frames2now
-        # frame index to zoom progression (zoom out within 12.5 seconds)
-        if movements['frames_gm'] / args.framerate >= 12.5:
-            # zfac must be a float
-            zfac = 12.5 * args.framerate * 0.2
-        else:
-            zfac = movements['frames_gm'] * 0.618 * 0.2
-        # tanh linear gap fill over effective range tanh(-3 -> 3)
-        tanh_gap = (0.5 + 0.5 * math.tanh(-3)) / 3.0
-
-        def i2p(i):
-            return min(
-                1.0, 0.5 + 0.5 * math.tanh(i / zfac - 3) + tanh_gap * (i / zfac - 3)
-            )
-
-        # stage 4 slip animation if no xyts
-        for i in xrange(frames_sr * (movements['frames_gm'] == 0)):
-            sim_time = float(i) / args.framerate
-            if i >= movements['frames_azimuth']:
-                azimuth = movements['final_azimuth']
-            else:
-                azimuth = meta['s_azimuth'] + i * movements['diff_azimuth']
-            scale_t = min(float(i), meta["t_frames"]) / meta["t_frames"]
-            work["msgs"].append(
-                [
-                    timeslice,
-                    {
-                        "azimuth": azimuth,
-                        "tilt": map_tilt,
-                        "scale_t": scale_t,
-                        "seq": frames2now + i,
-                        "transparency": OVERLAY_T,
-                        "sim_time": sim_time,
-                        "view": (movements['poi_srf'], 1.618),
-                        "subtitle": "Cumulative Slip",
-                    },
-                    meta,
-                ]
-            )
-        # must work if there will be later tasks or not
-        frames2now += max(movements['frames_gm'], frames_sr)
-
-        # stage 5 camera reset
-        frames_return = meta["t_frames"] * 4
-        diff_azimuth_return = geo.angle_diff(movements['final_azimuth'], 180) / frames_return
-        if movements['frames_gm'] == 0:
-            msgs = work["msgs"]
-            zoom = 1.618
-        else:
-            msgs = work["msgs_post_ts"]
-            zoom = 1.2
-        for i in xrange(frames_return):
-            scale_t = 1 - min(1, i / (meta["t_frames"] - 1.0))
-            over_t = 100 - (100 - OVERLAY_T) * scale_t
-            azimuth = movements['final_azimuth'] + i * diff_azimuth_return
-            tilt = 90 - (1 - (i / float(frames_return - 1))) * (90 - map_tilt)
+def add_frames_overlays(work, meta, movements):
+    # stage 6 fade in, pause, fade out of:
+    # - PGV
+    # - liquefaction susceptibility
+    # - liquefaction probability
+    # - landslide susceptibility
+    # - landslide probability
+    frames_sep = meta["t_frames"] * 2 + meta["pause_frames"]
+    frames2pgv = frames2now
+    frames2liquefaction_s = frames2pgv + frames_sep * (args.xyts is not None)
+    frames2liquefaction_p = frames2liquefaction_s + frames_sep * (
+        args.liquefaction_s is not None
+    )
+    frames2landslide_s = frames2liquefaction_p + frames_sep * (
+        args.liquefaction_p is not None
+    )
+    frames2landslide_p = frames2landslide_s + frames_sep * (
+        args.landslide_s is not None
+    )
+    frames2now = frames2landslide_p + frames_sep * (args.landslide_p is not None)
+    for i in xrange(meta["t_frames"] * (frames2now != frames2pgv)):
+        scale_t = i / (meta["t_frames"] - 1.0)
+        over_t = 100 - (100 - OVERLAY_T) * scale_t
+        if args.xyts is not None:
             msgs.append(
                 [
                     timeslice,
@@ -1600,163 +1662,122 @@ def add_frames_dip_slip(work, meta, movements):
                         "azimuth": azimuth,
                         "tilt": tilt,
                         "scale_t": scale_t,
-                        "seq": frames2now + i,
-                        "sim_time": max(frames_sr, movements['frames_gm']) / args.framerate,
+                        "seq": frames2pgv + i,
+                        "sim_time": -2,
+                        "region": meta["xyts_region"],
                         "transparency": over_t,
-                        "scale_x": 1.0,
-                        "view": (movements['poi_gm'], zoom),
+                        "overlay": "pgv",
+                        "cpt_label": "Peak Ground Velocity (cm/s)",
+                        "subtitle": "PGV",
+                        "view": (movements['poi_gm'], 1.2, scale_t, movements['poi_gm'], 1.2),
                     },
                     meta,
                 ]
             )
-        frames2now += frames_return
-
-        # stage 6 fade in, pause, fade out of:
-        # - PGV
-        # - liquefaction susceptibility
-        # - liquefaction probability
-        # - landslide susceptibility
-        # - landslide probability
-        frames_sep = meta["t_frames"] * 2 + meta["pause_frames"]
-        frames2pgv = frames2now
-        frames2liquefaction_s = frames2pgv + frames_sep * (args.xyts is not None)
-        frames2liquefaction_p = frames2liquefaction_s + frames_sep * (
-            args.liquefaction_s is not None
-        )
-        frames2landslide_s = frames2liquefaction_p + frames_sep * (
-            args.liquefaction_p is not None
-        )
-        frames2landslide_p = frames2landslide_s + frames_sep * (
-            args.landslide_s is not None
-        )
-        frames2now = frames2landslide_p + frames_sep * (args.landslide_p is not None)
-        for i in xrange(meta["t_frames"] * (frames2now != frames2pgv)):
-            scale_t = i / (meta["t_frames"] - 1.0)
-            over_t = 100 - (100 - OVERLAY_T) * scale_t
-            if args.xyts is not None:
-                msgs.append(
-                    [
-                        timeslice,
-                        {
-                            "azimuth": azimuth,
-                            "tilt": tilt,
-                            "scale_t": scale_t,
-                            "seq": frames2pgv + i,
-                            "sim_time": -2,
-                            "region": meta["xyts_region"],
-                            "transparency": over_t,
-                            "overlay": "pgv",
-                            "cpt_label": "Peak Ground Velocity (cm/s)",
-                            "subtitle": "PGV",
-                            "view": (movements['poi_gm'], 1.2, scale_t, movements['poi_gm'], 1.2),
-                        },
-                        meta,
-                    ]
-                )
-            if args.liquefaction_s is not None:
-                msgs.append(
-                    [
-                        timeslice,
-                        {
-                            "azimuth": azimuth,
-                            "tilt": tilt,
-                            "scale_t": scale_t,
-                            "seq": frames2liquefaction_s + i,
-                            "sim_time": -2,
-                            "region": movements['region_liq_s'],
-                            "transparency": over_t,
-                            "overlay": "liquefaction_s",
-                            "cpt_label": "Liquefaction Hazard Susceptibility",
-                            "subtitle": "Liquefaction Susceptibility",
-                            "view": (movements['poi_liq_s'], 1.2, scale_t, movements['poi_gm'], 1.2),
-                        },
-                        meta,
-                    ]
-                )
-            if args.liquefaction_p is not None:
-                msgs.append(
-                    [
-                        timeslice,
-                        {
-                            "azimuth": azimuth,
-                            "tilt": tilt,
-                            "scale_t": scale_t,
-                            "seq": frames2liquefaction_p + i,
-                            "sim_time": -2,
-                            "region": movements['region_liq_p'],
-                            "transparency": over_t,
-                            "overlay": "liquefaction_p",
-                            "cpt_label": "Liquefaction Hazard Probability",
-                            "subtitle": "Liquefaction Probability",
-                            "view": (movements['poi_liq_p'], 1.2, scale_t, movements['poi_gm'], 1.2),
-                        },
-                        meta,
-                    ]
-                )
-            if args.landslide_s is not None:
-                msgs.append(
-                    [
-                        timeslice,
-                        {
-                            "azimuth": azimuth,
-                            "tilt": tilt,
-                            "scale_t": scale_t,
-                            "seq": frames2landslide_s + i,
-                            "sim_time": -2,
-                            "region": movements['region_land_s'],
-                            "transparency": over_t,
-                            "overlay": "landslide_s",
-                            "cpt_label": "Landslide Hazard Susceptibility",
-                            "subtitle": "Landslide Susceptibility",
-                            "view": (movements['poi_land_s'], 1.2, scale_t, movements['poi_gm'], 1.2),
-                        },
-                        meta,
-                    ]
-                )
-            if args.landslide_p is not None:
-                msgs.append(
-                    [
-                        timeslice,
-                        {
-                            "azimuth": azimuth,
-                            "tilt": tilt,
-                            "scale_t": scale_t,
-                            "seq": frames2landslide_p + i,
-                            "sim_time": -2,
-                            "region": movements['region_land_p'],
-                            "transparency": over_t,
-                            "overlay": "landslide_p",
-                            "cpt_label": "Landslide Hazard Probability",
-                            "subtitle": "Landslide Probability",
-                            "view": (movements['poi_land_p'], 1.2, scale_t, movements['poi_gm'], 1.2),
-                        },
-                        meta,
-                    ]
-                )
-        # pause, reverse frames for animation
-        if args.xyts is not None:
-            work["ops"].append(["DUP", frames2pgv + i, meta["pause_frames"]])
-            work["ops"].append(["REV", frames2pgv, meta["t_frames"], meta["pause_frames"]])
         if args.liquefaction_s is not None:
-            work["ops"].append(["DUP", frames2liquefaction_s + i, meta["pause_frames"]])
-            work["ops"].append(
-                ["REV", frames2liquefaction_s, meta["t_frames"], meta["pause_frames"]]
+            msgs.append(
+                [
+                    timeslice,
+                    {
+                        "azimuth": azimuth,
+                        "tilt": tilt,
+                        "scale_t": scale_t,
+                        "seq": frames2liquefaction_s + i,
+                        "sim_time": -2,
+                        "region": movements['region_liq_s'],
+                        "transparency": over_t,
+                        "overlay": "liquefaction_s",
+                        "cpt_label": "Liquefaction Hazard Susceptibility",
+                        "subtitle": "Liquefaction Susceptibility",
+                        "view": (movements['poi_liq_s'], 1.2, scale_t, movements['poi_gm'], 1.2),
+                    },
+                    meta,
+                ]
             )
         if args.liquefaction_p is not None:
-            work["ops"].append(["DUP", frames2liquefaction_p + i, meta["pause_frames"]])
-            work["ops"].append(
-                ["REV", frames2liquefaction_p, meta["t_frames"], meta["pause_frames"]]
+            msgs.append(
+                [
+                    timeslice,
+                    {
+                        "azimuth": azimuth,
+                        "tilt": tilt,
+                        "scale_t": scale_t,
+                        "seq": frames2liquefaction_p + i,
+                        "sim_time": -2,
+                        "region": movements['region_liq_p'],
+                        "transparency": over_t,
+                        "overlay": "liquefaction_p",
+                        "cpt_label": "Liquefaction Hazard Probability",
+                        "subtitle": "Liquefaction Probability",
+                        "view": (movements['poi_liq_p'], 1.2, scale_t, movements['poi_gm'], 1.2),
+                    },
+                    meta,
+                ]
             )
         if args.landslide_s is not None:
-            work["ops"].append(["DUP", frames2landslide_s + i, meta["pause_frames"]])
-            work["ops"].append(
-                ["REV", frames2landslide_s, meta["t_frames"], meta["pause_frames"]]
+            msgs.append(
+                [
+                    timeslice,
+                    {
+                        "azimuth": azimuth,
+                        "tilt": tilt,
+                        "scale_t": scale_t,
+                        "seq": frames2landslide_s + i,
+                        "sim_time": -2,
+                        "region": movements['region_land_s'],
+                        "transparency": over_t,
+                        "overlay": "landslide_s",
+                        "cpt_label": "Landslide Hazard Susceptibility",
+                        "subtitle": "Landslide Susceptibility",
+                        "view": (movements['poi_land_s'], 1.2, scale_t, movements['poi_gm'], 1.2),
+                    },
+                    meta,
+                ]
             )
         if args.landslide_p is not None:
-            work["ops"].append(["DUP", frames2landslide_p + i, meta["pause_frames"]])
-            work["ops"].append(
-                ["REV", frames2landslide_p, meta["t_frames"], meta["pause_frames"]]
+            msgs.append(
+                [
+                    timeslice,
+                    {
+                        "azimuth": azimuth,
+                        "tilt": tilt,
+                        "scale_t": scale_t,
+                        "seq": frames2landslide_p + i,
+                        "sim_time": -2,
+                        "region": movements['region_land_p'],
+                        "transparency": over_t,
+                        "overlay": "landslide_p",
+                        "cpt_label": "Landslide Hazard Probability",
+                        "subtitle": "Landslide Probability",
+                        "view": (movements['poi_land_p'], 1.2, scale_t, movements['poi_gm'], 1.2),
+                    },
+                    meta,
+                ]
             )
+    # pause, reverse frames for animation
+    if args.xyts is not None:
+        work["ops"].append(["DUP", frames2pgv + i, meta["pause_frames"]])
+        work["ops"].append(["REV", frames2pgv, meta["t_frames"], meta["pause_frames"]])
+    if args.liquefaction_s is not None:
+        work["ops"].append(["DUP", frames2liquefaction_s + i, meta["pause_frames"]])
+        work["ops"].append(
+            ["REV", frames2liquefaction_s, meta["t_frames"], meta["pause_frames"]]
+        )
+    if args.liquefaction_p is not None:
+        work["ops"].append(["DUP", frames2liquefaction_p + i, meta["pause_frames"]])
+        work["ops"].append(
+            ["REV", frames2liquefaction_p, meta["t_frames"], meta["pause_frames"]]
+        )
+    if args.landslide_s is not None:
+        work["ops"].append(["DUP", frames2landslide_s + i, meta["pause_frames"]])
+        work["ops"].append(
+            ["REV", frames2landslide_s, meta["t_frames"], meta["pause_frames"]]
+        )
+    if args.landslide_p is not None:
+        work["ops"].append(["DUP", frames2landslide_p + i, meta["pause_frames"]])
+        work["ops"].append(
+            ["REV", frames2landslide_p, meta["t_frames"], meta["pause_frames"]]
+        )
 
         # stage 7 paths such as road network
         if args.paths is not None:
@@ -1900,7 +1921,7 @@ def add_frames_dip_slip(work, meta, movements):
                                 "transparency": OVERLAY_T,
                                 "sim_time": sim_time,
                                 "subtitle": "Simulation",
-                                "view": (movements['poi_gm'], 1.2, i2p(i), movements['poi_srf'], 1.618),
+                                "view": (movements['poi_gm'], 1.2, i2p(movements["zoom_out"], i), movements['poi_srf'], 1.618),
                             },
                             meta,
                         ]
@@ -1927,7 +1948,7 @@ def add_frames_dip_slip(work, meta, movements):
                                 "transparency": OVERLAY_T,
                                 "sim_time": sim_time,
                                 "subtitle": "Simulation",
-                                "view": (movements['poi_gm'], 1.2, i2p(i), movements['poi_srf'], 1.618),
+                                "view": (movements['poi_gm'], 1.2, i2p(movements["zoom_out"], i), movements['poi_srf'], 1.618),
                             },
                             meta,
                         ]
