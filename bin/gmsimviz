@@ -1552,7 +1552,7 @@ def i2p(zfacs, i):
 
 def add_frames_slip_progress(work, meta, movements):
     # stage 4 slip animation if no xyts
-    if movements["frames_gm"] > 0:
+    if movements["frames_gm"] == 0:
         for i in xrange(movements["frames_sr"]):
             sim_time = float(i) / movements["fps"]
             if i >= movements["frames_azimuth"]:
