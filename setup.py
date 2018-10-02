@@ -13,7 +13,7 @@ with open(os.path.join(script_dir, "gmsimviz", "config.json"), "w") as cfg:
 
 setup(
     name="GMSimViz",
-    version="1.1",
+    version="1.2",
     packages=["gmsimviz"],
     url="https://github.com/ucgmsim/GMSimViz",
     description="Ground Motion Visualisation",
