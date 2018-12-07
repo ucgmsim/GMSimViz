@@ -109,7 +109,7 @@ def update_gmt_path(gmt_bin, wd=None):
     GMT = gmt_bin
     # retrieve version of GMT
     gmtp = Popen([GMT, "--version"], stdout=PIPE)
-    GMT_VERSION = gmtp.communicate()[0].rstrip().decode()
+    GMT_VERSION = gmtp.communicate()[0].rstrip().decode("utf-8")
     GMT_MAJOR, GMT_MINOR = map(int, GMT_VERSION.split(".")[:2])
 
     psconvert = "psconvert"
@@ -261,7 +261,7 @@ def simplify_segs(infile, outfile=None):
 
     # return as list of (individual) points
     proc = Popen(["awk", segfile_simple_awk, infile], stdout=PIPE)
-    result = proc.communicate()[0]
+    result = proc.communicate()[0].decode("utf-8")
     proc.wait()
     return np.loadtxt(result.split("\n"), dtype="f")
 
@@ -400,7 +400,7 @@ def make_seismo(
         )
 
     elif fmt == "time":
-        for t in xrange(len(tsy)):
+        for t in range(len(tsy)):
             tsyp = np.copy(tsy[t::-1]) * yfac + y0 - yfac * tsy[t]
             tsx = np.arange(len(tsyp)) * xfac + x0
             np.savetxt(
@@ -430,7 +430,7 @@ def auto_tick(x_min, x_max, width):
 
     # starting tick is increased until ticks per inch is less than max
     major_tick = 0.01
-    for i in xrange(12):
+    for i in range(12):
         # check tpi vs tpi max for decimal places in major_tick
         if ((x_max - x_min) / major_tick) / width > tpi_dp[max(0, 2 - i // 3)]:
             # increase by factor of 2, 2.5, 2, 2, 2.5, 2, 2, 2.5...
@@ -535,7 +535,7 @@ def is_native_xyv(xyv_file, x_min, x_max, y_min, y_max, v_min=None):
     bin_data = np.fromfile(xyv_file, dtype="3f4")
 
     # check the first few rows
-    for i in xrange(min(10, len(bin_data))):
+    for i in range(min(10, len(bin_data))):
         if (
             x_min <= bin_data[i, 0] <= x_max
             and y_min <= bin_data[i, 1] <= y_max
@@ -717,7 +717,7 @@ def srf2map(
         )
 
     # create resources for each plane
-    for s in xrange(n_plane):
+    for s in range(n_plane):
         if not xy:
             # geographical based resources
             x_min, y_min = np.min(np_bounds[s], axis=0)
@@ -1106,7 +1106,7 @@ def table2grd(
         try:
             # test if text file
             with open(table_in, "r") as tf:
-                for _ in xrange(header):
+                for _ in range(header):
                     tf.readline()
                 # assert added to catch eg: first line = '\n'
                 assert len(map(float, tf.readline().split()[:2])) == 2
@@ -1114,14 +1114,14 @@ def table2grd(
             cmd.append("-bi3f")
         # run command
         p = Popen(cmd, stderr=PIPE, cwd=wd)
-        e = p.communicate()[1]
+        e = p.communicate()[1].decode("utf-8")
         p.wait()
         # also create radius based mask if wanted
         if automask != None:
             Popen(cmd_mask, cwd=wd).wait()
     else:
         p = Popen(cmd, stdin=PIPE, stderr=PIPE, cwd=wd)
-        e = p.communicate(table_in)[1]
+        e = p.communicate(table_in.encode("utf-8"))[1].decode("utf-8")
         p.wait()
 
     write_history(True, wd=wd)
@@ -1175,7 +1175,7 @@ def grdclip(
         cmd.append("-R%s/%s" % ("/".join(map(str, region)), new))
     # ignore stderr: usually because no data in area
     p = Popen(cmd, stderr=PIPE, cwd=wd)
-    e = p.communicate()[1]
+    e = p.communicate()[1].decode("utf-8")
     p.wait()
 
     if len(e) == 0:
@@ -1251,7 +1251,7 @@ def grd_mask(
 
     write_history(False, wd=wd)
     p = Popen(cmd, cwd=wd, stderr=PIPE)
-    e = p.communicate()[1]
+    e = p.communicate()[1].decode("utf-8")
     p.wait()
     write_history(True, wd=wd)
 
@@ -1291,7 +1291,7 @@ def grdmath(expression, wd="."):
     # required parameters are at the end of the command
     cmd.extend(map(str, expression))
     p = Popen(cmd, stderr=PIPE, cwd=wd)
-    e = p.communicate()[1]
+    e = p.communicate()[1].decode("utf-8")
     p.wait()
 
     # rc 70: syntax
@@ -1400,13 +1400,13 @@ def map_dimentions(
         cmd.append("-D%s" % (unit))
 
     projp = Popen(cmd, stdout=PIPE, cwd=wd)
-    result = projp.communicate()[0]
+    result = projp.communicate()[0].decode("utf-8")
     projp.wait()
 
     # restore default behaviour
     write_history(True, wd=wd)
 
-    return map(float, result.split())
+    return list(map(float, result.split()))
 
 
 def map_corners(
@@ -1495,7 +1495,9 @@ def mapproject_multi(
             cmd.append("-p%s" % (p))
 
     projp = Popen(cmd, stdin=PIPE, stdout=PIPE, cwd=wd)
-    result = projp.communicate("\n".join([" ".join(map(str, i)) for i in points]))[0]
+    result = projp.communicate(
+        "\n".join([" ".join(map(str, i)) for i in points]).encode("utf-8")
+    )[0].decode("utf-8")
     projp.wait()
 
     # re-enable history file
@@ -2106,7 +2108,7 @@ def intersections(
 
     # run
     sp = Popen(cmd, cwd=wd, stdout=PIPE)
-    so = sp.communicate()[0]
+    so = sp.communicate()[0].decode("utf-8")
     sp.wait()
     # process
     points = []
@@ -2143,7 +2145,7 @@ def truncate(inputs, clip=None, region=None, wd="."):
 
     # run
     sp = Popen(cmd, cwd=wd, stdout=PIPE)
-    so = sp.communicate()[0]
+    so = sp.communicate()[0].decode("utf-8")
     sp.wait()
     # process
     points = []
@@ -2168,7 +2170,7 @@ def select(data, line_file=None, line_dist=0, geo=True, wd="."):
 
     # run
     sp = Popen(cmd, cwd=wd, stdout=PIPE)
-    so = sp.communicate()[0]
+    so = sp.communicate()[0].decode("utf-8")
     sp.wait()
     # process
     points = []
@@ -2282,7 +2284,11 @@ class GMTPlot:
         else:
             cmd.extend(["-J", "-R"])
         proc = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-        proc.communicate("%s 0\n%s %s\n0 %s\n0 0" % (length, length, height, height))
+        proc.communicate(
+            ("%s 0\n%s %s\n0 %s\n0 0" % (length, length, height, height)).encode(
+                "utf-8"
+            )
+        )
         proc.wait()
 
         if window != None:
@@ -2357,17 +2363,19 @@ class GMTPlot:
             cmd.append("-G%s" % (fill))
             spipe = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
             spipe.communicate(
-                "%s %s\n%s %s\n%s %s\n%s %s\n"
-                % (
-                    region[0],
-                    region[2],
-                    region[1],
-                    region[2],
-                    region[1],
-                    region[3],
-                    region[0],
-                    region[3],
-                )
+                (
+                    "%s %s\n%s %s\n%s %s\n%s %s\n"
+                    % (
+                        region[0],
+                        region[2],
+                        region[1],
+                        region[2],
+                        region[1],
+                        region[3],
+                        region[0],
+                        region[3],
+                    )
+                ).encode("utf-8")
             )
             spipe.wait()
         else:
@@ -2395,7 +2403,7 @@ class GMTPlot:
                 Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
             else:
                 p = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-                p.communicate(path)
+                p.communicate(path.encode("utf-8"))
                 p.wait()
         else:
             # finish crop (-C)
@@ -2457,7 +2465,7 @@ class GMTPlot:
             cmd.append("-G%s" % (box_fill))
 
         tproc = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-        tproc.communicate("%s %s %s\n" % (x, y, text))
+        tproc.communicate(("%s %s %s\n" % (x, y, text)).encode("utf-8"))
         tproc.wait()
 
     def text_multi(
@@ -2515,7 +2523,7 @@ class GMTPlot:
             Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
         else:
             p = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-            p.communicate(in_data)
+            p.communicate(in_data.encode("utf-8"))
             p.wait()
 
     def sites(
@@ -2557,7 +2565,7 @@ class GMTPlot:
         if self.p:
             cmd.append("-p")
         sproc = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-        sproc.communicate(sites_xy)
+        sproc.communicate(sites_xy.encode("utf-8"))
         sproc.wait()
 
         # step 2: label points
@@ -2589,7 +2597,7 @@ class GMTPlot:
         if self.p:
             cmd.append("-p")
         tproc = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-        tproc.communicate("\n".join(xyan))
+        tproc.communicate("\n".join(xyan).encode("utf-8"))
         tproc.wait()
 
     def water(self, colour="lightblue", res="150k", oceans=True):
@@ -2818,7 +2826,7 @@ class GMTPlot:
         """
         # auto sizing factor calculation
         try:
-            region = map(float, self.history("R").split("/"))
+            region = list(map(float, self.history("R").split("/")))
             km = geo.ll_dist(region[0], region[2], region[1], region[3])
             size = mapproject(region[1], region[3], wd=self.wd, unit="inch", z=self.z)
         except ValueError:
@@ -2826,7 +2834,7 @@ class GMTPlot:
             region = self.history("R").split("/")
             if region[-1][-1] == "r":
                 region[-1] = region[-1][:-1]
-                region = map(float, region)
+                region = list(map(float, region))
                 km = geo.ll_dist(region[0], region[1], region[2], region[3])
                 size = mapproject(
                     region[2], region[3], wd=self.wd, unit="inch", z=self.z
@@ -3032,7 +3040,7 @@ class GMTPlot:
             Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
         else:
             p = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-            p.communicate(in_data)
+            p.communicate(in_data.encode("utf-8"))
             p.wait()
 
     def epoints(
@@ -3080,7 +3088,7 @@ class GMTPlot:
             Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
         else:
             p = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-            p.communicate(in_data)
+            p.communicate(in_data.encode("utf-8"))
             p.wait()
 
     def path(
@@ -3140,7 +3148,7 @@ class GMTPlot:
             Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
         else:
             p = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-            p.communicate(in_data)
+            p.communicate(in_data.encode("utf-8"))
             p.wait()
 
     def seismo(self, src, time, fmt="time", width="1p", colour="red", straight=True):
@@ -3190,7 +3198,7 @@ class GMTPlot:
         if straight:
             cmd.append("-A")
         sp = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-        sp.communicate(gmt_in)
+        sp.communicate(gmt_in.encode("utf-8"))
         sp.wait()
 
     def dist_scale(
@@ -3477,7 +3485,7 @@ class GMTPlot:
             Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
         else:
             p = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-            p.communicate(legend)
+            p.communicate(legend.encode("utf-8"))
             p.wait()
 
     def contours(self, xyv_file, interval=None, annotations=None):
@@ -3596,7 +3604,7 @@ class GMTPlot:
                 cmd.append("-hi%d" % (header))
             # ignore stderr: usually because no data in area
             # algorithm in 'surface' is known to fail (no output) seen in 5.1
-            for attempt in xrange(5):
+            for attempt in range(5):
                 # stderr = self.sink
                 Popen(cmd, cwd=self.wd).wait()
                 if os.path.exists(temp_grd):
@@ -3838,7 +3846,7 @@ class GMTPlot:
             if plane_fill != None:
                 cmd.append("-G%s" % (plane_fill))
             planep = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-            planep.communicate(all_edges)
+            planep.communicate(all_edges.encode("utf-8"))
             planep.wait()
         # plot top edges
         if top_colour != None:
@@ -3857,7 +3865,7 @@ class GMTPlot:
                 stdout=self.psf,
                 cwd=self.wd,
             )
-            topp.communicate(top_edges)
+            topp.communicate(top_edges.encode("utf-8"))
             topp.wait()
         # hypocentre
         if hyp_size > 0 and hyp_colour != None:
@@ -3877,7 +3885,7 @@ class GMTPlot:
                 stdout=self.psf,
                 cwd=self.wd,
             )
-            hypp.communicate(hypocentre)
+            hypp.communicate(hypocentre.encode("utf-8"))
             hypp.wait()
 
     def beachballs(
@@ -3927,7 +3935,7 @@ class GMTPlot:
             Popen(cmd, stdout=self.psf, cwd=self.wd)
         else:
             meca = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
-            meca.communicate(data)
+            meca.communicate(data.encode("utf-8"))
             meca.wait()
 
     def rose(

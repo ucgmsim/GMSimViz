@@ -32,7 +32,7 @@ The GMSimViz depends on the following software packages.
 * Numpy (https://www.numpy.org https://pypi.org/project/numpy/) for Python version (>= 1.10) tested with 1.10, 1.13 and 1.14
 * MPI4Py (https://bitbucket.org/mpi4py/ https://pypi.org/project/mpi4py/) for Python version and mpi backend (https://www.open-mpi.org dependency of mpi4py)
 * H5Py (http://www.h5py.org/ https://pypi.org/project/h5py/) for Python version and hdf5 backend (https://support.hdfgroup.org/HDF5/ dependency of h5py)
-* GMT (>=r19922) requires release after 5.4.3 (currently unavailable) versions prior to r19922 will have bugs but GMSimViz is designed to work with GMT (>=5.2) tested with Ghostscript 9.18, 9.21 was found to produce glitches
+* GMT (>=r19922) requires release after 5.4.4 (currently unavailable) versions prior to r19922 will have bugs but GMSimViz is designed to work with GMT (>=5.2) tested with Ghostscript 9.18, 9.21 was found to produce glitches
 * FFMpeg built with image2/png, h.264 encoder support (standard installation) tested with version 3.3
 * gawk
 * git (to download GMSimViz)
@@ -48,9 +48,9 @@ sudo apt install libpng-dev
 ```
 #### GMT
 
-GMT version earlier than 5.2 has some outstanding issues to work reliably with GMSimViz. A version later than 5.4.3 is recommended, and at the time of writing, the latest development source obtained directly from the  repository (A release r19922 fully verified).  Instructions for GMT installation is available at http://gmt.soest.hawaii.edu/projects/gmt/wiki/BuildingGMT . You should compile with PNG support enabled (check configure output, make sure headers are available).
+GMT version earlier than 5.2 has some outstanding issues to work reliably with GMSimViz. A version later than 5.4.4 is recommended, and at the time of writing, the latest development source obtained directly from the  repository (A release r19922 fully verified, r20495 also seems fine).  Instructions for GMT installation is available at http://gmt.soest.hawaii.edu/projects/gmt/wiki/BuildingGMT . You should compile with PNG support enabled (check configure output, make sure headers are available).
 
-If you want to use the latest stable release at time of writing, version 5.4.3 will draw outlines of the fault plane and hypocentre location on the surface rather than at depth (bug).
+If you want to use the latest stable release at time of writing, versions 5.4.3 and 5.4.4 will draw outlines of the fault plane and hypocentre location on the surface rather than at depth (bug) but otherwise work fine.
 
 Make sure the `gmt` binary is in the PATH. If `gmt` is installed in `/usr/local/bin` and `gmt` is not already available in the PATH, add it to the PATH:
 ```shell

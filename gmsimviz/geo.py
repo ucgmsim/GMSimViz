@@ -267,7 +267,7 @@ def path_from_corners(
     # until each side has at least wanted number of points
     while len(corners) < 4 * min_edge_points:
         # work backwards, insertions don't change later indexes
-        for i in xrange(len(corners) - 1, 0, -1):
+        for i in range(len(corners) - 1, 0, -1):
             val = ll_mid(
                 corners[i][0], corners[i][1], corners[i - 1][0], corners[i - 1][1]
             )
