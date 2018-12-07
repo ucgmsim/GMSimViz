@@ -1741,7 +1741,7 @@ def add_frames_network(work, meta, movements, path_files):
         if i == len(path_files) - 1:
             pause_frames_road = meta["pause_frames"]
         elif int(os.path.basename(path_files[i]).split("_")[0]) > 29:
-            pause_frames_road = meta["t_frames"] / 3
+            pause_frames_road = meta["t_frames"] // 3
         work["msgs"].append(
             [
                 timeslice,
