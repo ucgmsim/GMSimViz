@@ -111,7 +111,7 @@ def load_xyts_ts(meta, job):
     xfile = xyts.XYTSFile(meta["xyts_file"], meta_only=False)
     crop_grd = os.path.join(meta["wd"], "xyts", "mask.nc")
     # preload timeslice overlays
-    for t in xrange(job["start"], xfile.nt, job["inc"]):
+    for t in range(job["start"], xfile.nt, job["inc"]):
         ts_prefix = os.path.join(meta["wd"], "xyts", "ts%04d" % (t))
         # load binary data
         xfile.tslice_get(t, outfile="%s.bin" % (ts_prefix))
@@ -488,7 +488,7 @@ def frame_sliprate(job, meta, window, wd):
     srt = int(round(job["sim_time"] / meta["srf_dt"]))
     if srt >= meta["sr_len"]:
         srt = meta["sr_len"] - 1
-    for i in xrange(meta["n_plane"] * (job["transparency"] < 100)):
+    for i in range(meta["n_plane"] * (job["transparency"] < 100)):
         # lon, lat, depth
         subfaults = np.fromfile("%s/subfaults_%d.bin" % (meta["wd"], i), dtype="3f")
         # reproject
@@ -590,18 +590,18 @@ def frame_op_batch(op_list, prefix):
     for op in op_list:
         if op[0] == "DUP":
             # 'DUP', dup_frame, dup_count (negative to dup backwards)
-            for i in xrange(1, op[2] + 1) if (op[2] >= 0) else xrange(op[2], 0, 1):
+            for i in range(1, op[2] + 1) if (op[2] >= 0) else range(op[2], 0, 1):
                 frame_op(copy, prefix, op[1], op[1] + i)
         elif op[0] == "REV":
             # 'REV', seq_from, seq_len, rev_gap
-            for i in xrange(op[2]):
+            for i in range(op[2]):
                 frame_op(copy, prefix, op[1] + i, op[1] + op[2] * 2 + op[3] - 1 - i)
         elif op[0] == "SHIFT":
             # 'SHIFT', seq_from, seq_len, shift
             for i in (
-                xrange(op[1] + op[2] - 1, op[1] - 1, -1)
+                range(op[1] + op[2] - 1, op[1] - 1, -1)
                 if (op[3] > 0)
-                else xrange(op[1], op[1] + op[2])
+                else range(op[1], op[1] + op[2])
             ):
                 frame_op(move, prefix, i, i + op[3])
 
@@ -1128,9 +1128,9 @@ def validate_args(args):
     if args.paths is not None:
         if not os.path.isdir(args.paths):
             sys.exit("Could not find path directory: %s" % (args.paths))
-        path_sort = lambda n: map(
+        path_sort = lambda n: list(map(
             int, os.path.basename(os.path.splitext(n)[0]).split("_")
-        )
+        ))
         args.path_files = sorted(glob("%s/*.gmt" % (args.paths)), key=path_sort)
 
     return args
@@ -1270,7 +1270,7 @@ def load_meta(args):
 
 def load_sliprate(srf_file, framerate, meta):
     slip_end = srf.srf2llv_py(srf_file, value="ttotal")
-    rup_time = max([max(slip_end[p][:, 2]) for p in xrange(len(slip_end))])
+    rup_time = max([max(slip_end[p][:, 2]) for p in range(len(slip_end))])
     # internal dt
     srf_dt = srf.srf_dt(srf_file)
     # frames per slip rate increment
@@ -1287,7 +1287,7 @@ def load_sliprate(srf_file, framerate, meta):
     spec_sr = "slipts-%s-%s" % (ddt, time_sr)
     slip_pos, slip_rate = srf.srf2llv_py(srf_file, value=spec_sr, depth=True)
     meta["planes"] = srf.read_header(srf_file, idx=True)
-    for plane in xrange(len(slip_pos)):
+    for plane in range(len(slip_pos)):
         slip_pos[plane].astype(np.float32).tofile(
             os.path.join(meta["wd"], "subfaults_%d.bin" % (plane))
         )
@@ -1440,7 +1440,7 @@ def add_frames_single(work, meta, poi):
 
 def add_frames_face_slip(work, meta, movements, frames):
     # stage 1 face slip
-    for i in xrange(frames):
+    for i in range(frames):
         if meta["s_azimuth"] <= 180:
             azimuth = 180 - (i / float(frames - 1)) * (180 - meta["s_azimuth"])
         else:
@@ -1475,7 +1475,7 @@ def add_frames_face_slip(work, meta, movements, frames):
 def add_frames_dip_slip(work, meta, movements):
     # stage 2 dip below surface
     frames_dip = meta["pause_frames"]
-    for i in xrange(frames_dip):
+    for i in range(frames_dip):
         tilt2 = 90 - (90 - TILT_DIP) * (i + 1.0) / frames_dip
         tiltv = math.sin(math.radians(tilt2)) * meta["map_tilt"]
         work["msgs"].append(
@@ -1506,7 +1506,7 @@ def add_frames_dip_slip(work, meta, movements):
 def add_frames_slip_fade(work, meta, movements):
     # stage 3 slip fadeout
     frames_fade = meta["t_frames"]
-    for i in xrange(frames_fade):
+    for i in range(frames_fade):
         scale_t = 1 - i / (frames_fade - 1.0)
         over_t = 100 - (100 - OVERLAY_T) * scale_t
         work["msgs"].append(
@@ -1553,7 +1553,7 @@ def i2p(zfacs, i):
 def add_frames_slip_progress(work, meta, movements):
     # stage 4 slip animation if no xyts
     if movements["frames_gm"] == 0:
-        for i in xrange(movements["frames_sr"]):
+        for i in range(movements["frames_sr"]):
             sim_time = float(i) / movements["fps"]
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
@@ -1592,7 +1592,7 @@ def add_frames_camera_reset(work, meta, movements):
     else:
         msgs = work["msgs_post_ts"]
         zoom = 1.2
-    for i in xrange(frames_return):
+    for i in range(frames_return):
         scale_t = 1 - min(1, i / (meta["t_frames"] - 1.0))
         over_t = 100 - (100 - OVERLAY_T) * scale_t
         azimuth = movements["final_azimuth"] + i * diff_azimuth_return
@@ -1659,7 +1659,7 @@ def add_frames_overlays(work, meta, movements, args):
     pois = "poi_gm", "poi_liq_s", "poi_liq_p", "poi_land_s", "poi_land_p"
 
     for x in np.where(available)[0]:
-        for i in xrange(meta["t_frames"]):
+        for i in range(meta["t_frames"]):
             scale_t = i / (meta["t_frames"] - 1.0)
             over_t = 100 - (100 - OVERLAY_T) * scale_t
 
@@ -1713,7 +1713,7 @@ def add_frames_network(work, meta, movements, path_files):
         if poi[1] > -44.5:
             poi_paths.append([poi[0], poi[1]])
     pause_frames_road = meta["t_frames"]
-    for i in xrange(meta["t_frames"]):
+    for i in range(meta["t_frames"]):
         scale_t = i / (meta["t_frames"] - 1.0)
         over_t = 100 - 100 * scale_t
         work["msgs"].append(
@@ -1737,11 +1737,11 @@ def add_frames_network(work, meta, movements, path_files):
     work["ops"].append(["DUP", movements["frames2now"] + i, pause_frames_road])
     movements["frames2now"] += meta["t_frames"] + pause_frames_road
     # mid statuses
-    for i in xrange(1, len(path_files)):
+    for i in range(1, len(path_files)):
         if i == len(path_files) - 1:
             pause_frames_road = meta["pause_frames"]
         elif int(os.path.basename(path_files[i]).split("_")[0]) > 29:
-            pause_frames_road = meta["t_frames"] / 3
+            pause_frames_road = meta["t_frames"] // 3
         work["msgs"].append(
             [
                 timeslice,
@@ -1763,7 +1763,7 @@ def add_frames_network(work, meta, movements, path_files):
         work["ops"].append(["DUP", movements["frames2now"], pause_frames_road - 1])
         movements["frames2now"] += pause_frames_road
     # end fadeout
-    for i in xrange(meta["t_frames"]):
+    for i in range(meta["t_frames"]):
         scale_t = 1 - min(1, i / (meta["t_frames"] - 1.0))
         over_t = 100 - 100 * scale_t
         work["msgs"].append(
@@ -1803,7 +1803,7 @@ def xyts_ready(work, meta, cpt_max, nproc):
     work["deps"] -= 1
 
     # load xyts overlays
-    for i in xrange(nproc):
+    for i in range(nproc):
         work["msgs"].append([load_xyts_ts, meta, {"start": i, "inc": nproc}])
     work["deps"] += nproc
 
@@ -1811,7 +1811,7 @@ def xyts_ready(work, meta, cpt_max, nproc):
 def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
     # timeslice process finished, add frames containing finished timeslice data
     ready = range(start_idx, meta["xyts_nt"], inc_idx)
-    for i in xrange(movements["frames_sr"]):
+    for i in range(movements["frames_sr"]):
         # frames containing slip rate
         sim_time = float(i) / movements["fps"]
         xpos = int(round(sim_time / meta["xyts_dt"]))
@@ -1844,7 +1844,7 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
                     meta,
                 ]
             )
-    for i in xrange(movements["frames_sr"], movements["frames_gm"]):
+    for i in range(movements["frames_sr"], movements["frames_gm"]):
         # frames containing only ground motion
         sim_time = float(i) / movements["fps"]
         xpos = int(round(sim_time / meta["xyts_dt"]))

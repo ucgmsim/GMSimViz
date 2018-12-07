@@ -40,7 +40,7 @@ def get_nsub_stoch(stoch_file, get_area=False):
     total_area = 0
     with open(stoch_file, "r") as sf:
         # file starts with number of segments that follow
-        for seg in xrange(int(sf.readline())):
+        for seg in range(int(sf.readline())):
             # metadata line 1 of 2
             meta1 = sf.readline().split()
             # nx * ny
@@ -53,7 +53,7 @@ def get_nsub_stoch(stoch_file, get_area=False):
             # skip metadata line 2 of 2
             sf.readline()
             # skip x, y, z (3) components * (ny) lines containing nx columns
-            for _ in xrange(3 * ny):
+            for _ in range(3 * ny):
                 sf.readline()
 
     if get_area:
@@ -80,7 +80,7 @@ def read_header(sf, idx=False):
     assert line2[0] == "PLANE"
     nseg = int(line2[1])
     planes = []
-    for _ in xrange(nseg):
+    for _ in range(nseg):
         # works for version 1.0 and 2.0
         elon, elat, nstk, ndip, ln, wid = sf.readline().split()
         stk, dip, dtop, shyp, dhyp = map(float, sf.readline().split())
@@ -187,12 +187,12 @@ def skip_points(sf, np):
     sf: open srf file at the start of a point
     np: number of points to read past
     """
-    for _ in xrange(np):
+    for _ in range(np):
         # header 1 not important
         sf.readline()
         # header 2 contains number of values which determines lines
         values = sum(map(int, sf.readline().split()[2::2]))
-        for _ in xrange(int(ceil(values / VPL))):
+        for _ in range(int(ceil(values / VPL))):
             sf.readline()
 
 
@@ -254,7 +254,7 @@ def get_lonlat(sf, value=None, depth=False):
     if type(value).__name__ != "str" or (
         value[:8] != "sliprate" and value[:6] != "slipts"
     ):
-        for _ in xrange(int(ceil(values / VPL))):
+        for _ in range(int(ceil(values / VPL))):
             sf.readline()
     else:
         cumulative = False
@@ -262,7 +262,7 @@ def get_lonlat(sf, value=None, depth=False):
             cumulative = True
         # store rest of point data
         srate = []
-        for _ in xrange(int(ceil(values / VPL))):
+        for _ in range(int(ceil(values / VPL))):
             srate.extend(map(float, sf.readline().split()))
         # sliprate-dt-tend
         dt, t = value.split("-")[1:3]
@@ -274,7 +274,7 @@ def get_lonlat(sf, value=None, depth=False):
         value.fill(np.nan)
         # fill with values during rupture period at this subfault
         i = 0
-        for r in xrange(int(h2[2])):
+        for r in range(int(h2[2])):
             # time index as decimated
             i = int(floor((tinit + r * srfdt) / float(dt)))
             if cumulative:
@@ -310,12 +310,12 @@ def read_latlondepth(srf):
     with open(srf, "r") as sf:
         sf.readline()
         n_seg = int(sf.readline().split()[1])
-        for _ in xrange(n_seg):
+        for _ in range(n_seg):
             sf.readline()
             sf.readline()
         n_point = int(sf.readline().split()[1])
         points = []
-        for _ in xrange(n_point):
+        for _ in range(n_point):
             values = get_lonlat(sf, "depth")
             point = {}
             point["lat"] = values[1]
@@ -380,7 +380,7 @@ def get_hypo(srf, lonlat=True, depth=False):
         planes = read_header(sf)
         # keep only main segment set (containing hypocentre)
         if len(planes) > 1:
-            for i in xrange(1, len(planes)):
+            for i in range(1, len(planes)):
                 # negative dhyp if same segment set
                 if planes[i][10] >= 0:
                     del planes[i:]
@@ -419,13 +419,13 @@ def get_hypo(srf, lonlat=True, depth=False):
 
         # XXX: there are gaps between segments, ignored
         # total segment set length (along strike)
-        ln_tot = sum(planes[p][4] for p in xrange(len(planes)))
+        ln_tot = sum(planes[p][4] for p in range(len(planes)))
         # distance from group start edge to hypocentre
         ln_shyp = ln_tot / 2.0 + planes[0][9]
         ln_shyp_rel = ln_shyp
         # calculate shyp within correct sub segment
         ln_segs = 0
-        for p in xrange(len(planes)):
+        for p in range(len(planes)):
             ln_segs += planes[p][4]
             if ln_segs >= ln_shyp:
                 break
@@ -453,7 +453,7 @@ def get_hypo(srf, lonlat=True, depth=False):
 
         # retrieve value
         points = int(sf.readline().split()[1])
-        for skip in xrange(p):
+        for skip in range(p):
             nstk, ndip = planes[skip][2:4]
             skip_points(sf, nstk * ndip)
         nstk, ndip = planes[p][2:4]
@@ -545,18 +545,18 @@ def srf2llv_py(srf, value="slip", seg=-1, lonlat=True, depth=False, flip_rake=Fa
                 )
                 # last item - values from SRF
                 if multi:
-                    for i in xrange(plane["nstrike"] * plane["ndip"]):
+                    for i in range(plane["nstrike"] * plane["ndip"]):
                         plane_series[i] = get_lonlat(sf, value=value)[-1]
                 else:
-                    for i in xrange(plane["nstrike"] * plane["ndip"]):
+                    for i in range(plane["nstrike"] * plane["ndip"]):
                         plane_values[i, 2] = get_lonlat(sf, value=value)[-1]
 
             else:
                 if not multi:
-                    for i in xrange(plane["nstrike"] * plane["ndip"]):
+                    for i in range(plane["nstrike"] * plane["ndip"]):
                         plane_values[i] = get_lonlat(sf, value=value, depth=depth)
                 else:
-                    for i in xrange(plane["nstrike"] * plane["ndip"]):
+                    for i in range(plane["nstrike"] * plane["ndip"]):
                         if depth:
                             plane_values[i][0], plane_values[i][1], plane_values[i][
                                 2
