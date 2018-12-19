@@ -86,6 +86,14 @@ On Mac OSX, GMT can be installed from homebrew (https://brew.sh/).
 ## Sample Data
 Sample data is provided, it contains smaller data sets from multiple earthquakes to make a feature-full demo. 
 
+GMT may produce error messages like the one below in versions from around 5.4.4 with GMSimViz. These can be ignored.
+```shell
+grdimage: Error: (x_max-x_min) must equal (NX + eps) * x_inc), where NX is an integer and |eps| <= 0.0001.
+grdimage (gmtlib_read_grd_info): Use grdedit -A on your grid file to make region and increments compatible [GMSimViz/resources/Topo/srtm_all_filt_nz_i5.grd]
+grdimage: Error: (x_max-x_min) must equal (NX + eps) * x_inc), where NX is an integer and |eps| <= 0.0001.
+grdimage (gmtlib_read_grd_info): Use grdedit -A on your grid file to make region and increments compatible [GMSimViz/resources/Topo/srtm_all_filt_nz.grd]
+```
+
 The most simplest output is a single frame (image) facing the fault plane. This case only requires the SRF file as the parameter:
 <img src="figures/fault_perspective.png" width="400">
 ```shell
