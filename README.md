@@ -35,7 +35,6 @@ The GMSimViz depends on the following software packages.
 * GMT (>=r19922) requires release after 5.4.4 (currently unavailable) versions prior to r19922 will have bugs but GMSimViz is designed to work with GMT (>=5.2) tested with Ghostscript 9.18, 9.21 was found to produce glitches
 * FFMpeg built with image2/png, h.264 encoder support (standard installation) tested with version 3.3
 * gawk
-* git (to download GMSimViz)
 
 ### Linux
 Install the packages for the above mentioned dependencies. Names vary between distribution repositories.  On Ubuntu or other Debian-based Linux distributions, most of the packages can be installed by the following command. If your system default Python is version 3, install the `python3-*` packages instead of `python-*`.
