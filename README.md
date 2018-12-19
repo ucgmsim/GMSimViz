@@ -80,7 +80,7 @@ python setup.py install --user
 You may use `python2`, `python3`, `python2.7` etc. instead of `python` where you want to use a specific verision.
 
 ### Other systems
-Currently unsupported (we cannot give instructions but if the dependencies are met, GMSimViz should work).
+On Mac OSX, GMT can be installed from homebrew (https://brew.sh/).
 
 
 ## Sample Data
