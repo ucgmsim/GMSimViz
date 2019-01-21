@@ -84,52 +84,6 @@ def xy2ll(xy_km, amat):
     return np.column_stack((lon, lat))
 
 
-def ll2xy(ll, ainv):
-    """
-    Converts longitude and latitude to km offsets.
-    ll: 2D np array of [lon, lat]
-    ainv: from gen_mat function
-    """
-    lon = np.radians(ll[:, 0])
-    lat = np.radians(90.0 - ll[:, 1])
-
-    xg = np.sin(lat) * np.cos(lon)
-    yg = np.sin(lat) * np.sin(lon)
-    zg = np.cos(lat)
-
-    xp = xg * ainv[0] + yg * ainv[1] + zg * ainv[2]
-    yp = xg * ainv[3] + yg * ainv[4] + zg * ainv[5]
-    zp = xg * ainv[6] + yg * ainv[7] + zg * ainv[8]
-
-    # X km offsets from centre origin, Y km offsets from centre origin
-    return np.column_stack(
-        (
-            R_EARTH * np.arcsin(yp / np.sqrt(1.0 - xp * xp)),
-            R_EARTH * np.arcsin(xp / np.sqrt(1.0 - yp * yp)),
-        )
-    )
-
-
-def xy2gp(xy, nx, ny, hh):
-    """
-    Converts km offsets to grid points.
-    xy: 2D np array of [X, Y] offsets from origin (km)
-    nx: number of X grid positions
-    ny: number of Y grid positions
-    hh: grid spacing
-    """
-    gp = np.copy(xy)
-
-    # distance from corner
-    gp[:, 0] += (nx - 1) * hh * 0.5
-    gp[:, 1] += (ny - 1) * hh * 0.5
-
-    # gridpoint from top corner
-    gp /= hh
-
-    return np.round(gp).astype(np.int32, copy=False)
-
-
 def gp2xy(gp, nx, ny, hh):
     """
     Converts grid points to km offsets.
@@ -145,22 +99,6 @@ def gp2xy(gp, nx, ny, hh):
     xy[:, 1] -= (ny - 1) * hh * 0.5
 
     return xy
-
-
-def ll_shift(lat, lon, distance, bearing):
-    """
-    Shift lat/long by distance at bearing.
-    """
-    # formula is for radian values
-    lat, lon, bearing = map(radians, [lat, lon, bearing])
-
-    shift = distance / R_EARTH
-    lat2 = asin(sin(lat) * cos(shift) + cos(lat) * sin(shift) * cos(bearing))
-    lon2 = lon + atan2(
-        sin(bearing) * sin(shift) * cos(lat), cos(shift) - sin(lat) * sin(lat2)
-    )
-
-    return degrees(lat2), degrees(lon2)
 
 
 def ll_mid(lon1, lat1, lon2, lat2):
