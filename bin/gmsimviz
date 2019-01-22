@@ -1656,6 +1656,7 @@ def add_frames_overlays(work, meta, movements, args):
         "Landslide Susceptibility",
         "Landslide Probability",
     )
+    job_sets = ("msgs_post_ts", "msgs")
     pois = "poi_gm", "poi_liq_s", "poi_liq_p", "poi_land_s", "poi_land_p"
 
     for x in np.where(available)[0]:
@@ -1664,7 +1665,7 @@ def add_frames_overlays(work, meta, movements, args):
             over_t = 100 - (100 - OVERLAY_T) * scale_t
 
             if args.xyts is not None:
-                work["msgs"].append(
+                work[job_sets[min(x, 1)]].append(
                     [
                         timeslice,
                         {
