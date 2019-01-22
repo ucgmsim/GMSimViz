@@ -21,46 +21,6 @@ from gmsimviz import geo
 VPL = 6.0
 
 
-def get_nseg(srf):
-    """
-    Returns number of segments in SRF file.
-    srf: filepath to srf
-    """
-    with open(srf, "r") as sf:
-        sf.readline()
-        return int(sf.readline().split()[1])
-
-
-def get_nsub_stoch(stoch_file, get_area=False):
-    """
-    Returns the number of sub-faults in a stoch file.
-    stoch_file: stoch file path
-    """
-    total_sub = 0
-    total_area = 0
-    with open(stoch_file, "r") as sf:
-        # file starts with number of segments that follow
-        for seg in range(int(sf.readline())):
-            # metadata line 1 of 2
-            meta1 = sf.readline().split()
-            # nx * ny
-            nsub = int(meta1[2]) * int(meta1[3])
-            total_sub += nsub
-            if get_area:
-                # nx * ny * x * y
-                total_area += nsub * float(meta1[4]) * float(meta1[5])
-
-            # skip metadata line 2 of 2
-            sf.readline()
-            # skip x, y, z (3) components * (ny) lines containing nx columns
-            for _ in range(3 * ny):
-                sf.readline()
-
-    if get_area:
-        return total_sub, total_area
-    return total_sub
-
-
 def read_header(sf, idx=False):
     """
     Parse header information.
@@ -120,65 +80,6 @@ def read_header(sf, idx=False):
     if close_me:
         sf.close()
     return planes
-
-
-def is_ff(srf):
-    """
-    Returns True if srf is a finite fault, False if srf is a point source.
-    srf: path to srf file
-    """
-    with open(srf, "r") as sf:
-        return check_type(sf) > 1
-
-
-def check_type(sf):
-    """
-    Returns the type of the srf.
-    1: point source
-    2: finite fault, most likely converted from point source params
-    3: finite fault, most likely created from finite fault params
-    4: multi-segment finite fault
-    NOTE: type 2 and 3 depend on input during creation and
-    # can only be distinguished using heuristics,
-    # as such the true result may be the other one.
-    sf: file pointer (already opened)
-    """
-    version = float(sf.readline())
-    # either starts with POINTS or PLANE (optional but expected)
-    line = sf.readline()
-    n = int(line.split()[1])
-    if "POINTS" in line:
-        # PLANE header is ommited
-        if n == 1:
-            return 1
-        # more complex logic required to procede in this case
-        # give an invalid result to show this, we don't create such SRFs anyway
-        return 0
-    elif "PLANE" in line:
-        if n > 1:
-            return 4
-        else:
-            elon, elat, nstk, ndip, ln, wid = sf.readline().split()
-            if int(nstk) * int(ndip) == 1:
-                return 1
-            if ln == wid:
-                return 2
-            return 3
-
-
-def ps_params(srf):
-    """
-    Returns point source (subfault) params (strike, dip, rake).
-    srf: srf file path
-    """
-    with open(srf, "r") as sf:
-        read_header(sf)
-        n_subfault = int(sf.readline().split()[1])
-        assert n_subfault == 1
-        strike, dip = map(float, sf.readline().split()[3:5])
-        rake = float(sf.readline().split()[0])
-
-    return strike, dip, rake
 
 
 def skip_points(sf, np):
@@ -301,31 +202,6 @@ def get_lonlat(sf, value=None, depth=False):
     return lon, lat, value
 
 
-def read_latlondepth(srf):
-    """
-    Return a list of lat,long,depth values extracted from file specified by
-    srfFile
-    """
-
-    with open(srf, "r") as sf:
-        sf.readline()
-        n_seg = int(sf.readline().split()[1])
-        for _ in range(n_seg):
-            sf.readline()
-            sf.readline()
-        n_point = int(sf.readline().split()[1])
-        points = []
-        for _ in range(n_point):
-            values = get_lonlat(sf, "depth")
-            point = {}
-            point["lat"] = values[1]
-            point["lon"] = values[0]
-            point["depth"] = values[2]
-            points.append(point)
-
-    return points
-
-
 def get_bounds(srf, seg=-1, depth=False):
     """
     Return corners of segments.
@@ -432,7 +308,9 @@ def get_hypo(srf, lonlat=True, depth=False):
             ln_shyp_rel -= planes[p][4]
         # give flat projection location
         if not lonlat:
-            return p, ln_shyp_rel, dhyp
+            if depth:
+                return p, ln_shyp_rel, dhyp
+            return p, ln_shyp_rel
         # determine strike in correct sub segment
         nstk = planes[p][2]
         ln = planes[p][4]
@@ -464,26 +342,6 @@ def get_hypo(srf, lonlat=True, depth=False):
         if not depth:
             return hlon, hlat
         return hlon, hlat, depth_km
-
-
-def srf2corners(srf, cnrs="cnrs.txt"):
-    """
-    Creates a corners file used for srf plotting.
-    Contains the hypocentre and corners for each segment.
-    srf: srf (source) path
-    cnrs: corners (output) path
-    """
-    # required information
-    hypo = get_hypo(srf)
-    bounds = get_bounds(srf)
-
-    with open(cnrs, "w") as cf:
-        cf.write("> hypocentre:\n")
-        cf.write("%s %s\n" % hypo)
-        for i, plane in enumerate(bounds):
-            cf.write("> plane %s:\n" % (i))
-            for corner in plane:
-                cf.write("%s %s\n" % corner)
 
 
 def srf2llv_py(srf, value="slip", seg=-1, lonlat=True, depth=False, flip_rake=False):
