@@ -57,13 +57,20 @@ def test_attribute(xyts_instance, attr, expected):
         ),
         (
             True,
-            "170.914382935 -43.291595459\n172.262466431 -44.2177429199\n171.012954712 -45.1529998779\n169.66343689 -44.2121429443",
+            [
+                [170.914383, -43.291595],
+                [172.262466, -44.217743],
+                [171.012955, -45.153000],
+                [169.663437, -44.212143],
+            ],
         ),
     ],
 )
 def test_corners(xyts_instance, gmt_format, expected):
     if gmt_format:
-        assert xyts_instance.corners(gmt_format)[1] == expected
+        result = xyts_instance.corners(gmt_format)[1]
+        aslist = list(map(lambda ll: list(map(float, ll.split())), result.split("\n")))
+        assert np.allclose(aslist, expected, atol=1e-5)
     else:
         assert np.allclose(xyts_instance.corners(gmt_format), expected, atol=1e-5)
 
