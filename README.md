@@ -36,6 +36,10 @@ The GMSimViz depends on the following software packages.
 * FFMpeg built with image2/png, h.264 encoder support (standard installation) tested with version 3.3
 * gawk
 
+For testing:
+
+* imageio (tested with 2.1.1) or scipy prior to 1.2 with pillow.
+
 ### Linux
 Install the packages for the above mentioned dependencies. Names vary between distribution repositories.  On Ubuntu or other Debian-based Linux distributions, most of the packages can be installed by the following command. If your system default Python is version 3, install the `python3-*` packages instead of `python-*`.
 ```shell

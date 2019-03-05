@@ -18,6 +18,6 @@ setup(
     url="https://github.com/ucgmsim/GMSimViz",
     description="Ground Motion Visualisation",
     package_data={"gmsimviz": ["*.json", "*.png"]},
-    install_requires=["numpy", "scipy>=0.16"],
+    install_requires=["numpy", "mpi4py", "h5py"],
     scripts=["bin/gmsimviz"],
 )

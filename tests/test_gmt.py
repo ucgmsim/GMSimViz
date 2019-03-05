@@ -9,7 +9,10 @@ import os
 from shutil import rmtree
 
 import pytest
-from scipy.misc import imread
+try:
+    from imageio import imread
+except ImportError:
+    from scipy.misc import imread
 
 from gmsimviz import gmt
 
