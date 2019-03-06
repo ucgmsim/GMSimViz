@@ -38,6 +38,7 @@ The GMSimViz depends on the following software packages.
 
 For testing:
 
+* pytest with pytest-mpl and matplotlib
 * imageio (tested with 2.1.1) or scipy prior to 1.2 with pillow.
 
 ### Linux

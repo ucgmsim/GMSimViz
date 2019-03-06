@@ -12,5 +12,5 @@ Please use the *Issues* tab on the top of the Github page.
 
 ## Contributing Code
 
-* Tests should be run before contributing code. From the repository root, run: `python -m pytest`.
+* Tests should be run before contributing code. From the `tests` dir, run: `py.test --mpl`.
 * We use [Black](https://github.com/ambv/black) to format the code.
