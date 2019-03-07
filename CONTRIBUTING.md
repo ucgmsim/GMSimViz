@@ -12,5 +12,5 @@ Please use the *Issues* tab on the top of the Github page.
 
 ## Contributing Code
 
-* Tests should be run before contributing code. From the `tests` dir, run: `py.test --mpl`.
+* Tests should be run before contributing code. Run `py.test --mpl`. If GMSimViz is not installed, you can try `python -m pytest` from the repo root.
 * We use [Black](https://github.com/ambv/black) to format the code.
