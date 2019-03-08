@@ -50,6 +50,12 @@ STATUS_INVALID = 1
 GMT52_POS = {"map": "g", "plot": "x", "norm": "n", "rel": "j", "rel_out": "J"}
 
 GMT_DATA = config["GMT_DATA"]
+if not os.path.isdir(GMT_DATA):
+    try:
+        GMT_DATA = os.environ["GMT_DATA"]
+    except KeyError:
+        # GMT_DATA files unavailable
+        pass
 # LINZ DATA
 LINZ_COAST = {
     "150k": os.path.join(GMT_DATA, "Paths/lds-nz-coastlines-and-islands/150k.gmt")

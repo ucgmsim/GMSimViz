@@ -84,6 +84,16 @@ python setup.py install --user
 ```
 You may use `python2`, `python3`, `python2.7` etc. instead of `python` where you want to use a specific verision.
 
+To use `pip` to install instead:
+```shell
+pip install . --user
+```
+You will need to have an environment variable storing the `resources` location if you use `pip` or if they move:
+```shell
+export GMT_DATA="/path/to/resources"
+```
+This can be added to a `~/.bashrc` file for permanent storage.
+
 ### Other systems
 On Mac OSX, GMT can be installed from homebrew (https://brew.sh/).
 
