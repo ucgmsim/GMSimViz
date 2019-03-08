@@ -104,11 +104,13 @@ The most simplest output is a single frame (image) facing the fault plane. This 
 ```shell
 gmsimviz sample_data/fault.srf
 ```
+The output will be in the current directory with the same basename as the SRF file but with `_perspective.png` added to the end.
 
 An animation can be created from an SRF that shows the rupture propagating. It can be expected to take around 12 minutes to complete on a decent personal machine. Here is an example using 7 slave processes for a machine with 8 cores (including hyperthreading). An example of what is expected is available at https://youtu.be/nTtq_DxGVUM
 ```shell
 gmsimviz sample_data/fault.srf -a --crude -n7 --title "Fault Animation" --dpi 120 --downscale 1
 ```
+Animations will be saved in the current working directory with the same name as the SRF file but with a `.m4v` extension. `./fault.m4v` in the above and below examples.
 
 The fully featured sample animation below takes about 45 minutes with -n7 on a v4 E5-2620 (2.1 GHz). Slave processes are spawned after about 3 minutes and frames will start appearing in the temporary folder (in the same folder as the SRF file, sample_data/_GMT_WD_PERSPECTIVE_<random sequence>). When complete, the video is available in the working directory and the temporary folder is removed by default. The expected output is available at https://youtu.be/6TFj5HXp3MU
 ```shell
