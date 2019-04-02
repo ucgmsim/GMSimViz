@@ -484,6 +484,9 @@ def frame_outlines(frame, meta):
 
 
 def frame_sliprate(job, meta, window, wd):
+    if meta["pointsource"]:
+        return
+
     regions_sr = []
     srt = int(round(job["sim_time"] / meta["srf_dt"]))
     if srt >= meta["sr_len"]:
@@ -701,7 +704,7 @@ def frame_proj_base(frame, plot, job, meta, window):
     # load srf plane data
     elif plot == "slip":
         scale_y_final = 0.7
-        if job["transparency"] < 100:
+        if job["transparency"] < 100 and not meta["pointsource"]:
             srf_data = gmt.srf2map(
                 meta["srf_file"],
                 frame.wd,
@@ -723,7 +726,7 @@ def frame_proj_items(frame, job, meta, window):
     # main content items in geographic projection
 
     # site labels and srf hypocentre above slip, below ground motion
-    frame.sites(gmt.sites_major)
+    frame.sites(gmt.sites_major, font_size="24p", width=1.6)
     frame.points(
         "%s %s %s\n" % (meta["hlon"], meta["hlat"], meta["hdepth"]),
         is_file=False,
@@ -865,6 +868,9 @@ def frame_scales(frame, job, meta, plot, scale_y):
             length1 = SCALE_WIDTH
             diff = length1 - length0
             length = length0 + diff * job["scale_x"]
+            if meta["pointsource"]:
+                x = scale_margin
+                length = SCALE_WIDTH
             frame.cpt_scale(
                 x,
                 y,
@@ -882,19 +888,20 @@ def frame_scales(frame, job, meta, plot, scale_y):
         else:
             x = scale_margin
             length = SCALE_WIDTH
-        frame.cpt_scale(
-            x,
-            y,
-            "%s/slip.cpt" % (meta["srf_wd"]),
-            length=length,
-            align="LT",
-            dy=SCALE_PAD,
-            thickness=SCALE_SIZE,
-            major=meta["slip_cpt_max"] / 5.0,
-            minor=meta["slip_cpt_max"] / 20.0,
-            cross_tick=meta["slip_cpt_max"] / 20.0,
-            label="Cumulative Slip (cm)",
-        )
+        if not meta["pointsource"]:
+            frame.cpt_scale(
+                x,
+                y,
+                "%s/slip.cpt" % (meta["srf_wd"]),
+                length=length,
+                align="LT",
+                dy=SCALE_PAD,
+                thickness=SCALE_SIZE,
+                major=meta["slip_cpt_max"] / 5.0,
+                minor=meta["slip_cpt_max"] / 20.0,
+                cross_tick=meta["slip_cpt_max"] / 20.0,
+                label="Cumulative Slip (cm)",
+            )
     elif plot == "surface":
         # default: use internal cpt steps
         major = None
@@ -1056,7 +1063,8 @@ def timeslice(job, meta):
     scale_y_final, srf_data = frame_proj_base(p, plot, job, meta, window)
     # slip distribution has been reprojected onto x, y of page area
     frame_proj(p, window, False, shift=False)
-    frame_srf_surface(p, plot, meta["n_plane"], job["transparency"], meta["srf_wd"])
+    if not meta["pointsource"]:
+        frame_srf_surface(p, plot, meta["n_plane"], job["transparency"], meta["srf_wd"])
     # ground motion must be in geographic projection due to 3D Z scaling
     frame_proj(p, window, True, shift=False)
     frame_proj_items(p, job, meta, window)
@@ -1067,9 +1075,10 @@ def timeslice(job, meta):
     )
     frame_proj(p, window, False)
     frame_border(p, window_b, job, meta)
-    scale_margin, cpt_y = frame_scales(p, job, meta, plot, scale_y)
-    if plot == "slip" and job["transparency"] < 100:
-        frame_scale_distribution(p, srf_data, scale_margin, cpt_y, meta["slip_cpt_max"])
+    if not (meta["pointsource"] and plot == "slip"):
+        scale_margin, cpt_y = frame_scales(p, job, meta, plot, scale_y)
+        if plot == "slip" and job["transparency"] < 100:
+            frame_scale_distribution(p, srf_data, scale_margin, cpt_y, meta["slip_cpt_max"])
 
     # start plotting internal items relative to border
     frame_iproj(p, window, llur_i, window_b)
@@ -1223,18 +1232,26 @@ def load_meta(args):
     map_tilt = max(90 - avg_dip, TILT_MAX)
     map_tilt = min(map_tilt, TILT_MIN)
     # plane domains
-    bounds = srf.get_bounds(args.srf_file, depth=True)
+    hlon, hlat, hdepth = srf.get_hypo(args.srf_file, depth=True)
+    if srf.read_header(args.srf_file, idx=True)[0]["ndip"] == 1:
+        # extend point source bounds to show more than point
+        bounds = [[srf.get_hypo(args.srf_file, depth=True)] * 4]
+        bounds[0][1] = bounds[0][0][0] + 0.3, bounds[0][0][1] + 0.3, bounds[0][0][2]
+        bounds[0][2] = bounds[0][0][0] - 0.3, bounds[0][0][1] - 0.3, bounds[0][0][2]
+        gmt_bottom = ""
+        gmt_top = ""
+    else:
+        bounds = srf.get_bounds(args.srf_file, depth=True)
+        gmt_bottom = "\n>\n".join(
+            ["\n".join([" ".join(map(str, b)) for b in p]) for p in bounds]
+        )
+        gmt_top = "\n>\n".join(
+            ["\n".join([" ".join(map(str, b)) for b in p[:2]]) for p in bounds]
+        )
     poi_srf = []
     for plane in bounds:
         for point in plane:
             poi_srf.append(point)
-    hlon, hlat, hdepth = srf.get_hypo(args.srf_file, depth=True)
-    gmt_bottom = "\n>\n".join(
-        ["\n".join([" ".join(map(str, b)) for b in p]) for p in bounds]
-    )
-    gmt_top = "\n>\n".join(
-        ["\n".join([" ".join(map(str, b)) for b in p[:2]]) for p in bounds]
-    )
 
     # working directory
     if args.temp is not None:
@@ -1269,6 +1286,9 @@ def load_meta(args):
 
 
 def load_sliprate(srf_file, framerate, meta):
+    meta["planes"] = srf.read_header(srf_file, idx=True)
+    meta["pointsource"] = meta["planes"][0]["ndip"] == 1 and meta["planes"][0]["nstrike"] == 1
+
     slip_end = srf.srf2llv_py(srf_file, value="ttotal")
     rup_time = max([max(slip_end[p][:, 2]) for p in range(len(slip_end))])
     # internal dt
@@ -1286,7 +1306,6 @@ def load_sliprate(srf_file, framerate, meta):
     # TODO: possibly interpolate in future
     spec_sr = "slipts-%s-%s" % (ddt, time_sr)
     slip_pos, slip_rate = srf.srf2llv_py(srf_file, value=spec_sr, depth=True)
-    meta["planes"] = srf.read_header(srf_file, idx=True)
     for plane in range(len(slip_pos)):
         slip_pos[plane].astype(np.float32).tofile(
             os.path.join(meta["wd"], "subfaults_%d.bin" % (plane))
@@ -1305,6 +1324,10 @@ def load_slip_cpt(meta):
     meta["srf_wd"] = os.path.join(meta["wd"], "srf")
     if not os.path.isdir(meta["srf_wd"]):
         os.makedirs(meta["srf_wd"])
+
+    if meta["pointsource"]:
+        return
+
     seg_slips = srf.srf2llv_py(args.srf_file, value="slip")  # LOCAL VAR
     all_vs = np.concatenate((seg_slips))[:, -1]
     percentile = np.percentile(all_vs, 95)
@@ -1446,6 +1469,11 @@ def add_frames_face_slip(work, meta, movements, frames):
         else:
             azimuth = 180 + (i / float(frames - 1)) * (meta["s_azimuth"] - 180)
         scale_t = min(float(i), meta["t_frames"]) / meta["t_frames"]
+        if meta["pointsource"]:
+            scale_t = 0
+            subtitle = "Fault Location"
+        else:
+            subtitle = "Fault Slip Distribution"
         tilt = 90 - (i / float(frames - 1)) * (90 - meta["map_tilt"])
         work["msgs"].append(
             [
@@ -1464,7 +1492,7 @@ def add_frames_face_slip(work, meta, movements, frames):
                         movements["poi_gm"],
                         1.2,
                     ),
-                    "subtitle": "Fault Slip Distribution",
+                    "subtitle": subtitle,
                 },
                 meta,
             ]
@@ -1529,6 +1557,8 @@ def add_frames_slip_fade(work, meta, movements):
     # for tasks added later (with xyts file), reference to time = 0
     movements["frames2sim"] = movements["frames2now"]
 
+
+def zoom_out_timing(movements):
     # tanh linear gap fill over effective range tanh(-3 -> 3)
     tanh_gap = (0.5 + 0.5 * math.tanh(-3)) / 3.0
     # frame index to zoom progression (zoom out within 12.5 seconds)
@@ -1907,8 +1937,12 @@ if len(sys.argv) > 1:
         add_frames_single(work, meta, movements["poi_srf"])
     else:
         add_frames_face_slip(work, meta, movements, int(args.time * args.framerate))
-        add_frames_dip_slip(work, meta, movements)
-        add_frames_slip_fade(work, meta, movements)
+        if not meta["pointsource"]:
+            add_frames_dip_slip(work, meta, movements)
+            add_frames_slip_fade(work, meta, movements)
+        else:
+            movements["frames2sim"] = movements["frames2now"]
+        zoom_out_timing(movements)
         add_frames_slip_progress(work, meta, movements)
         add_frames_camera_reset(work, meta, movements)
         add_frames_overlays(work, meta, movements, args)
