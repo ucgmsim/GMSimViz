@@ -44,6 +44,10 @@ WINDOW_B = 0.3
 WINDOW_L = 0.5
 WINDOW_R = 0.5
 
+COMM = MPI.COMM_WORLD
+RANK = COMM.Get_rank()
+SIZE = COMM.Get_size()
+
 
 def load_xyts(meta):
     """
@@ -1092,7 +1096,7 @@ def timeslice(job, meta):
 def validate_args(args):
     # only need one worker to do a single frame
     if not args.animate:
-        nproc = 1
+        assert SIZE == 2
     # default title is based on the required argument
     if args.title == None:
         args.title = os.path.basename(args.srf_file)
@@ -1128,9 +1132,9 @@ def validate_args(args):
     if args.paths is not None:
         if not os.path.isdir(args.paths):
             sys.exit("Could not find path directory: %s" % (args.paths))
-        path_sort = lambda n: list(map(
-            int, os.path.basename(os.path.splitext(n)[0]).split("_")
-        ))
+        path_sort = lambda n: list(
+            map(int, os.path.basename(os.path.splitext(n)[0]).split("_"))
+        )
         args.path_files = sorted(glob("%s/*.gmt" % (args.paths)), key=path_sort)
 
     return args
@@ -1148,13 +1152,6 @@ def get_args():
     parser.add_argument("-x", "--xyts", help="xyts file to plot")
     parser.add_argument("--gm-cut", help="cutoff for ground motion", type=float)
     parser.add_argument("-a", "--animate", help="create animation", action="store_true")
-    # parser.add_argument(
-    #     "-n",
-    #     "--nproc",
-    #     help="number of processes to run",
-    #     type=int,
-    #     default=int(os.sysconf("SC_NPROCESSORS_ONLN")),
-    # )
     parser.add_argument(
         "-f", "--framerate", help="animation framerate", type=int, default=30
     )
@@ -1886,20 +1883,17 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
         # enough other jobs, don't need to start asap
         work["msgs"].extend(work["msgs_post_ts"])
 
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-nproc= comm.Get_size()
-nslaves = nproc - 1
+
 ###
 ### MASTER
 ###
-if rank == 0:
+if RANK == 0:
     # process arguements
     args = validate_args(get_args())
     # task information
     work = {"msgs": [], "msgs_post_ts": [], "ops": [], "deps": 0}
 
-    meta, poi_srf = ƒload_meta(args)
+    meta, poi_srf = load_meta(args)
     frames_sr = load_sliprate(args.srf_file, args.framerate, meta)
     load_slip_cpt(meta)
     movements = load_xyts_meta(args, meta, work, poi_srf)
@@ -1919,27 +1913,14 @@ if rank == 0:
             add_frames_network(work, meta, movements, args.path_files)
         add_frames_start_end(movements, args.end, args.delay)
 
-    # spawn slaves
-    #comm = MPI.COMM_WORLD.Spawn(sys.executable, args=[sys.argv[0]], maxprocs=nproc)
     # job tracking
-    in_progress = [None] * nslaves #number of slaves
+    nslaves = SIZE - 1
+    in_progress = [None] * SIZE
     # distribute work to slaves who ask
     status = MPI.Status()
-
-      
-
-    work["msgs"].extend([None]*max(0,(nslaves-len(work["msgs"])))) #if less number of work to distribute, add dummy works
-
-    for slave_id in range(1,nslaves + 1):
-        msg = work["msgs"].pop(0) # take the first item
-        comm.send(obj=msg, dest=slave_id) #sending job
-
-  
-    free_slaves = [0]*nslaves
-
-    while True:
+    while nslaves:
         # previous job
-        value = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
+        value = COMM.recv(source=MPI.ANY_SOURCE, status=status)
         slave_id = status.Get_source()
         finished = in_progress[slave_id]
 
@@ -1954,29 +1935,19 @@ if rank == 0:
         if len(work["msgs"]) == 0:
             if work["deps"] == 0:
                 # all jobs complete, this slave can be freed
-                free_slaves[slave_id] = 1
                 work["msgs"].append(StopIteration)
-                
+                nslaves -= 1
             else:
                 # waiting for dependencies
                 work["msgs"].append(None)
-            
 
         # next job
         msg = work["msgs"].pop(0)
-        
-        comm.send(obj=msg, dest=slave_id)
+        COMM.send(obj=msg, dest=slave_id)
         in_progress[slave_id] = msg
 
-        if sum(free_slaves) == nslaves: #all slaves are free. exit the loop
-            break
-
-    
-
     # gather reports from slaves
-    reports = comm.gather(None, root=MPI.ROOT)
-    # stop mpi
-    #comm.Disconnect()
+    reports = COMM.gather(None, root=MPI.ROOT)
 
     # output file processing
     prefix = os.path.join(
@@ -1995,7 +1966,7 @@ else:
     # ask for work until stop sentinel
     logbook = []
     value = None
-    for task in iter(lambda: comm.sendrecv(value, dest=MASTER), StopIteration):
+    for task in iter(lambda: COMM.sendrecv(value, dest=MASTER), StopIteration):
         t0 = time()
         value = None
 
@@ -2014,6 +1985,4 @@ else:
             print("Slave recieved unknown task to complete: %s." % (task))
 
     # reports to master
-    comm.gather(sendobj=logbook, root=MASTER)
-    # shutdown
-    #comm.Disconnect()
+    COMM.gather(sendobj=logbook, root=MASTER)
