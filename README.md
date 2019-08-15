@@ -112,27 +112,28 @@ grdimage (gmtlib_read_grd_info): Use grdedit -A on your grid file to make region
 The most simplest output is a single frame (image) facing the fault plane. This case only requires the SRF file as the parameter:
 <img src="figures/fault_perspective.png" width="400">
 ```shell
-gmsimviz sample_data/fault.srf
+mpirun gmsimviz sample_data/fault.srf
 ```
 The output will be in the current directory with the same basename as the SRF file but with `_perspective.png` added to the end.
 
-An animation can be created from an SRF that shows the rupture propagating. It can be expected to take around 12 minutes to complete on a decent personal machine. Here is an example using 7 slave processes for a machine with 8 cores (including hyperthreading). An example of what is expected is available at https://youtu.be/nTtq_DxGVUM
+An animation can be created from an SRF that shows the rupture propagating. It can be expected to take around 12 minutes to complete on a decent personal machine. Here is an example using 8 processes for a machine with 8 cores (including hyperthreading). An example of what is expected is available at https://youtu.be/nTtq_DxGVUM
 ```shell
-gmsimviz sample_data/fault.srf -a --crude -n7 --title "Fault Animation" --dpi 120 --downscale 1
+mpirun -n 8 gmsimviz sample_data/fault.srf -a --crude --title "Fault Animation" --dpi 120 --downscale 1
 ```
 Animations will be saved in the current working directory with the same name as the SRF file but with a `.m4v` extension. `./fault.m4v` in the above and below examples.
 
-The fully featured sample animation below takes about 45 minutes with -n7 on a v4 E5-2620 (2.1 GHz). Slave processes are spawned after about 3 minutes and frames will start appearing in the temporary folder (in the same folder as the SRF file, sample_data/_GMT_WD_PERSPECTIVE_<random sequence>). When complete, the video is available in the working directory and the temporary folder is removed by default. The expected output is available at https://youtu.be/6TFj5HXp3MU
+The fully featured sample animation below takes about 45 minutes with -n 8 on a v4 E5-2620 (2.1 GHz). Slave processes begin work after about 3 minutes and frames will start appearing in the temporary folder (in the same folder as the SRF file, sample_data/_GMT_WD_PERSPECTIVE_<random sequence>). When complete, the video is available in the working directory and the temporary folder is removed by default. The expected output is available at https://youtu.be/6TFj5HXp3MU
 ```shell
-gmsimviz sample_data/fault.srf -a --crude -n7 --title "Sample Animation" --dpi 120 --downscale 1 -x sample_data/xyts.e3d --liquefaction-s sample_data/liquefaction_s.hdf5 --liquefaction-p sample_data/liquefaction_p.hdf5 --landslide-s sample_data/landslide_s.hdf5 --landslide-p sample_data/landslide_p.hdf5 --paths sample_data/transport
+mpirun -n 8 gmsimviz sample_data/fault.srf -a --crude --title "Sample Animation" --dpi 120 --downscale 1 -x sample_data/xyts.e3d --liquefaction-s sample_data/liquefaction_s.hdf5 --liquefaction-p sample_data/liquefaction_p.hdf5 --landslide-s sample_data/landslide_s.hdf5 --landslide-p sample_data/landslide_p.hdf5 --paths sample_data/transport
 ```
 
 Here are details for command options:
 
+- `-n` number of processes to start. Minimum is 2, 8 is a good choice for systems with only 8 cores. It is recommended to run on a machine with many cores.
+
 - `srf_file` not optional. Path to a fault in standard rupture format containing the plane header (https://scec.usc.edu/scecpedia/Standard_Rupture_Format).
 - `-a` create animation instead of static image showing the slip distribution only. Will animate the progression of slip if no other input data are given.
 - `--crude` this will produce a quick result. No topography or roads are plotted, low resolution coastlines are used and overlays have lower resolutions. This is required for faults outside of the New Zealand area because the higher resolution topography is only available here. Alternatively, replace the topography files in the resources directory with your own.
-- `-n` number of slave (worker) processes to start. Minimum is 1, 7 is a good choice for systems with only 8 cores. It is recommended to run on a machine with many cores.
 - `-f` set the framerate of the animation eg: 30. The minimum is 5 and each frame is independent so a framerate of 60 would take roughly twice as long as 30.
 - `--title` title on the movie, the default is the basename of the SRF file. In the screenshots at the top of the page, the title is "Kaikoura 2016".
 - `--dpi` dpi of output. Frames are 16 inches x 9 inches so 240 will produce 4k output, 120 for FullHD.
@@ -152,7 +153,7 @@ Here are details for command options:
 - `-k` Keeps the temporary directory (containing all frames) once animation is complete.
 
 To list the parameters, run:
-```gmsimviz -h```
+```mpirun gmsimviz -h```
 
 ## Thanks
 
