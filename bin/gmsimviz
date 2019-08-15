@@ -44,6 +44,11 @@ WINDOW_B = 0.3
 WINDOW_L = 0.5
 WINDOW_R = 0.5
 
+COMM = MPI.COMM_WORLD
+RANK = COMM.Get_rank()
+SIZE = COMM.Get_size()
+MASTER = 0
+
 
 def load_xyts(meta):
     """
@@ -1090,9 +1095,6 @@ def timeslice(job, meta):
 
 
 def validate_args(args):
-    # only need one worker to do a single frame
-    if not args.animate:
-        args.nproc = 1
     # default title is based on the required argument
     if args.title == None:
         args.title = os.path.basename(args.srf_file)
@@ -1128,9 +1130,9 @@ def validate_args(args):
     if args.paths is not None:
         if not os.path.isdir(args.paths):
             sys.exit("Could not find path directory: %s" % (args.paths))
-        path_sort = lambda n: list(map(
-            int, os.path.basename(os.path.splitext(n)[0]).split("_")
-        ))
+        path_sort = lambda n: list(
+            map(int, os.path.basename(os.path.splitext(n)[0]).split("_"))
+        )
         args.path_files = sorted(glob("%s/*.gmt" % (args.paths)), key=path_sort)
 
     return args
@@ -1148,13 +1150,6 @@ def get_args():
     parser.add_argument("-x", "--xyts", help="xyts file to plot")
     parser.add_argument("--gm-cut", help="cutoff for ground motion", type=float)
     parser.add_argument("-a", "--animate", help="create animation", action="store_true")
-    parser.add_argument(
-        "-n",
-        "--nproc",
-        help="number of processes to run",
-        type=int,
-        default=int(os.sysconf("SC_NPROCESSORS_ONLN")),
-    )
     parser.add_argument(
         "-f", "--framerate", help="animation framerate", type=int, default=30
     )
@@ -1890,7 +1885,7 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
 ###
 ### MASTER
 ###
-if len(sys.argv) > 1:
+if RANK == MASTER:
     # process arguements
     args = validate_args(get_args())
     # task information
@@ -1916,15 +1911,14 @@ if len(sys.argv) > 1:
             add_frames_network(work, meta, movements, args.path_files)
         add_frames_start_end(movements, args.end, args.delay)
 
-    # spawn slaves
-    comm = MPI.COMM_WORLD.Spawn(sys.executable, args=[sys.argv[0]], maxprocs=args.nproc)
     # job tracking
-    in_progress = [None] * args.nproc
+    nslaves = SIZE - 1
+    in_progress = [None] * SIZE
     # distribute work to slaves who ask
     status = MPI.Status()
-    while args.nproc:
+    while nslaves:
         # previous job
-        value = comm.recv(source=MPI.ANY_SOURCE, status=status)
+        value = COMM.recv(source=MPI.ANY_SOURCE, status=status)
         slave_id = status.Get_source()
         finished = in_progress[slave_id]
 
@@ -1932,29 +1926,26 @@ if len(sys.argv) > 1:
         if finished == None:
             pass
         elif finished[0] == load_xyts:
-            xyts_ready(work, meta, value, args.nproc)
+            xyts_ready(work, meta, value, nslaves)
         elif finished[0] == load_xyts_ts:
-            xyts_ts_ready(work, meta, movements, finished[2]["start"], args.nproc)
+            xyts_ts_ready(work, meta, movements, finished[2]["start"], nslaves)
 
         if len(work["msgs"]) == 0:
             if work["deps"] == 0:
-                # all jobs complete, kill off slaves
+                # all jobs complete, this slave can be freed
                 work["msgs"].append(StopIteration)
-                args.nproc -= 1
+                nslaves -= 1
             else:
                 # waiting for dependencies
                 work["msgs"].append(None)
 
         # next job
-        msg = work["msgs"][0]
-        del (work["msgs"][0])
-        comm.send(obj=msg, dest=slave_id)
+        msg = work["msgs"].pop(0)
+        COMM.send(obj=msg, dest=slave_id)
         in_progress[slave_id] = msg
 
     # gather reports from slaves
-    reports = comm.gather(None, root=MPI.ROOT)
-    # stop mpi
-    comm.Disconnect()
+    reports = COMM.gather(None, root=MASTER)
 
     # output file processing
     prefix = os.path.join(
@@ -1969,19 +1960,11 @@ if len(sys.argv) > 1:
 ### SLAVE
 ###
 else:
-    # connect to parent
-    try:
-        comm = MPI.Comm.Get_parent()
-        rank = comm.Get_rank()
-    except:
-        print("First parameter must be input file. Parameter not found.")
-        print("Alternatively MPI cannot connect to parent.")
-        exit(1)
 
     # ask for work until stop sentinel
     logbook = []
     value = None
-    for task in iter(lambda: comm.sendrecv(value, dest=MASTER), StopIteration):
+    for task in iter(lambda: COMM.sendrecv(value, dest=MASTER), StopIteration):
         t0 = time()
         value = None
 
@@ -2000,6 +1983,4 @@ else:
             print("Slave recieved unknown task to complete: %s." % (task))
 
     # reports to master
-    comm.gather(sendobj=logbook, root=MASTER)
-    # shutdown
-    comm.Disconnect()
+    COMM.gather(sendobj=logbook, root=MASTER)
