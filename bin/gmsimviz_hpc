@@ -47,6 +47,7 @@ WINDOW_R = 0.5
 COMM = MPI.COMM_WORLD
 RANK = COMM.Get_rank()
 SIZE = COMM.Get_size()
+MASTER = 0
 
 
 def load_xyts(meta):
@@ -1887,7 +1888,7 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
 ###
 ### MASTER
 ###
-if RANK == 0:
+if RANK == MASTER:
     # process arguements
     args = validate_args(get_args())
     # task information
@@ -1947,7 +1948,7 @@ if RANK == 0:
         in_progress[slave_id] = msg
 
     # gather reports from slaves
-    reports = COMM.gather(None, root=MPI.ROOT)
+    reports = COMM.gather(None, root=MASTER)
 
     # output file processing
     prefix = os.path.join(
