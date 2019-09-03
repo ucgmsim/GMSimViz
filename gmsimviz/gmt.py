@@ -1681,6 +1681,11 @@ def region_fit_oblique(points, azimuth, wd="."):
     azimuth: right direction angle
     """
 
+    points = np.array(points)
+    if np.min(points[:, 0]) < -90:
+        # assume crossing over 180 -> -180, extend past 180
+        points[points[:, 0] < 0, 0] += 360
+
     # determine centre
     lon_min, lat_min = np.min(points, axis=0)[:2]
     lon_max, lat_max = np.max(points, axis=0)[:2]
