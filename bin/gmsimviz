@@ -118,12 +118,15 @@ def load_xyts_ts(meta, job):
     # preload timeslice overlays
     for t in range(job["start"], xfile.nt, job["inc"]):
         ts_prefix = os.path.join(meta["wd"], "xyts", "ts%04d" % (t))
+        if os.path.isfile("%s.nc" % (ts_prefix)):
+            # continuing from previous run
+            continue
         # load binary data
         xfile.tslice_get(t, outfile="%s.bin" % (ts_prefix))
         # store as netCDF
         gmt.table2grd(
             "%s.bin" % (ts_prefix),
-            "%s.nc" % (ts_prefix),
+            "%sp.nc" % (ts_prefix),
             grd_type="surface",
             region=meta["xyts_region"],
             dx=meta["xyts_res"],
@@ -134,18 +137,21 @@ def load_xyts_ts(meta, job):
         os.remove("%s.bin" % (ts_prefix))
         # crop values outside sim domain
         rc = gmt.grdmath(
-            ["%s.nc" % (ts_prefix), crop_grd, "MUL", "=", "%s.nc" % (ts_prefix)], wd=tmp
+            ["%sp.nc" % (ts_prefix), crop_grd, "MUL", "=", "%sp.nc" % (ts_prefix)], wd=tmp
         )
         # don't show insignificant ground motion
         rc = gmt.grdclip(
-            "%s.nc" % (ts_prefix),
-            "%s.nc" % (ts_prefix),
+            "%sp.nc" % (ts_prefix),
+            "%sp.nc" % (ts_prefix),
             min_v=meta["xyts_cpt_max"] * 0.03,
             wd=tmp,
         )
-        # nothing to display
         if rc == gmt.STATUS_INVALID:
-            os.remove("%s.nc" % (ts_prefix))
+            # nothing to display
+            os.remove("%sp.nc" % (ts_prefix))
+        else:
+            # final move to indicate completness
+            move("%sp.nc" % (ts_prefix), "%s.nc" % (ts_prefix))
 
     # clean up
     rmtree(tmp)
