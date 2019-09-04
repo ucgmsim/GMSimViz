@@ -1682,7 +1682,7 @@ def region_fit_oblique(points, azimuth, wd="."):
     """
 
     points = np.array(points)
-    if np.min(points[:, 0]) < -90:
+    if np.min(points[:, 0]) < -90 and np.max(points[:, 0]) > 90:
         # assume crossing over 180 -> -180, extend past 180
         points[points[:, 0] < 0, 0] += 360
 

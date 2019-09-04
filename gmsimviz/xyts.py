@@ -101,9 +101,13 @@ class XYTSFile:
             .T
         )
         amat = geo.gen_mat(self.mrot, self.mlon, self.mlat)[0]
-        self.ll_map = geo.xy2ll(
+        ll_map = geo.xy2ll(
             geo.gp2xy(grid_points, self.nx_sim, self.ny_sim, self.hh), amat
         ).reshape(self.ny, self.nx, 2)
+        if np.min(ll_map[:, :, 0]) < -90 and np.max(ll_map[:, :, 0]) > 90:
+            # assume crossing over 180 -> -180, extend past 180
+            ll_map[ll_map[:, :, 0] < 0, 0] += 360
+        self.ll_map = ll_map
 
     def corners(self, gmt_format=False):
         """
@@ -126,14 +130,16 @@ class XYTSFile:
             ]
         )
         amat = geo.gen_mat(self.mrot, self.mlon, self.mlat)[0]
-        ll_cnrs = geo.xy2ll(
-            geo.gp2xy(gp_cnrs, self.nx_sim, self.ny_sim, self.hh), amat
-        ).tolist()
+        ll_cnrs = geo.xy2ll(geo.gp2xy(gp_cnrs, self.nx_sim, self.ny_sim, self.hh), amat)
+        if np.min(ll_cnrs[:, 0]) < -90 and np.max(ll_cnrs[:, 0]) > 90:
+            # assume crossing over 180 -> -180, extend past 180
+            ll_cnrs[ll_cnrs[:, 0] < 0, 0] += 360
+
         if not gmt_format:
-            return ll_cnrs
+            return ll_cnrs.tolist()
 
         gmt_cnrs = "\n".join([" ".join(map(str, cnr)) for cnr in ll_cnrs])
-        return ll_cnrs, gmt_cnrs
+        return ll_cnrs.tolist(), gmt_cnrs
 
     def region(self, corners=None):
         """

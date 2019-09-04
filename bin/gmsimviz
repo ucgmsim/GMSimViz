@@ -54,6 +54,11 @@ def load_xyts(meta):
     """
     Complete time-intensive tasks which aren't needed for beginning frames.
     """
+    # symlinking is the last step, check if this function has previously completed
+    if os.path.exists("%s/overlay/pgv.cpt" % (meta["wd"])):
+        # equivalent to return value below
+        return gmt.xyv_cpt_range("%s/xyts/pgv.bin" % (meta["wd"]))[2]
+
     xfile = xyts.XYTSFile(meta["xyts_file"], meta_only=False)
     # higher res outline needed for mask to follow great circle line
     # not too high: becomes time intensive
@@ -72,17 +77,16 @@ def load_xyts(meta):
     )
     # pgv used to generate cpt scale
     xfile.pgv(pgvout="%s/xyts/pgv.bin" % (meta["wd"]))
-    cpt_max = gmt.xyv_cpt_range("%s/xyts/pgv.bin" % (meta["wd"]))[2]
+    xyts_cpt_max = gmt.xyv_cpt_range("%s/xyts/pgv.bin" % (meta["wd"]))[2]
     gmt.makecpt(
         "magma",
         "%s/xyts/gm.cpt" % (meta["wd"]),
         0,
-        cpt_max,
+        xyts_cpt_max,
         invert=True,
         wd="%s/xyts" % (meta["wd"]),
         continuing=True,
     )
-    xyts_cpt_max = gmt.xyv_cpt_range("%s/xyts/pgv.bin" % (meta["wd"]))[2]
 
     # prepare to use as overlay
     if not os.path.isdir("%s/overlay" % (meta["wd"])):
@@ -90,7 +94,6 @@ def load_xyts(meta):
             os.makedirs("%s/overlay" % (meta["wd"]))
         except IOError:
             pass
-    os.symlink("%s/xyts/gm.cpt" % (meta["wd"]), "%s/overlay/pgv.cpt" % (meta["wd"]))
     gmt.table2grd(
         "%s/xyts/pgv.bin" % (meta["wd"]),
         "%s/overlay/pgv.nc" % (meta["wd"]),
@@ -99,6 +102,7 @@ def load_xyts(meta):
         dy=meta["xyts_res"],
         climit=xyts_cpt_max * 0.01,
     )
+    os.symlink("%s/xyts/gm.cpt" % (meta["wd"]), "%s/overlay/pgv.cpt" % (meta["wd"]))
 
     return xyts_cpt_max
 
@@ -137,7 +141,8 @@ def load_xyts_ts(meta, job):
         os.remove("%s.bin" % (ts_prefix))
         # crop values outside sim domain
         rc = gmt.grdmath(
-            ["%sp.nc" % (ts_prefix), crop_grd, "MUL", "=", "%sp.nc" % (ts_prefix)], wd=tmp
+            ["%sp.nc" % (ts_prefix), crop_grd, "MUL", "=", "%sp.nc" % (ts_prefix)],
+            wd=tmp,
         )
         # don't show insignificant ground motion
         rc = gmt.grdclip(
@@ -304,7 +309,6 @@ def frame_paths(seq, wd, srf_file):
     if os.path.exists(
         "%s/%s.png" % (wd, os.path.splitext(os.path.basename(gmt_ps))[0])
     ):
-        print("Sequence %d found." % (i))
         return None, gmt_ps
 
     if os.path.isdir(swd):
@@ -737,7 +741,8 @@ def frame_proj_items(frame, job, meta, window):
     # main content items in geographic projection
 
     # site labels and srf hypocentre above slip, below ground motion
-    frame.sites(gmt.sites_major, font_size="24p", width=1.6)
+    # TODO: font size ranging from 10p -> 24p (zoomed in)
+    frame.sites(gmt.sites_major)
     frame.points(
         "%s %s %s\n" % (meta["hlon"], meta["hlat"], meta["hdepth"]),
         is_file=False,
@@ -1089,7 +1094,9 @@ def timeslice(job, meta):
     if not (meta["pointsource"] and plot == "slip"):
         scale_margin, cpt_y = frame_scales(p, job, meta, plot, scale_y)
         if plot == "slip" and job["transparency"] < 100:
-            frame_scale_distribution(p, srf_data, scale_margin, cpt_y, meta["slip_cpt_max"])
+            frame_scale_distribution(
+                p, srf_data, scale_margin, cpt_y, meta["slip_cpt_max"]
+            )
 
     # start plotting internal items relative to border
     frame_iproj(p, window, llur_i, window_b)
@@ -1288,7 +1295,9 @@ def load_meta(args):
 
 def load_sliprate(srf_file, framerate, meta):
     meta["planes"] = srf.read_header(srf_file, idx=True)
-    meta["pointsource"] = meta["planes"][0]["ndip"] == 1 and meta["planes"][0]["nstrike"] == 1
+    meta["pointsource"] = (
+        meta["planes"][0]["ndip"] == 1 and meta["planes"][0]["nstrike"] == 1
+    )
 
     slip_end = srf.srf2llv_py(srf_file, value="ttotal")
     rup_time = max([max(slip_end[p][:, 2]) for p in range(len(slip_end))])
