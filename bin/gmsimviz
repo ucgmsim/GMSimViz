@@ -508,7 +508,7 @@ def frame_sliprate(job, meta, window, wd):
         srt = meta["sr_len"] - 1
     for i in range(meta["n_plane"] * (job["transparency"] < 100)):
         # lon, lat, depth
-        subfaults = np.fromfile("%s/subfaults_%d.bin" % (meta["wd"], i), dtype="3f")
+        subfaults = np.fromfile("%s/subfaults_%d.bin" % (meta["srf_wd"], i), dtype="3f")
         # reproject
         xyv = np.empty((subfaults.shape[0], 3))
         xyv[:, :2] = gmt.mapproject_multi(
@@ -518,7 +518,7 @@ def frame_sliprate(job, meta, window, wd):
             subfaults[:, 2] * window["z_scale"] * math.cos(math.radians(job["tilt"]))
         )
         xyv[:, 2] = np.memmap(
-            "%s/sliptss_%d.bin" % (meta["wd"], i),
+            "%s/sliptss_%d.bin" % (meta["srf_wd"], i),
             dtype="f",
             shape=(len(subfaults), meta["sr_len"]),
         )[:, srt]
@@ -1122,23 +1122,27 @@ def validate_args(args):
         args.title = os.path.basename(args.srf_file)
     # minor transitions must complete within major transition time
     if args.mtime > args.time:
-        sys.exit("Failed constraints (mtime <= time).")
+        print("Failed constraints (mtime <= time).")
+        COMM.Abort(300)
     # minimum framerate currently enforced for safety
     if args.framerate < 5:
-        sys.exit("Framerate too low: %s" % (args.framerate))
+        print("Framerate too low: %s" % (args.framerate))
+        COMM.Abort(301)
     # srf file must exist
     try:
         args.srf_file = os.path.abspath(args.srf_file)
         assert os.path.isfile(args.srf_file)
     except AssertionError:
-        sys.exit("Could not find SRF: %s" % (args.srf_file))
+        print("Could not find SRF: %s" % (args.srf_file))
+        COMM.Abort(302)
     # xyts is optional
     if args.xyts is not None:
         try:
             args.xyts = os.path.abspath(args.xyts)
             assert os.path.isfile(args.xyts)
         except AssertionError:
-            sys.exit("Could not find XYTS: %s" % (args.xyts))
+            print("Could not find XYTS: %s" % (args.xyts))
+            COMM.Abort(303)
     # liquefaction / landslide also optional
     for filepath in [
         args.liquefaction_s,
@@ -1147,11 +1151,13 @@ def validate_args(args):
         args.landslide_p,
     ]:
         if filepath is not None and not os.path.exists(filepath):
-            sys.exit("Could not find liquefaction/landslide file: %s" % (filepath))
+            print("Could not find liquefaction/landslide file: %s" % (filepath))
+            COMM.Abort(304)
     # paths optional
     if args.paths is not None:
         if not os.path.isdir(args.paths):
-            sys.exit("Could not find path directory: %s" % (args.paths))
+            print("Could not find path directory: %s" % (args.paths))
+            COMM.Abort(305)
         path_sort = lambda n: list(
             map(int, os.path.basename(os.path.splitext(n)[0]).split("_"))
         )
@@ -1232,7 +1238,8 @@ def load_meta(args):
     try:
         planes = srf.read_header(args.srf_file, idx=True)
     except (ValueError, IndexError):
-        sys.exit("Failed to read SRF: %s" % (args.srf_file))
+        print("Failed to read SRF: %s" % (args.srf_file))
+        COMM.Abort(200)
     # information from plane data
     avg_strike = geo.avg_wbearing([(p["strike"], p["length"]) for p in planes])
     avg_dip = planes[0]["dip"]
@@ -1268,9 +1275,14 @@ def load_meta(args):
     else:
         gmt_temp = mkdtemp(prefix="_GMSimViz_")
 
+    srf_wd = os.path.join(gmt_temp, "srf")
+    if not os.path.isdir(srf_wd):
+        os.makedirs(srf_wd)
+
     # common information passed to frame processes
     meta = {
         "wd": gmt_temp,
+        "srf_wd": srf_wd,
         "srf_file": args.srf_file,
         "s_azimuth": s_azimuth,
         "map_tilt": map_tilt,
@@ -1299,6 +1311,16 @@ def load_sliprate(srf_file, framerate, meta):
         meta["planes"][0]["ndip"] == 1 and meta["planes"][0]["nstrike"] == 1
     )
 
+    # resume
+    checkpoint_file = os.path.join(meta["srf_wd"], "sliprate_save")
+    if os.path.isfile(checkpoint_file):
+        with open(checkpoint_file, "rb") as save:
+            meta["srf_dt"] = float(np.fromfile(save, dtype=np.float64, count=1)[0])
+            meta["sr_len"], meta["n_plane"], fsr = np.fromfile(
+                save, dtype=np.int64
+            ).tolist()
+        return fsr
+
     slip_end = srf.srf2llv_py(srf_file, value="ttotal")
     rup_time = max([max(slip_end[p][:, 2]) for p in range(len(slip_end))])
     # internal dt
@@ -1308,7 +1330,7 @@ def load_sliprate(srf_file, framerate, meta):
     # decimation of srf slip rate dt to show
     srf_ddt = max(1, math.floor(fpdt))
     # desimated dt
-    ddt = srf_ddt * srf_dt  # META VAR
+    ddt = srf_ddt * srf_dt
     ts_sr = int(math.ceil(rup_time / ddt))
     time_sr = ts_sr * ddt
     # frames containing slip rates
@@ -1318,30 +1340,38 @@ def load_sliprate(srf_file, framerate, meta):
     slip_pos, slip_rate = srf.srf2llv_py(srf_file, value=spec_sr, depth=True)
     for plane in range(len(slip_pos)):
         slip_pos[plane].astype(np.float32).tofile(
-            os.path.join(meta["wd"], "subfaults_%d.bin" % (plane))
+            os.path.join(meta["srf_wd"], "subfaults_%d.bin" % (plane))
         )
         slip_rate[plane].astype(np.float32).tofile(
-            os.path.join(meta["wd"], "sliptss_%d.bin" % (plane))
+            os.path.join(meta["srf_wd"], "sliptss_%d.bin" % (plane))
         )
+
+    # variable outputs
     meta["srf_dt"] = ddt
     meta["sr_len"] = ts_sr
     meta["n_plane"] = len(slip_pos)
+    # save
+    with open(checkpoint_file, "wb") as save:
+        np.float64(ddt).tofile(save)
+        np.array([ts_sr, len(slip_pos), frames_sr], dtype=np.int64).tofile(save)
 
     return frames_sr
 
 
 def load_slip_cpt(meta):
-    meta["srf_wd"] = os.path.join(meta["wd"], "srf")
-    if not os.path.isdir(meta["srf_wd"]):
-        os.makedirs(meta["srf_wd"])
-
     if meta["pointsource"]:
         return
 
-    seg_slips = srf.srf2llv_py(args.srf_file, value="slip")  # LOCAL VAR
+    checkpoint_file = os.path.join(meta["srf_wd"], "slip_max")
+    if os.path.isfile(checkpoint_file):
+        meta["slip_cpt_max"] = float(np.fromfile(checkpoint_file, dtype=np.float64)[0])
+        return
+
+    seg_slips = srf.srf2llv_py(args.srf_file, value="slip")
     all_vs = np.concatenate((seg_slips))[:, -1]
     percentile = np.percentile(all_vs, 95)
     del seg_slips, all_vs
+
     # round percentile significant digits for colour pallete
     if percentile < 1000:
         # 1 sf
@@ -1349,7 +1379,7 @@ def load_slip_cpt(meta):
     else:
         # 2 sf
         cpt_max = round(percentile, 1 - int(math.floor(math.log10(abs(percentile)))))
-    meta["slip_cpt_max"] = cpt_max
+
     gmt.makecpt(
         gmt.CPTS["slip"],
         "%s/%s.cpt" % (meta["srf_wd"], "slip"),
@@ -1357,6 +1387,9 @@ def load_slip_cpt(meta):
         cpt_max,
         max(1, cpt_max / 100),
     )
+
+    meta["slip_cpt_max"] = cpt_max
+    np.float64(cpt_max).tofile(checkpoint_file)
 
 
 def load_xyts_meta(args, meta, work, poi_srf):
@@ -2017,8 +2050,8 @@ else:
         t0 = time()
         value = None
 
-        # no jobs available yet
         if task == None:
+            # no jobs available yet
             sleep(1)
             logbook.append(("sleep", time() - t0))
         elif task[0] is load_xyts:
