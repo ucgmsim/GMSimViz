@@ -50,7 +50,7 @@ SIZE = COMM.Get_size()
 MASTER = 0
 
 
-def load_xyts(meta):
+def load_xyts(meta, xyts_cpt_max):
     """
     Complete time-intensive tasks which aren't needed for beginning frames.
     """
@@ -77,7 +77,8 @@ def load_xyts(meta):
     )
     # pgv used to generate cpt scale
     xfile.pgv(pgvout="%s/xyts/pgv.bin" % (meta["wd"]))
-    xyts_cpt_max = gmt.xyv_cpt_range("%s/xyts/pgv.bin" % (meta["wd"]))[2]
+    if xyts_cpt_max is None:
+        xyts_cpt_max = gmt.xyv_cpt_range("%s/xyts/pgv.bin" % (meta["wd"]))[2]
     gmt.makecpt(
         "magma",
         "%s/xyts/gm.cpt" % (meta["wd"]),
@@ -840,7 +841,7 @@ def frame_border(frame, window_b, job, meta):
         frame.text(
             PAGE_WIDTH - WINDOW_R,
             PAGE_HEIGHT - WINDOW_T,
-            "%.3fs" % (job["sim_time"]),
+            "%.2fs" % (job["sim_time"]),
             size="24p",
             align="BR",
             font="Courier",
@@ -1173,61 +1174,43 @@ def get_args():
     ### load
     ###
     parser = ArgumentParser()
-    parser.add_argument("srf_file", help="srf file to plot")
-    parser.add_argument("--title", help="main title on animation")
-    parser.add_argument("-x", "--xyts", help="xyts file to plot")
-    parser.add_argument("--gm-cut", help="cutoff for ground motion", type=float)
-    parser.add_argument("-a", "--animate", help="create animation", action="store_true")
-    parser.add_argument(
-        "-f", "--framerate", help="animation framerate", type=int, default=30
-    )
-    parser.add_argument(
-        "-t", "--time", help="animation transition time (s)", type=float, default=6.0
-    )
-    parser.add_argument(
+    arg = parser.add_argument
+    arg("srf_file", help="srf file to plot")
+    arg("--title", help="main title on animation")
+    arg("-x", "--xyts", help="xyts file for GM overlay")
+    arg("--gm-cut", help="cutoff time for ground motion", type=float)
+    arg("--srf-cpt-max", help="SRF colour scale max value", type=int)
+    arg("--xyts-cpt-max", help="XYTS colour scale max value", type=int)
+    arg("-a", "--animate", help="create animation", action="store_true")
+    arg("--direction", help="'cw' or 'ccw' to explicitly set rotation direction")
+    arg("-f", "--framerate", help="animation framerate", type=int, default=30)
+    arg("-t", "--time", help="animation transition time (s)", type=float, default=6.0)
+    arg(
         "-m",
         "--mtime",
         help="minor animation transition time (s)",
         type=float,
         default=0.5,
     )
-    parser.add_argument(
-        "-p", "--ptime", help="animation pause time (s)", type=float, default=5.0
-    )
-    parser.add_argument(
-        "-d", "--delay", help="animation start delay (s)", type=float, default=1.5
-    )
-    parser.add_argument(
-        "-e", "--end", help="animation end delay (s)", type=float, default=3.0
-    )
-    parser.add_argument(
-        "-r", "--rot", help="fixed rotation (north deg)", type=float, default=1000.0
-    )
-    parser.add_argument(
+    arg("-p", "--ptime", help="animation pause time (s)", type=float, default=5.0)
+    arg("-d", "--delay", help="animation start delay (s)", type=float, default=1.5)
+    arg("-e", "--end", help="animation end delay (s)", type=float, default=3.0)
+    arg("-r", "--rot", help="fixed rotation (north deg)", type=float, default=1000.0)
+    arg(
         "--downscale",
         type=int,
         default=1,
         help="ghostscript downscale factor (prevents jitter)",
     )
-    parser.add_argument(
-        "--liquefaction-s", help="liquefaction susceptibility hdf5 filepath"
-    )
-    parser.add_argument(
-        "--liquefaction-p", help="liquefaction probability hdf5 filepath"
-    )
-    parser.add_argument("--landslide-s", help="landslide susceptibility hdf5 filepath")
-    parser.add_argument("--landslide-p", help="landslide probability hdf5 filepath")
-    parser.add_argument("--temp", help="continue from previous temp dir")
-    parser.add_argument(
-        "-k", "--keep-temp", help="don't delete temp dir", action="store_true"
-    )
-    parser.add_argument(
-        "--crude", help="no topo, roads, low resolution data", action="store_true"
-    )
-    parser.add_argument("--paths", help="standard road network input")
-    parser.add_argument(
-        "--dpi", help="[240]:4K 120:HD (frames are 16ix9i)", type=int, default=240
-    )
+    arg("--liquefaction-s", help="liquefaction susceptibility hdf5 filepath")
+    arg("--liquefaction-p", help="liquefaction probability hdf5 filepath")
+    arg("--landslide-s", help="landslide susceptibility hdf5 filepath")
+    arg("--landslide-p", help="landslide probability hdf5 filepath")
+    arg("--temp", help="continue from previous temp dir")
+    arg("-k", "--keep-temp", help="don't delete temp dir", action="store_true")
+    arg("--crude", help="no topo, roads, low resolution data", action="store_true")
+    arg("--paths", help="standard road network input")
+    arg("--dpi", help="[240]:4K 120:HD (frames are 16ix9i)", type=int, default=120)
 
     return parser.parse_args()
 
@@ -1358,7 +1341,7 @@ def load_sliprate(srf_file, framerate, meta):
     return frames_sr
 
 
-def load_slip_cpt(meta):
+def load_slip_cpt(meta, cpt_max):
     if meta["pointsource"]:
         return
 
@@ -1367,18 +1350,20 @@ def load_slip_cpt(meta):
         meta["slip_cpt_max"] = float(np.fromfile(checkpoint_file, dtype=np.float64)[0])
         return
 
-    seg_slips = srf.srf2llv_py(args.srf_file, value="slip")
-    all_vs = np.concatenate((seg_slips))[:, -1]
-    percentile = np.percentile(all_vs, 95)
-    del seg_slips, all_vs
-
-    # round percentile significant digits for colour pallete
-    if percentile < 1000:
-        # 1 sf
-        cpt_max = round(percentile, -int(math.floor(math.log10(abs(percentile)))))
-    else:
-        # 2 sf
-        cpt_max = round(percentile, 1 - int(math.floor(math.log10(abs(percentile)))))
+    if cpt_max is None:
+        seg_slips = srf.srf2llv_py(args.srf_file, value="slip")
+        all_vs = np.concatenate((seg_slips))[:, -1]
+        percentile = np.percentile(all_vs, 95)
+        del seg_slips, all_vs
+        # round percentile significant digits for colour pallete
+        if percentile < 1000:
+            # 1 sf
+            cpt_max = round(percentile, -int(math.floor(math.log10(abs(percentile)))))
+        else:
+            # 2 sf
+            cpt_max = round(
+                percentile, 1 - int(math.floor(math.log10(abs(percentile))))
+            )
 
     gmt.makecpt(
         gmt.CPTS["slip"],
@@ -1412,7 +1397,7 @@ def load_xyts_meta(args, meta, work, poi_srf):
         meta["xyts_dt"] = xfile.dt
         meta["xyts_nt"] = xfile.nt
         if args.animate:
-            work["msgs"].append([load_xyts, meta])
+            work["msgs"].append([load_xyts, meta, args.xyts_cpt_max])
             work["deps"] += 1
             frames_gm = int(meta["xyts_dt"] * (meta["xyts_nt"] - 0.6) * args.framerate)
             if args.gm_cut is not None:
@@ -1445,13 +1430,21 @@ def load_xyts_meta(args, meta, work, poi_srf):
             final_azimuth = bearing_xl % 360
     else:
         poi_gm = poi_srf
-    # transform over longer direction
+    # transform over longer direction (angle_diff returns -180 > 180)
     diff_azimuth = geo.angle_diff(meta["s_azimuth"], final_azimuth)
-    if diff_azimuth < 0:
-        diff_azimuth += 360
-    else:
-        diff_azimuth -= 360
     frames_azimuth = int(max(frames_sr, frames_gm) * 0.85)
+    # rotate in short direction if rotation speed is too high
+    long_direction = (frames_azimuth / args.framerate) > 5
+    if diff_azimuth < 0:
+        if args.direction == "ccw":
+            diff_azimuth -= 360
+        elif long_direction:
+            diff_azimuth += 360
+    else:
+        if args.direction == "cw":
+            diff_azimuth += 360
+        elif long_direction:
+            diff_azimuth -= 360
     diff_azimuth /= frames_azimuth
 
     return {
@@ -1971,7 +1964,7 @@ if RANK == MASTER:
 
     meta, poi_srf = load_meta(args)
     frames_sr = load_sliprate(args.srf_file, args.framerate, meta)
-    load_slip_cpt(meta)
+    load_slip_cpt(meta, args.srf_cpt_max)
     movements = load_xyts_meta(args, meta, work, poi_srf)
     movements["frames_sr"] = frames_sr
     load_overlays(args, movements, meta["wd"])
@@ -2055,7 +2048,7 @@ else:
             sleep(1)
             logbook.append(("sleep", time() - t0))
         elif task[0] is load_xyts:
-            value = load_xyts(task[1])
+            value = load_xyts(task[1], task[2])
         elif task[0] is load_xyts_ts:
             load_xyts_ts(task[1], task[2])
         elif task[0] is timeslice:
