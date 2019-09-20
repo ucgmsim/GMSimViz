@@ -10,6 +10,7 @@ add support for different interpolation methods
 avg_ll calculated elsewhere should be local function that works over equator
 """
 
+from distutils.spawn import find_executable
 import math
 import os
 from shutil import copyfile, move
@@ -126,7 +127,7 @@ def update_gmt_path(gmt_bin, wd=None):
     elif GMT_MAJOR == 5 and GMT_MINOR < 2:
         psconvert = "ps2raster"
 
-    if wd != None:
+    if wd is not None:
         if os.path.exists(os.path.join(wd, GMT_HISTORY)):
             Popen(
                 [
@@ -235,11 +236,32 @@ def make_movie(input_pattern, output, fps=20, codec="qtrle", crf=23):
         str(fps),
         output,
     ]
-    if crf != None and codec not in ["qtrle"]:
+    if crf is not None and codec not in ["qtrle"]:
         cmd.extend(["-crf", str(crf)])
 
     with open("/dev/null", "w") as sink:
         Popen(cmd, stderr=sink).wait()
+
+
+def overlay(underlay, overlay, result):
+    """
+    Overlay overlay image on underlay image and save to result image.
+    """
+    p = Popen(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            underlay,
+            "-i",
+            overlay,
+            "-filter_complex",
+            "overlay",
+            result,
+        ],
+        stderr=PIPE,
+    )
+    p.communicate()
 
 
 def proportionate_segs(infile, outfile, p):
@@ -259,7 +281,7 @@ def simplify_segs(infile, outfile=None):
     """
     Reduce segments in infile to start and end only.
     """
-    if outfile != None:
+    if outfile is not None:
         # store output in same format
         with open(outfile, "w") as out:
             Popen(["awk", "-v", "s=1", segfile_simple_awk, infile], stdout=out).wait()
@@ -379,7 +401,7 @@ def make_seismo(
     else:
         tsy = np.copy(timeseries)
 
-    if title == None:
+    if title is None:
         title = "station at x = %s, y = %s" % (x0, y0)
 
     # output
@@ -545,7 +567,7 @@ def is_native_xyv(xyv_file, x_min, x_max, y_min, y_max, v_min=None):
         if (
             x_min <= bin_data[i, 0] <= x_max
             and y_min <= bin_data[i, 1] <= y_max
-            and (v_min == None or v_min <= bin_data[i, 2])
+            and (v_min is None or v_min <= bin_data[i, 2])
         ):
             continue
         else:
@@ -631,7 +653,7 @@ def xyv_cpt_range(xyv_file, max_step=12, percentile=99.5, my_max=None, my_inc=No
     else:
         # 2 sf
         cpt_mx = round(cpt_mx, 1 - int(math.floor(math.log10(abs(cpt_mx)))))
-    if my_max != None:
+    if my_max is not None:
         cpt_mx = my_max
 
     # un-rounded smallest increment for cpt
@@ -645,7 +667,7 @@ def xyv_cpt_range(xyv_file, max_step=12, percentile=99.5, my_max=None, my_inc=No
         if inc_10 * factor > min_inc:
             cpt_inc = inc_10 * factor
             break
-    if my_inc != None:
+    if my_inc is not None:
         cpt_inc = my_inc
 
     return mn, cpt_inc, cpt_mx, mx
@@ -701,7 +723,11 @@ def srf2map(
         # 2 sf
         cpt_max = round(percentile, 1 - int(math.floor(math.log10(abs(percentile)))))
     makecpt(
-        CPTS["slip"], "%s/%s.cpt" % (out_dir, prefix), 0, cpt_max, max(1, cpt_max / 100)
+        CPTS["slip"],
+        "%s/%s.cpt" % (out_dir, prefix),
+        0,
+        cpt_max,
+        max(1, cpt_max / 100, continuing=True),
     )
     # each plane will use a region which just fits
     # these are needed for efficient plotting
@@ -767,8 +793,8 @@ def srf2map(
         elif xy:
             # 3D (paper pixel reprojection based) - efficient / looks best
             # X Y V reprojected on non-geographic surface
-            assert pz != None
-            assert dpu != None
+            assert pz is not None
+            assert dpu is not None
             # reproject on flat surface
             xyv_repr = np.empty((seg_llvs[s].shape[0], 3))
             xyv_repr[:, :2] = mapproject_multi(
@@ -897,14 +923,14 @@ def makecpt(
     transparency: cpt colour value transparency (0 for opaque)
     """
     # determine working directory
-    if wd == None:
+    if wd is None:
         wd = os.path.dirname(output)
         if wd == "":
             wd = "."
     backup_history(wd=wd)
     # work out GMT colour range parameter
     crange = "%s/%s" % (low, high)
-    if inc != None:
+    if inc is not None:
         crange = "%s/%s" % (crange, inc)
 
     if os.path.exists(source):
@@ -924,7 +950,7 @@ def makecpt(
         cmd.append("-Do")
     if continuous:
         cmd.append("-Z")
-    elif bg != None or fg != None:
+    elif bg is not None or fg is not None:
         if bg:
             Popen([GMT, "set", "COLOR_BACKGROUND", bg], cwd=wd).wait()
         if fg:
@@ -952,7 +978,7 @@ def table2block(
     
     """
     # determine working directory
-    if wd == None:
+    if wd is None:
         wd = os.path.dirname(table_in)
         if wd == "":
             wd = "."
@@ -961,11 +987,11 @@ def table2block(
     write_history(False, wd=wd)
 
     # prepare parameters
-    if region == None:
+    if region is None:
         region = "-R"
     else:
         region = "-R%s/%s/%s/%s" % region
-    if dy == None:
+    if dy is None:
         dy = dx
 
     # create surface grid
@@ -975,7 +1001,7 @@ def table2block(
         cmd.append("-fg")
     if header > 0:
         cmd.append("-hi%d" % (header))
-    if cols != None:
+    if cols is not None:
         cmd.append("-i%s" % (cols))
 
     # run command
@@ -1035,7 +1061,7 @@ def table2grd(
     outside: value outside of mask
     """
     # determine working directory
-    if wd == None:
+    if wd is None:
         wd = os.path.dirname(grd_file)
         if wd == "":
             wd = "."
@@ -1045,11 +1071,11 @@ def table2grd(
     write_history(False, wd=wd)
 
     # prepare parameters
-    if region == None:
+    if region is None:
         region = "-R"
     else:
         region = "-R%s/%s/%s/%s" % region
-    if dy == None:
+    if dy is None:
         dy = dx
 
     # create surface grid
@@ -1066,7 +1092,7 @@ def table2grd(
 
     # second command for optionally creating a mask
     # input for grdmask cannot be stdin as at GMT 5.3
-    if file_input and automask != None:
+    if file_input and automask is not None:
         cmd_mask = [
             GMT,
             "grdmask",
@@ -1086,23 +1112,23 @@ def table2grd(
     if header > 0:
         cmd.append("-hi%d" % (header))
         cmd_mask.append("-hi%d" % (header))
-    if cols != None:
+    if cols is not None:
         cmd.append("-i%s" % (cols))
         cmd_mask.append("-i%s" % (cols))
 
     if grd_type == "surface":
         cmd.append("-T%s" % (tension))
         cmd.append("-C%s" % (climit))
-        if search != None:
+        if search is not None:
             cmd.append("-S%s" % (search))
     elif grd_type == "xyz2grd":
         cmd.append("-r")
     elif grd_type == "nearneighbor":
         nspec = "-N%s" % (sectors)
-        if min_sectors != None:
+        if min_sectors is not None:
             nspec = "%s/%s" % (nspec, min_sectors)
         cmd.append(nspec)
-        if search == None:
+        if search is None:
             search = "1k"
         cmd.append("-S%s" % (search))
 
@@ -1115,7 +1141,7 @@ def table2grd(
                 for _ in range(header):
                     tf.readline()
                 # assert added to catch eg: first line = '\n'
-                assert len(map(float, tf.readline().split()[:2])) == 2
+                assert len(list(map(float, tf.readline().split()[:2]))) == 2
         except (ValueError, AssertionError):
             cmd.append("-bi3f")
         # run command
@@ -1123,7 +1149,7 @@ def table2grd(
         e = p.communicate()[1].decode("utf-8")
         p.wait()
         # also create radius based mask if wanted
-        if automask != None:
+        if automask is not None:
             Popen(cmd_mask, cwd=wd).wait()
     else:
         p = Popen(cmd, stdin=PIPE, stderr=PIPE, cwd=wd)
@@ -1166,18 +1192,18 @@ def grdclip(
         cmd.append("-Vl")
 
     # crop minimum/maximum/area values
-    if min_v != None:
+    if min_v is not None:
         # values below min_v -> NaN
         cmd.append("-Sb%s/%s" % (min_v, new))
-    if max_v != None:
+    if max_v is not None:
         # values above max_v -> NaN
         cmd.append("-Sa%s/%s" % (max_v, new))
-    if range_v != None:
+    if range_v is not None:
         # values between range_v[0] to range_v[1] -> NaN
         cmd.append("-Si%s/%s/%s" % (range_v[0], range_v[1], new))
-    if replace != None:
+    if replace is not None:
         cmd.append("-Sr%s/%s" % (replace, new))
-    if region != None:
+    if region is not None:
         cmd.append("-R%s/%s" % ("/".join(map(str, region)), new))
     # ignore stderr: usually because no data in area
     p = Popen(cmd, stderr=PIPE, cwd=wd)
@@ -1217,7 +1243,7 @@ def grd_mask(
     geo: True if given lon lat coords, False if given cartesian coords
     mask_dist: -S option, mask includes area of this distance around each point
     """
-    if wd == None:
+    if wd is None:
         wd = os.path.dirname(out_file)
         if wd == "":
             wd = "."
@@ -1248,9 +1274,9 @@ def grd_mask(
 
     if geo and not land:
         cmd.append("-fg")
-    if mask_dist != None:
+    if mask_dist is not None:
         cmd.append("-S%s" % (mask_dist))
-    if region == None:
+    if region is None:
         cmd.append("-R")
     else:
         cmd.append("-R%s/%s/%s/%s" % region)
@@ -1394,15 +1420,15 @@ def map_dimentions(
     else:
         cmd.append("-Ww")
 
-    if projection == None:
+    if projection is None:
         cmd.append("-J")
     else:
         cmd.append("-J%s" % (projection))
-    if region == None:
+    if region is None:
         cmd.append("-R")
     else:
         cmd.append("-R%s%s" % (region_units, "/".join(map(str, region))))
-    if unit != None:
+    if unit is not None:
         cmd.append("-D%s" % (unit))
 
     projp = Popen(cmd, stdout=PIPE, cwd=wd)
@@ -1479,19 +1505,19 @@ def mapproject_multi(
     write_history(False, wd=wd)
 
     cmd = [GMT, "mapproject"]
-    if projection == None:
+    if projection is None:
         cmd.append("-J")
     else:
         cmd.append("-J%s" % (projection))
-    if region == None:
+    if region is None:
         cmd.append("-R")
     else:
         cmd.append("-R%s%s" % (region_units, "/".join(map(str, region))))
     if inverse:
         cmd.append("-I")
-    if unit != None:
+    if unit is not None:
         cmd.append("-D%s" % (unit))
-    if z != None:
+    if z is not None:
         cmd.append(z)
     if p:
         if type(p) == bool:
@@ -2125,8 +2151,8 @@ def intersections(
     points = []
     comps = []
     for line in so.rstrip().split("\n"):
-        if containing == None or containing in line.split()[4:6]:
-            points.append(map(float, line.split()[:2]))
+        if containing is None or containing in line.split()[4:6]:
+            points.append(list(map(float, line.split()[:2])))
             if items:
                 comps.append(line.split()[-2:])
     if not items:
@@ -2142,14 +2168,14 @@ def truncate(inputs, clip=None, region=None, wd="."):
     clip: clip path or None to use region
     region: when clip is None, specify region or None to use history
     """
-    cmd = [GMT, "spatial", "-T%s" % (str(clip) * (clip != None))]
+    cmd = [GMT, "spatial", "-T%s" % (str(clip) * (clip is not None))]
     if type(inputs).__name__ == "list":
         cmd.extend(inputs)
     else:
         cmd.append(inputs)
 
-    if clip == None:
-        if region == None:
+    if clip is None:
+        if region is None:
             cmd.append("-R")
         else:
             cmd.append("-R%s" % ("/".join(region)))
@@ -2176,7 +2202,7 @@ def select(data, line_file=None, line_dist=0, geo=True, wd="."):
         cmd.append("-fg")
 
     # line based selection
-    if line_file != None:
+    if line_file is not None:
         cmd.append("-L%s+d%s" % (line_file, line_dist))
 
     # run
@@ -2259,7 +2285,7 @@ class GMTPlot:
 
         # leave window on inside
         # TODO: allow margins and window
-        if window != None:
+        if window is not None:
             self.clip(
                 "%s %s\n%s %s\n%s %s\n%s %s"
                 % (
@@ -2302,7 +2328,7 @@ class GMTPlot:
         )
         proc.wait()
 
-        if window != None:
+        if window is not None:
             self.clip(n=1)
 
     def spacial(
@@ -2335,12 +2361,12 @@ class GMTPlot:
         p: perspective setting azimuth/elevation (180/90 is square)
         """
         # work out projection format
-        if proj.lower() == "t" and lon0 == None:
+        if proj.lower() == "t" and lon0 is None:
             # lon0 is not optional, use centre as default
             lon0 = sum(map(float, region[:2])) / 2.0
-        if lon0 == None:
+        if lon0 is None:
             gmt_proj = "-J%s%s" % (proj, sizing)
-        elif lat0 == None:
+        elif lat0 is None:
             gmt_proj = "-J%s%s/%s" % (proj, lon0, sizing)
         else:
             gmt_proj = "-J%s%s/%s/%s" % (proj, lon0, lat0, sizing)
@@ -2364,13 +2390,13 @@ class GMTPlot:
         else:
             cmd.append("-O")
 
-        if p != None:
+        if p is not None:
             cmd.append("-p%s" % (p))
             self.p = True
         else:
             self.p = False
 
-        if fill != None:
+        if fill is not None:
             cmd.append("-G%s" % (fill))
             spipe = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
             spipe.communicate(
@@ -2401,11 +2427,13 @@ class GMTPlot:
         invert: invert path
         n: number of paths to clip (default: all)
         """
-        if path != None:
+        if path is not None:
             # start crop by path
             cmd = [GMT, "psclip", "-J", "-R", "-K", "-O", self.z]
             if invert:
                 cmd.append("-N")
+            if self.p:
+                cmd.append("-p")
             if is_file:
                 if type(path).__name__ == "list":
                     cmd.extend(map(os.path.abspath, path))
@@ -2419,7 +2447,7 @@ class GMTPlot:
         else:
             # finish crop (-C)
             cmd = [GMT, "psclip", "-K", "-O", "-J", "-R", self.z]
-            if n == None:
+            if n is None:
                 cmd.append("-C")
             else:
                 cmd.append("-C%d" % (n))
@@ -2472,7 +2500,7 @@ class GMTPlot:
             cmd.append("-Z")
         if not clip:
             cmd.append("-N")
-        if box_fill != None:
+        if box_fill is not None:
             cmd.append("-G%s" % (box_fill))
 
         tproc = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
@@ -2513,18 +2541,18 @@ class GMTPlot:
             cmd.append("-Z")
         if not clip:
             cmd.append("-N")
-        if fill != None:
+        if fill is not None:
             cmd.append("-G%s" % (fill))
         if dx != 0 or dy != 0:
             cmd.append("-D%s/%s" % (dx, dy))
 
         # global font specification
         text_spec = "-F"
-        if angle != None:
+        if angle is not None:
             text_spec += "+a%s" % (angle)
-        if font != None:
+        if font is not None:
             text_spec += "+f%s" % (font)
-        if justify != None:
+        if justify is not None:
             text_spec += "+j%s" % (justify)
         if len(text_spec) > 2:
             cmd.append(text_spec)
@@ -2603,7 +2631,7 @@ class GMTPlot:
             "-Dj%s/%s" % (spacing, spacing),
             "-F+j+f%s,%s,%s+a0" % (font_size, font, font_colour),
         ]
-        if box_fill != None:
+        if box_fill is not None:
             cmd.append("-G%s" % (box_fill))
         if self.p:
             cmd.append("-p")
@@ -2787,7 +2815,7 @@ class GMTPlot:
         topo_file = os.path.abspath(topo_file)
         # assume illumination file if not explicitly given
         # assuming the last part of the file is a file extention
-        if topo_file_illu == None:
+        if topo_file_illu is None:
             parts = topo_file.split(".")
             parts[-2] += "_i5"
             topo_file_illu = ".".join(parts)
@@ -2858,38 +2886,38 @@ class GMTPlot:
         inch = math.sqrt(sum(np.power(size, 2)))
         refs = inch / (km * 0.618)
 
-        if land != None:
-            if res == None:
+        if land is not None:
+            if res is None:
                 self.land(fill=land)
             else:
                 self.land(fill=land, res=res)
-        if topo != None:
+        if topo is not None:
             if topo_cpt == "green-brown":
                 topo_cpt = CPTS["nztopo-green-brown"]
             elif topo_cpt == "grey1":
                 topo_cpt = CPTS["nztopo-grey1"]
             self.topo(topo, cpt=topo_cpt)
-        if water != None:
-            if res == None:
+        if water is not None:
+            if res is None:
                 self.water(colour=water, oceans=oceans)
             else:
                 self.water(colour=water, res=res, oceans=oceans)
-        if road != None:
+        if road is not None:
             if road == "auto":
                 road = "%sp" % (refs * 2)
             self.path(LINZ_ROAD, width=road, colour=road_colour)
-        if highway != None:
+        if highway is not None:
             if highway == "auto":
                 highway = "%sp" % (refs * 4)
             self.path(LINZ_HWY, width=highway, colour=highway_colour)
-        if waternet != None:
+        if waternet is not None:
             if waternet == "auto":
                 waternet = "%sp" % (refs * 0.1)
             self.path(CHCH_WATER, width=waternet, colour=waternet_colour)
-        if coastlines != None:
+        if coastlines is not None:
             if coastlines == "auto":
                 coastlines = "%sp" % (refs * 3)
-            if res == None:
+            if res is None:
                 self.coastlines(width=coastlines)
             else:
                 self.coastlines(width=coastlines, res=res)
@@ -2963,11 +2991,11 @@ class GMTPlot:
             self.z,
             "-B%s%s%s%s%s"
             % (
-                str(axis) * (axis != None),
-                "a%s" % (str(major)) * (major != None),
-                "f%s" % (str(minor)) * (minor != None),
-                "g%s" % (str(gridline)) * (gridline != None),
-                "+l%s" % (str(label)) * (label != None),
+                str(axis) * (axis is not None),
+                "a%s" % (str(major)) * (major is not None),
+                "f%s" % (str(minor)) * (minor is not None),
+                "g%s" % (str(gridline)) * (gridline is not None),
+                "+l%s" % (str(label)) * (label is not None),
             ),
         ]
         cmd.append("-B%s" % (sides))
@@ -3021,7 +3049,7 @@ class GMTPlot:
             print("WARNING: %s not found, won't be plotted." % (in_data))
             return
 
-        if size == None:
+        if size is None:
             shaping = "-S%s" % (shape)
         else:
             shaping = "-S%s%s" % (shape, size)
@@ -3031,13 +3059,13 @@ class GMTPlot:
             module = "psxy"
         # build command based on optional fill and thickness
         cmd = [GMT, module, "-J", "-R", shaping, "-K", "-O", self.z]
-        if fill != None:
+        if fill is not None:
             cmd.append("-G%s" % (fill))
-        elif cpt != None:
+        elif cpt is not None:
             cmd.append("-C%s" % (cpt))
-        if line != None:
+        if line is not None:
             cmd.append("-W%s,%s" % (line_thickness, line))
-        if cols != None:
+        if cols is not None:
             cmd.append("-i%s" % (cols))
         if header > 0:
             cmd.append("-hi%d" % (header))
@@ -3078,19 +3106,19 @@ class GMTPlot:
         fill: box fill
         """
         cmd = [GMT, "psxy", "-J", "-R", "-K", "-O"]
-        if fill != None:
+        if fill is not None:
             cmd.append("-G%s" % (fill))
         espec = "-E%s" % (xy)
         if asymmetric:
             espec = "%s+a" % (espec)
-        if colour != None or line_width != None:
+        if colour is not None or line_width is not None:
             espec = "%s+p%s%s%s" % (
                 espec,
-                str(line_width) * (line_width != None),
-                "," * (colour != None and line_width != None),
-                str(colour) * (colour != None),
+                str(line_width) * (line_width is not None),
+                "," * (colour is not None and line_width is not None),
+                str(colour) * (colour is not None),
             )
-        if width != None:
+        if width is not None:
             espec = "%s+w%s" % (espec, width)
         cmd.append(espec)
 
@@ -3136,20 +3164,20 @@ class GMTPlot:
         else:
             module = "psxy"
         cmd = [GMT, module, "-J", "-R", "-K", "-O", self.z]
-        if width != None and colour != None:
+        if width is not None and colour is not None:
             pen = "-W%s,%s" % (width, colour)
-            if split != None:
+            if split is not None:
                 pen = "%s,%s" % (pen, split)
             cmd.append(pen)
-        if cpt != None:
+        if cpt is not None:
             cmd.append("-C%s" % (cpt))
         if close:
             cmd.append("-L")
         if straight:
             cmd.append("-A")
-        if fill != None:
+        if fill is not None:
             cmd.append("-G%s" % fill)
-        if cols != None:
+        if cols is not None:
             cmd.append("-i%s" % cols)
         if self.p:
             cmd.append("-p")
@@ -3241,7 +3269,7 @@ class GMTPlot:
         fancy: fancy scale has black and white strips, simple is a line
         """
 
-        if slat == None:
+        if slat is None:
             region = map(float, self.history("R").split("/"))
             # TODO: fix geographic midpoint calculation (make a function)
             slat = (region[3] + region[2]) / 2.0
@@ -3258,9 +3286,9 @@ class GMTPlot:
             y += dy
             # old style positioning
             pos_spec = "-L%sx%s/%s/%s/%s" % ("f" * fancy, x, y, slat, length)
-            if align != None:
+            if align is not None:
                 pos_spec = "%s+j%s" % (pos_spec, align)
-            if label != None:
+            if label is not None:
                 pos_spec = "%s+l%s" % (pos_spec, label)
             cmd.append(pos_spec)
         else:
@@ -3275,13 +3303,13 @@ class GMTPlot:
                 dx,
                 dy,
             )
-            if align != None:
+            if align is not None:
                 pos_spec = "%s+j%s" % (pos_spec, align)
             if fancy:
                 pos_spec = "%s+f" % (pos_spec)
-            if label != None:
+            if label is not None:
                 pos_spec = "%s+l%s" % (pos_spec, label)
-            if label_pos != None:
+            if label_pos is not None:
                 pos_spec = "%s+a%s" % (pos_spec, label_pos.lower())
             cmd.append(pos_spec)
 
@@ -3309,6 +3337,8 @@ class GMTPlot:
         categorical=False,
         intervals=False,
         gap="",
+        zmin="NaN",
+        zmax="NaN",
     ):
         """
         Draws a colour palette legend.
@@ -3361,7 +3391,7 @@ class GMTPlot:
             if pos != "plot":
                 cmd.extend(["-R", "-J", self.z])
             # mimic 5.1 default behaviour
-            if align == None and pos == "plot":
+            if align is None and pos == "plot":
                 if horiz:
                     align = "CT"
                 else:
@@ -3383,17 +3413,17 @@ class GMTPlot:
                     "f" * int(arrow_f),
                     "b" * int(arrow_b),
                 )
-            if align != None:
+            if align is not None:
                 pos_spec = "%s+j%s" % (pos_spec, align)
         cmd.append(pos_spec)
 
         # annotation option: explicit
-        if major != None or minor != None:
+        if major is not None or minor is not None:
             # TODO: allow only setting major or minor or cross_tick?
             annotation = "-Ba%sf%s" % (major, minor)
-            if cross_tick != None:
+            if cross_tick is not None:
                 annotation = "%sg%s" % (annotation, cross_tick)
-            if label != None and label != "":
+            if label is not None and label != "":
                 if GMT_MINOR < 2:
                     annotation = "%s:%s:" % (annotation, label.replace(":", ""))
                 else:
@@ -3402,13 +3432,16 @@ class GMTPlot:
         # annotation option: categorical
         elif categorical:
             cmd.append("-L%s%s" % ("i" * intervals, gap))
-            if label != None:
+            if label is not None:
                 cmd.append("-B+l%s" % (label))
         # annotation default: labeled at z slices
-        elif label != None:
+        elif label is not None:
             cmd.append("-B+l%s" % (label))
         if log:
             cmd.append("-Q")
+        # truncate CPT
+        if zmin != "NaN" or zmax != "NaN":
+            cmd.append("-G%s/%s" % (zmin, zmax))
 
         Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
 
@@ -3457,27 +3490,27 @@ class GMTPlot:
             "/" * (pos[:3] != "rel"),
             y,
             width,
-            "/" * (height != None),
-            str(height) * (height != None),
+            "/" * (height is not None),
+            str(height) * (height is not None),
         )
-        if align != None:
+        if align is not None:
             pos_spec = "%s+j%s" % (pos_spec, align)
-        if spacing != None:
+        if spacing is not None:
             pos_spec = "%s+l%s" % (pos_spec, spacing)
-        if dx != None:
+        if dx is not None:
             pos_spec = "%s+o%s%s%s" % (
                 pos_spec,
                 dx,
-                "/" * (dy != None),
-                str(dy) * (dy != None),
+                "/" * (dy is not None),
+                str(dy) * (dy is not None),
             )
         cmd.append(pos_spec)
 
         # frame setup
         frame_spec = ""
-        if frame_padding != None:
+        if frame_padding is not None:
             pass
-        if frame_fill != None:
+        if frame_fill is not None:
             frame_spec = "%s+g%s" % (frame_spec, frame_fill)
         if frame_spec != "":
             cmd.append("-F%s" % (frame_spec))
@@ -3504,15 +3537,15 @@ class GMTPlot:
         Draw contour map.
         interval: numeric interval, taken from cpt file, or description file
         """
-        cmd = [GMT, "grdcontour", "-J", "-K", "-O", xyv_file]
+        cmd = [GMT, "grdcontour", "-J", "-R", "-K", "-O", xyv_file]
 
         # annotations at specific values
         if type(annotations) == list:
             for c in annotations:
                 cmd.append("-A+%s" % (c))
         # interval annotations
-        if interval != None:
-            if annotations == None:
+        if interval is not None:
+            if annotations is None:
                 cmd.append("-C%s" % (interval))
                 # annotations displayed if -C is given a CPT file
                 cmd.append("-A-")
@@ -3583,7 +3616,7 @@ class GMTPlot:
         temp_grd = "%s/%s_temp.grd" % (self.wd, os.path.basename(xyv_file))
 
         # because we allow setting '-R', backup history file to reset after
-        if custom_region != None:
+        if custom_region is not None:
             write_history(False, wd=self.wd)
             region = "-R%s/%s/%s/%s" % custom_region
         else:
@@ -3605,13 +3638,13 @@ class GMTPlot:
             ]
             if binary:
                 cmd.append("-bi3f")
-            if limit_low != None:
+            if limit_low is not None:
                 cmd.append("-Ll%s" % (limit_low))
-            if limit_high != None:
+            if limit_high is not None:
                 cmd.append("-Lu%s" % (limit_high))
-            if cols != None:
+            if cols is not None:
                 cmd.append("-i%s" % (cols))
-            if header != None:
+            if header is not None:
                 cmd.append("-hi%d" % (header))
             # ignore stderr: usually because no data in area
             # algorithm in 'surface' is known to fail (no output) seen in 5.1
@@ -3630,24 +3663,24 @@ class GMTPlot:
                     "failed to create grd from %s. no overlay produced."
                     % (os.path.basename(xyv_file))
                 )
-                if custom_region != None:
+                if custom_region is not None:
                     write_history(True, wd=self.wd)
                 return
         else:
             copyfile(xyv_file, temp_grd)
 
         # crop to path area by grd file
-        if crop_grd != None:
+        if crop_grd is not None:
             rc = grdmath([temp_grd, crop_grd, "MUL", "=", temp_grd], wd=self.wd)
             if rc == STATUS_INVALID:
                 return
 
         # crop minimum/maximum/area values
-        if min_v != None or max_v != None:
-            if max_v == None or min_v < max_v:
+        if min_v is not None or max_v is not None:
+            if max_v is None or min_v < max_v:
                 # values below min_v -> NaN
                 cut = "-Sb%s/NaN" % (min_v)
-            elif min_v == None or min_v < max_v:
+            elif min_v is None or min_v < max_v:
                 # values above max_v -> NaN
                 cut = "-Sa%s/NaN" % (max_v)
             else:
@@ -3661,7 +3694,7 @@ class GMTPlot:
             ).wait()
 
         # restore '-R' if changed
-        if custom_region != None:
+        if custom_region is not None:
             write_history(True, wd=self.wd)
 
         # clip path for land to crop overlay
@@ -3671,7 +3704,7 @@ class GMTPlot:
                 cmd.append("-p")
             Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
 
-        if cpt != None:
+        if cpt is not None:
             # cpt may be internal or a file
             if os.path.exists(cpt):
                 cpt = os.path.abspath(cpt)
@@ -3696,7 +3729,7 @@ class GMTPlot:
             Popen(cmd, stdout=self.psf, stderr=self.sink, cwd=self.wd).wait()
 
         # add contours
-        if contours != None or acontours != None:
+        if contours is not None or acontours is not None:
             cmd = [
                 GMT,
                 "grdcontour",
@@ -3708,14 +3741,14 @@ class GMTPlot:
                 "-W%s,%s" % (contour_thickness, contour_colour),
                 self.z,
             ]
-            if contours != None:
+            if contours is not None:
                 cmd.append("-C%s" % (contours))
-            if acontours != None:
+            if acontours is not None:
                 annot_spec = "-A%s+f%s" % (acontours, font_size)
-                if annot_back != None:
+                if annot_back is not None:
                     annot_spec = "%s+g%s" % (annot_spec, annot_back)
                 cmd.append(annot_spec)
-                if contour_mindist == None:
+                if contour_mindist is None:
                     # assuming distance in points (default)
                     contour_mindist = "%sp" % (float(str(font_size).rstrip("cip")) * 3)
                 cmd.append("-Gn%s/%s" % (contour_apl, contour_mindist))
@@ -3757,13 +3790,13 @@ class GMTPlot:
         z: set custom Z axis scaling in full form
         mesh: draw a mesh as well if an image plot is being created
         """
-        if crop_grd != None:
+        if crop_grd is not None:
             temp_grd = "%s/overlay3d_tmp.grd" % (self.wd)
             rc = grdmath([xyz_file, crop_grd, "MUL", "=", temp_grd], wd=self.wd)
             if rc == STATUS_INVALID:
                 return
             xyz_file = temp_grd
-        if z == None:
+        if z is None:
             z = self.z
         cmd = [
             GMT,
@@ -3777,14 +3810,14 @@ class GMTPlot:
             xyz_file,
             "-t%s" % (transparency),
         ]
-        if drapefile != None:
+        if drapefile is not None:
             cmd.append("-G%s" % (drapefile))
-        if cpt != None:
+        if cpt is not None:
             cmd.append("-C%s" % (cpt))
             cmd.append("-Qs%s" % ("m" * mesh))
         else:
             cmd.append("-Qm%s@%s" % (colour, transparency))
-        if mesh_pen != None:
+        if mesh_pen is not None:
             cmd.append("-Wm%s" % (mesh_pen))
         Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
 
@@ -3850,17 +3883,17 @@ class GMTPlot:
             all_edges = ">\n".join(["".join(c) for c in bounds[1:]])
 
         # plot planes
-        if not (plane_colour == None and plane_fill == None):
+        if not (plane_colour is None and plane_fill is None):
             cmd = [GMT, "psxy", "-J", "-R", "-L", "-K", "-O", self.z]
-            if plane_colour != None:
+            if plane_colour is not None:
                 cmd.append("-W%s,%s,-" % (plane_width, plane_colour))
-            if plane_fill != None:
+            if plane_fill is not None:
                 cmd.append("-G%s" % (plane_fill))
             planep = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
             planep.communicate(all_edges.encode("utf-8"))
             planep.wait()
         # plot top edges
-        if top_colour != None:
+        if top_colour is not None:
             topp = Popen(
                 [
                     GMT,
@@ -3879,7 +3912,7 @@ class GMTPlot:
             topp.communicate(top_edges.encode("utf-8"))
             topp.wait()
         # hypocentre
-        if hyp_size > 0 and hyp_colour != None:
+        if hyp_size > 0 and hyp_colour is not None:
             hypp = Popen(
                 [
                     GMT,
@@ -3938,7 +3971,7 @@ class GMTPlot:
             "-E%s" % (extensive),
             "-hi%d" % header,
         ]
-        if depths != None:
+        if depths is not None:
             cmd.append("-D%s/%s" % (depths))
 
         if is_file:
@@ -4010,21 +4043,21 @@ class GMTPlot:
         )
         if fancy > 0:
             rose_spec = "%s+f%d" % (rose_spec, fancy)
-        if justify != None:
+        if justify is not None:
             rose_spec = "%s+j%s" % (rose_spec, justify)
         if len(wesn) == 4:
             rose_spec = "%s+l%s" % (rose_spec, ",".join(wesn))
         cmd.append(rose_spec)
         # backgrounds -Ft
-        if fill != None or pen != None:
+        if fill is not None or pen is not None:
             out_spec = "-Ft"
-            if fill != None:
+            if fill is not None:
                 out_spec = "%s+g%s" % (out_spec, fill)
-            if pen != None:
+            if pen is not None:
                 out_spec = "%s+p%s" % (out_spec, pen)
-            if rounding != None:
+            if rounding is not None:
                 out_spec = "%s+g%s" % (out_spec, rounding)
-            if clearance != None:
+            if clearance is not None:
                 out_spec = "%s+c%s" % (out_spec, clearance)
             cmd.append(out_spec)
 
@@ -4081,7 +4114,7 @@ class GMTPlot:
             y += dy
             # old style positioning
             # potentially either -W (width) or -E (input DPI)
-            if align != None:
+            if align is not None:
                 pos_spec = "-C%s/%s/%s" % (x, y, align)
             else:
                 pos_spec = "-C%s/%s" % (x, y)
@@ -4099,11 +4132,11 @@ class GMTPlot:
                 dx,
                 dy,
             )
-            if align != None:
+            if align is not None:
                 pos_spec = "%s+j%s" % (pos_spec, align)
             cmd.append(pos_spec)
         # replace a colour with transparency
-        if transparent != None:
+        if transparent is not None:
             cmd.append("-Gt%s" % (transparent))
         # run GMT
         Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
@@ -4171,6 +4204,11 @@ class GMTPlot:
         downscale: ghostscript DownScaleFactor (png | tiff)
         create_dirs: allow creation of output directory if it does not exist
         """
+        png = True
+        if find_executable("gs") is None:
+            print("GS not found, not creating PNG, copying PS to PNG location.")
+            png = False
+
         cmd = [GMT, psconvert, self.pspath, "-TG", "-E%s" % (dpi), "-Qg4", "-Qt4"]
         if downscale > 1:
             cmd.append("-C-dDownScaleFactor=%s" % (downscale))
@@ -4179,10 +4217,10 @@ class GMTPlot:
                 "-A%s%s%s%s%s"
                 % (
                     "/".join(map(str, margin)),
-                    "+g" * (background != None),
-                    str(background) * (background != None),
-                    "+s" * (size != None),
-                    str(size) * (size != None),
+                    "+g" * (background is not None),
+                    str(background) * (background is not None),
+                    "+s" * (size is not None),
+                    str(size) * (size is not None),
                 )
             )
         if portrait:
@@ -4190,10 +4228,10 @@ class GMTPlot:
 
         # default output is the same location and basename as postscript
         dirname = ""
-        if out_name != None:
+        if out_name is not None:
             cmd.append("-F%s" % (out_name))
             dirname = os.path.dirname(out_name)
-        elif out_dir != None:
+        elif out_dir is not None:
             cmd.append("-D%s" % (os.path.abspath(out_dir)))
             dirname = out_dir
         # create output directory if it doesn't exist
@@ -4207,4 +4245,12 @@ class GMTPlot:
             else:
                 raise OSError("out_dir does not exist: %s" % (dirname))
 
-        Popen(cmd, cwd=self.wd).wait()
+        if png:
+            Popen(cmd, cwd=self.wd).wait()
+        else:
+            if out_name is not None:
+                destination = os.path.join(out_name, ".ps")
+            elif out_dir is not None:
+                destination = os.path.join(out_dir, os.path.basename(self.pspath))
+            if not os.path.exists(destination):
+                copyfile(self.pspath, destination)
