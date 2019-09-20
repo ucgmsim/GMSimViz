@@ -727,7 +727,8 @@ def srf2map(
         "%s/%s.cpt" % (out_dir, prefix),
         0,
         cpt_max,
-        max(1, cpt_max / 100, continuing=True),
+        max(1, cpt_max / 100),
+        continuing=True,
     )
     # each plane will use a region which just fits
     # these are needed for efficient plotting
