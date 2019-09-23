@@ -1054,6 +1054,16 @@ def frame_legend(frame, overlay, transparency):
         )
 
 
+def frame_devel_geo(p, job):
+    # gridlines
+    p.ticks(major=0, minor=0, gridline="1d")
+    # current points of interest
+    p.points("\n".join([" ".join(map(str, ll)) for ll in job["view"][0]]), is_file=False, shape="c", size="12p", fill="red", line=None, clip=False)
+    # past points of interest (transitioning out of)
+    if len(job["view"]) > 2:
+        p.points("\n".join([" ".join(map(str, ll)) for ll in job["view"][3]]), is_file=False, shape="c", size="12p", fill="blue", line=None, clip=False)
+
+
 def timeslice(job, meta):
     """
     Render image in animation.
@@ -1082,14 +1092,17 @@ def timeslice(job, meta):
     frame_proj(p, window, False, shift=False)
     if not meta["pointsource"]:
         frame_srf_surface(p, plot, meta["n_plane"], job["transparency"], meta["srf_wd"])
+
     # ground motion must be in geographic projection due to 3D Z scaling
     frame_proj(p, window, True, shift=False)
     frame_proj_items(p, job, meta, window)
-
     # start plotting external items relative to border
     scale_y, window_b, llur_i = frame_border_init(
         scale_y_final, job["scale_t"], job["tilt"], swd
     )
+    if meta["devel"]:
+        frame_devel_geo(p, job)
+
     frame_proj(p, window, False)
     frame_border(p, window_b, job, meta)
     if not (meta["pointsource"] and plot == "slip"):
@@ -1098,6 +1111,8 @@ def timeslice(job, meta):
             frame_scale_distribution(
                 p, srf_data, scale_margin, cpt_y, meta["slip_cpt_max"]
             )
+    #if meta["devel"]:
+    #    frame_devel_xy(p, job)
 
     # start plotting internal items relative to border
     frame_iproj(p, window, llur_i, window_b)
@@ -1212,8 +1227,16 @@ def get_args():
     arg("--crude", help="no topo, roads, low resolution data", action="store_true")
     arg("--paths", help="standard road network input")
     arg("--dpi", help="[240]:4K 120:HD (frames are 16ix9i)", type=int, default=120)
+    arg("--devel", help="displays all sorts of things, implies --crude", action="store_true")
 
-    return parser.parse_args()
+    try:
+        args = parser.parse_args()
+    except SystemExit:
+        COMM.Abort(100)
+    if args.devel:
+        args.crude = True
+
+    return args
 
 
 def load_meta(args):
@@ -1283,6 +1306,7 @@ def load_meta(args):
         "title": args.title,
         "dpi": args.dpi,
         "crude": args.crude,
+        "devel": args.devel,
         "pause_frames": int(round(args.ptime * args.framerate)),
     }
 
