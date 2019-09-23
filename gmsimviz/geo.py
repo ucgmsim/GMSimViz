@@ -101,6 +101,21 @@ def gp2xy(gp, nx, ny, hh):
     return xy
 
 
+def ll_shift(lat, lon, distance, bearing):
+    """
+    Shift lat/long by distance at bearing.
+    """
+    # formula is for radian values
+    lat, lon, bearing = list(map(radians, [lat, lon, bearing]))
+
+    shift = distance / R_EARTH
+    lat2 = asin(sin(lat) * cos(shift) + cos(lat) * sin(shift) * cos(bearing))
+    lon2 = lon + atan2(sin(bearing) * sin(shift) * cos(lat),
+                       cos(shift) - sin(lat) * sin(lat2))
+
+    return degrees(lat2), degrees(lon2)
+
+
 def ll_mid(lon1, lat1, lon2, lat2):
     """
     Return midpoint between a pair of lat, long points.

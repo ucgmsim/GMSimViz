@@ -1179,6 +1179,7 @@ def get_args():
     arg("--title", help="main title on animation")
     arg("-x", "--xyts", help="xyts file for GM overlay")
     arg("--gm-cut", help="cutoff time for ground motion", type=float)
+    arg("--min-zoom", help="set animation zoom (km)", type=float)
     arg("--srf-cpt-max", help="SRF colour scale max value", type=int)
     arg("--xyts-cpt-max", help="XYTS colour scale max value", type=int)
     arg("-a", "--animate", help="create animation", action="store_true")
@@ -1430,6 +1431,8 @@ def load_xyts_meta(args, meta, work, poi_srf):
             final_azimuth = bearing_xl % 360
     else:
         poi_gm = poi_srf
+    if args.min_zoom is not None:
+        poi_gm = [geo.ll_shift(meta["hlat"], meta["hlon"], args.min_zoom / 2, b)[::-1] for b in np.arange(8) * 45]
     # transform over longer direction (angle_diff returns -180 > 180)
     diff_azimuth = geo.angle_diff(meta["s_azimuth"], final_azimuth)
     frames_azimuth = int(max(frames_sr, frames_gm) * 0.85)
@@ -1614,6 +1617,14 @@ def i2p(zfacs, i):
     return min(
         1.0, 0.5 + 0.5 * math.tanh(i / zfacs[0] - 3) + zfacs[1] * (i / zfacs[0] - 3)
     )
+
+def pois(meta, xpos):
+    gm_file = os.path.join(meta["wd"], "xyts", "ts%04d.nc" % (xpos))
+    if os.path.isfile(gm_file):
+        with h5open(gm_file, "r") as h:
+            ll = np.argwhere(np.invert(np.isnan(h["z"][...])))
+            return np.dstack((h["lon"][...][ll[:, 1]], h["lat"][...][ll[:, 0]]))[0]
+    return [[meta["hlon"], meta["hlat"]]]
 
 
 def add_frames_slip_progress(work, meta, movements):
