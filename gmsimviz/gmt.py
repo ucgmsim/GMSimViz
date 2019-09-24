@@ -55,7 +55,7 @@ if not os.path.isdir(GMT_DATA):
     try:
         GMT_DATA = os.environ["GMT_DATA"]
     except KeyError:
-        # GMT_DATA files unavailable
+        # GMT_DATA files unavailable, only needed if using GMT_DATA
         pass
 # LINZ DATA
 LINZ_COAST = {
