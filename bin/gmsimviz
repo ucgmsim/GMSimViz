@@ -350,6 +350,7 @@ def frame_window(job, meta, swd):
     if meta["rot"] != 1000.0:
         job["azimuth"] = (meta["rot"] + 180) % 360
 
+    # centre of points and distance (km) to furthest points
     lon1, lat1, dlon1, dlat1 = gmt.region_fit_oblique(
         job["view"][0], job["azimuth"] - 90, wd=swd
     )
@@ -420,11 +421,14 @@ def frame_window(job, meta, swd):
     return {
         "c_lon": lon1,
         "c_lat": lat1,
+        "km_lon": dlon1,
+        "km_lat": dlat1,
         "llur": llur,
         "height": map_height,
         "z_scale": z_scale,
         "tilt": job["tilt"],
         "azimuth": job["azimuth"],
+        "projection": projection,
     }
 
 
@@ -1057,11 +1061,162 @@ def frame_legend(frame, overlay, transparency):
 def frame_devel_geo(p, job):
     # gridlines
     p.ticks(major=0, minor=0, gridline="1d")
-    # current points of interest
-    p.points("\n".join([" ".join(map(str, ll)) for ll in job["view"][0]]), is_file=False, shape="c", size="12p", fill="red", line=None, clip=False)
-    # past points of interest (transitioning out of)
+
+
+def frame_devel_xy(p, job, window):
+    # properties as text
+    p.text(
+        0.05,
+        1,
+        "-J" + window["projection"],
+        align="LT",
+        angle=90,
+        size="14p",
+        colour="white",
+        box_fill="black",
+    )
+    p.text(
+        0.25,
+        1,
+        "-R" + "/".join(map(str, window["llur"])) + " -p180/%s/0" % (window["tilt"]),
+        align="LT",
+        angle=90,
+        size="14p",
+        colour="white",
+        box_fill="black",
+    )
     if len(job["view"]) > 2:
-        p.points("\n".join([" ".join(map(str, ll)) for ll in job["view"][3]]), is_file=False, shape="c", size="12p", fill="blue", line=None, clip=False)
+        p.text(
+            0.5,
+            PAGE_HEIGHT - WINDOW_T + 0.05,
+            "POI blue->red %.2f" % (job["view"][2]),
+            align="LB",
+            size="14p",
+            colour="black",
+            box_fill="red",
+        )
+
+    # distances to map edge
+    cxy = [[window["c_lon"], window["c_lat"]]]
+
+    def add2cxy(km_key, az_diff, fac=1.0):
+        cxy.append(
+            geo.ll_shift(
+                window["c_lat"],
+                window["c_lon"],
+                window[km_key] / fac,
+                job["azimuth"] - az_diff,
+            )[::-1]
+        )
+
+    if len(job["view"]) > 2:
+        fac = job["view"][4] + (job["view"][1] - job["view"][4]) * job["view"][2]
+    else:
+        fac = job["view"][1]
+    add2cxy("km_lon", 90)
+    add2cxy("km_lat", 180)
+    add2cxy("km_lon", 90, fac=fac)
+    add2cxy("km_lat", 180, fac=fac)
+    cxy = [
+        " ".join(map(str, ll))
+        for ll in gmt.mapproject_multi(
+            cxy,
+            wd=p.wd,
+            projection=window["projection"],
+            region=window["llur"],
+            z="-Jz%s" % (window["z_scale"]),
+            p="180/%s/0" % (window["tilt"]),
+        )
+    ]
+    p.path(
+        ">\n%s\n%s\n>\n%s\n%s" % (cxy[0], cxy[1], cxy[0], cxy[2]),
+        is_file=False,
+        width="2p",
+        colour="gold",
+        split=None,
+        straight=True,
+    )
+    p.path(
+        ">\n%s\n%s\n>\n%s\n%s" % (cxy[0], cxy[3], cxy[0], cxy[4]),
+        is_file=False,
+        width="2p",
+        colour="red",
+        split=None,
+        straight=True,
+    )
+    p.text(
+        *cxy[2].split(),
+        "%.1f km" % (window["km_lat"]),
+        align="LT",
+        size="14p",
+        colour="black",
+        box_fill="gold",
+    )
+    p.text(
+        *cxy[4].split(),
+        "%.1f km" % (window["km_lat"] / fac),
+        align="LT",
+        dy=-0.2,
+        size="14p",
+        colour="black",
+        box_fill="red",
+    )
+    p.text(
+        *cxy[1].split(),
+        "%.1f km" % (window["km_lon"]),
+        align="LT",
+        size="14p",
+        angle=270,
+        colour="black",
+        box_fill="gold",
+    )
+    p.text(
+        *cxy[3].split(),
+        "%.1f km" % (window["km_lon"] / fac),
+        align="LT",
+        dx=-0.2,
+        size="14p",
+        angle=270,
+        colour="black",
+        box_fill="red",
+    )
+
+    # would otherwise have to shift, not needed anyway
+    poi_1 = gmt.mapproject_multi(
+        job["view"][0],
+        wd=p.wd,
+        projection=window["projection"],
+        region=window["llur"],
+        z="-Jz%s" % (window["z_scale"]),
+        p="180/%s/0" % (window["tilt"]),
+    )
+    p.points(
+        "\n".join([" ".join(map(str, ll)) for ll in poi_1]),
+        is_file=False,
+        shape="c",
+        size="6p",
+        fill="red",
+        line=None,
+        clip=False,
+    )
+    if len(job["view"]) > 2:
+        poi_2 = gmt.mapproject_multi(
+            job["view"][3],
+            wd=p.wd,
+            projection=window["projection"],
+            region=window["llur"],
+            z="-Jz%s" % (window["z_scale"]),
+            p="180/%s/0" % (window["tilt"]),
+        )
+        p.points(
+            "\n".join([" ".join(map(str, ll)) for ll in poi_2]),
+            is_file=False,
+            shape="c",
+            size="6p",
+            fill="blue",
+            line=None,
+            clip=False,
+        )
 
 
 def timeslice(job, meta):
@@ -1111,8 +1266,8 @@ def timeslice(job, meta):
             frame_scale_distribution(
                 p, srf_data, scale_margin, cpt_y, meta["slip_cpt_max"]
             )
-    #if meta["devel"]:
-    #    frame_devel_xy(p, job)
+    if meta["devel"] and job["tilt"] >= meta["map_tilt"]:
+        frame_devel_xy(p, job, window)
 
     # start plotting internal items relative to border
     frame_iproj(p, window, llur_i, window_b)
@@ -1227,7 +1382,11 @@ def get_args():
     arg("--crude", help="no topo, roads, low resolution data", action="store_true")
     arg("--paths", help="standard road network input")
     arg("--dpi", help="[240]:4K 120:HD (frames are 16ix9i)", type=int, default=120)
-    arg("--devel", help="displays all sorts of things, implies --crude", action="store_true")
+    arg(
+        "--devel",
+        help="displays all sorts of things, implies --crude",
+        action="store_true",
+    )
 
     try:
         args = parser.parse_args()
@@ -1456,7 +1615,10 @@ def load_xyts_meta(args, meta, work, poi_srf):
     else:
         poi_gm = poi_srf
     if args.min_zoom is not None:
-        poi_gm = [geo.ll_shift(meta["hlat"], meta["hlon"], args.min_zoom / 2, b)[::-1] for b in np.arange(8) * 45]
+        poi_gm = [
+            geo.ll_shift(meta["hlat"], meta["hlon"], args.min_zoom / 2, b)[::-1]
+            for b in np.arange(8) * 45
+        ]
     # transform over longer direction (angle_diff returns -180 > 180)
     diff_azimuth = geo.angle_diff(meta["s_azimuth"], final_azimuth)
     frames_azimuth = int(max(frames_sr, frames_gm) * 0.85)
@@ -1641,6 +1803,7 @@ def i2p(zfacs, i):
     return min(
         1.0, 0.5 + 0.5 * math.tanh(i / zfacs[0] - 3) + zfacs[1] * (i / zfacs[0] - 3)
     )
+
 
 def pois(meta, xpos):
     gm_file = os.path.join(meta["wd"], "xyts", "ts%04d.nc" % (xpos))
