@@ -38,6 +38,8 @@ SCALE_WIDTH = PAGE_WIDTH / 1.618
 SCALE_SIZE = 0.25
 SCALE_PAD = 0.1
 OVERLAY_T = 40
+# transition smoothing using tanh -3 -> 3
+TANH_TRANGE = 6
 # borders on page
 WINDOW_T = 0.8
 WINDOW_B = 0.3
@@ -1784,19 +1786,18 @@ def add_frames_slip_fade(work, meta, movements):
 
 
 def zoom_out_timing(movements):
-    # tanh linear gap fill over effective range tanh(-3 -> 3)
-    tanh_gap = (0.5 + 0.5 * math.tanh(-3)) / 3.0
+    # tanh linear gap fill over effective range tanh
+    tanh_gap = (0.5 + 0.5 * math.tanh(-TANH_TRANGE / 2)) / 3.0
     # maximum zoom out proportion of ground motion duration
     # if GM moves out beyond view window, decrease factor to zoom out faster
     zoom_max_fac = 0.618
     # frame index to zoom progression (zoom out within 12.5 seconds)
     if movements["frames_gm"] / movements["fps"] >= 12.5 / zoom_max_fac:
         # transition over 12.5 seconds
-        # -3 -> 3 = 6
-        movements["zoom_out"] = (12.5 * movements["fps"]) / 6, tanh_gap
+        movements["zoom_out"] = (12.5 * movements["fps"]) / TANH_TRANGE, tanh_gap
     else:
         # transition over maximum factor
-        movements["zoom_out"] = (movements["frames_gm"] * 0.618) / 6, tanh_gap
+        movements["zoom_out"] = (movements["frames_gm"] * 0.618) / TANH_TRANGE, tanh_gap
 
 
 def i2p(zfacs, i):
@@ -1806,7 +1807,7 @@ def i2p(zfacs, i):
     i: frame number
     """
     return min(
-        1.0, 0.5 + 0.5 * math.tanh(i / zfacs[0] - 3) + zfacs[1] * (i / zfacs[0] - 3)
+        1.0, 0.5 + 0.5 * math.tanh(i / zfacs[0] - TANH_TRANGE / 2) + zfacs[1] * (i / zfacs[0] - TANH_TRANGE / 2)
     )
 
 
