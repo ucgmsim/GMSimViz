@@ -28,15 +28,19 @@ import gmsimviz.gmt as gmt
 import gmsimviz.srf as srf
 import gmsimviz.xyts as xyts
 
-MASTER = 0
+# map will tilt to face slip square on but also limited by MIN and MAX
 TILT_MIN = 40
 TILT_MAX = 20
+# when dipping below surface, map tilt will be 1 degree (almost into the page)
 TILT_DIP = 1
+# frames at 16 inches by 9 inches means 120 dpi is equivalent to 1920x1080 px
 PAGE_WIDTH = 16
 PAGE_HEIGHT = 9
+# colour scale at bottom of page (length, thickness, padding from map)
 SCALE_WIDTH = PAGE_WIDTH / 1.618
 SCALE_SIZE = 0.25
 SCALE_PAD = 0.1
+# default overlay transparency %
 OVERLAY_T = 40
 # transition smoothing using tanh -3 -> 3
 TANH_TRANGE = 6
@@ -46,6 +50,7 @@ WINDOW_B = 0.3
 WINDOW_L = 0.5
 WINDOW_R = 0.5
 
+# MPI stuff
 COMM = MPI.COMM_WORLD
 RANK = COMM.Get_rank()
 SIZE = COMM.Get_size()
@@ -435,7 +440,11 @@ def frame_window(job, meta, swd):
 
 
 def frame_proj(frame, window, projected, shift=True):
-    # shortcut to switch between geographic and plot projections
+    """
+    shortcut to switch between geographic and plot projections
+    shift: vertically centre map with projected, bring back without projected
+           False is a hack to work with slip overlays projected on cartesian space
+    """
     if projected:
         frame.spacial(
             "OA",
@@ -506,6 +515,9 @@ def frame_outlines(frame, meta):
 
 
 def frame_sliprate(job, meta, window, wd):
+    """
+    Generates sliprate grid at time given window view in cartesian page space.
+    """
     if meta["pointsource"]:
         return
 
@@ -589,6 +601,7 @@ def frame_sliprate(job, meta, window, wd):
 
 
 def frame_logo(frame, logo=None):
+    # add logo in top right corner
     if logo is None:
         logo = os.path.join(os.path.dirname(geo.__file__), "quakecore-logo.png")
     frame.image(
@@ -663,6 +676,9 @@ def frame_type(sim_time):
 
 
 def frame_srf_surface(frame, plot_type, n_plane, transparency, srf_wd):
+    """
+    Adds SRF grids to plot.
+    """
     if plot_type == "slip" and transparency < 100:
         # show total slip
         for s in range(n_plane):
@@ -790,7 +806,7 @@ def frame_proj_items(frame, job, meta, window):
 
 
 def frame_border_init(scale_y_final, transition, tilt, wd):
-    # calculate inner region for map ticks
+    # calculate inner map region (inside border) for map ticks
     # manually adjusted y as mapproject -I not compatible with -p
     scale_y = transition * scale_y_final
     window_b = max(WINDOW_B, scale_y)
@@ -1006,7 +1022,7 @@ def frame_scale_distribution(frame, srf_data, scale_margin, cpt_y, cpt_max):
 
 def frame_iproj(frame, window, llur_i, window_b):
     """
-    Set projection of the inner area to draw map ticks, legend.
+    Set projection of the inner area (inside borders) to draw map ticks, legend.
     """
     frame.spacial(
         "OA%s/%s/%s/" % (window["c_lon"], window["c_lat"], window["azimuth"] - 90),
@@ -1044,6 +1060,9 @@ def frame_ticks(frame, labels=True):
 
 
 def frame_legend(frame, overlay, transparency):
+    """
+    Add legend for path overlay.
+    """
     legend_file = "%s.legend" % (os.path.splitext(overlay)[0])
     if os.path.exists(legend_file):
         gmt.gmt_set(["FONT_ANNOT_PRIMARY", "12p"])
@@ -1342,9 +1361,6 @@ def validate_args(args):
 def get_args():
     from argparse import ArgumentParser
 
-    ###
-    ### load
-    ###
     parser = ArgumentParser()
     arg = parser.add_argument
     arg("srf_file", help="srf file to plot")
@@ -1401,6 +1417,9 @@ def get_args():
 
 
 def load_meta(args):
+    """
+    Common properties of this animation / data.
+    """
 
     # load plane data
     try:
@@ -1475,6 +1494,9 @@ def load_meta(args):
 
 
 def load_sliprate(srf_file, framerate, meta):
+    """
+    Cumulative slip timeseries from SRF.
+    """
     meta["planes"] = srf.read_header(srf_file, idx=True)
     meta["pointsource"] = (
         meta["planes"][0]["ndip"] == 1 and meta["planes"][0]["nstrike"] == 1
@@ -1528,6 +1550,9 @@ def load_sliprate(srf_file, framerate, meta):
 
 
 def load_slip_cpt(meta, cpt_max):
+    """
+    CPT for SRF slip.
+    """
     if meta["pointsource"]:
         return
 
@@ -1671,6 +1696,10 @@ def load_overlays(args, movements, wd):
 
 
 def add_frames_single(work, meta, poi):
+    """
+    Add a single frame if not creating an animation.
+    It simply shows the SRF slip, faces the plane.
+    """
     work["msgs"].append(
         (
             timeslice,
@@ -1812,6 +1841,9 @@ def i2p(zfacs, i):
 
 
 def pois(meta, xpos):
+    """
+    POI from XYTS slice. Needs to be performance improved to be useful.
+    """
     gm_file = os.path.join(meta["wd"], "xyts", "ts%04d.nc" % (xpos))
     if os.path.isfile(gm_file):
         with h5open(gm_file, "r") as h:
