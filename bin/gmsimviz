@@ -1592,7 +1592,7 @@ def load_slip_cpt(meta, cpt_max):
     np.float64(cpt_max).tofile(checkpoint_file)
 
 
-def load_xyts_meta(args, meta, work, poi_srf):
+def load_xyts_meta(args, meta, work, poi_srf, frames_sr):
     meta["xyts_file"] = args.xyts
     frames_gm = 0
     final_azimuth = 180
@@ -1620,6 +1620,8 @@ def load_xyts_meta(args, meta, work, poi_srf):
             frames_gm = math.floor(
                 meta["xyts_dt"] * meta["xyts_nt"] * args.framerate / args.speed
             )
+        # don't allow slip to go beyond GM time
+        frames_sr = min(frames_sr, frames_gm)
         # ground motion 3D Z extent based on sim domain size
         # final size also depends on map tilt angle
         xlen1 = geo.ll_dist(
@@ -1671,6 +1673,7 @@ def load_xyts_meta(args, meta, work, poi_srf):
     diff_azimuth /= frames_azimuth
 
     return {
+        "frames_sr": frames_sr,
         "frames_gm": frames_gm,
         "frames_azimuth": frames_azimuth,
         "final_azimuth": final_azimuth,
@@ -2210,8 +2213,7 @@ if RANK == MASTER:
     meta, poi_srf = load_meta(args)
     frames_sr = load_sliprate(args.srf_file, args.framerate, meta)
     load_slip_cpt(meta, args.srf_cpt_max)
-    movements = load_xyts_meta(args, meta, work, poi_srf)
-    movements["frames_sr"] = frames_sr
+    movements = load_xyts_meta(args, meta, work, poi_srf, frames_sr)
     load_overlays(args, movements, meta["wd"])
     # tasks
     if not args.animate:
