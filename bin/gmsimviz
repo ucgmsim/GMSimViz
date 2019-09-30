@@ -287,6 +287,13 @@ def load_hdf5(h5file, basename, landmask=True):
     return region, pois
 
 
+def custom_movement(movement, sim_time, lon, lat, dlon, dlat):
+    if len(movement) == 0:
+        return lon, lat, dlon, dlat
+
+    return lon1, lat1, dlon1, dlat1
+
+
 def frame_init(gmt_ps):
     # begin plot
     frame = gmt.GMTPlot(gmt_ps)
@@ -379,6 +386,11 @@ def frame_window(job, meta, swd):
         # adjust area
         dlon1 += (dlon0 - dlon1) * (1 - prog)
         dlat1 += (dlat0 - dlat1) * (1 - prog)
+
+    # modify for manual selection
+    lon1, lat1, dlon1, dlat1 = custom_movement(
+        meta["movement"], job["sim_time"], lon1, lat1, dlon1, dlat1
+    )
 
     km_region = (-dlon1, dlon1, -dlat1, dlat1)
     projection = "OA%s/%s/%s/%s" % (lon1, lat1, job["azimuth"] - 90, PAGE_WIDTH)
@@ -1360,6 +1372,39 @@ def validate_args(args):
     return args
 
 
+def process_movement(args):
+    movement_list = []
+    if args.movement is None:
+        return movement_list
+
+    for m in args.movement:
+        p = m.split("+")
+        i = [x[0] for x in p]
+        d = {"time": float(p[0])}
+        if "t" not in i:
+            d["transition"] = min(d["time"], args.time)
+        else:
+            d["transition"] = min(d["time"], float(p[i.index("t")][1:]))
+        if "c" in i:
+            c = p[i.index("c")][1:]
+            if c == "":
+                # reset to normal
+                d["centre"] = None
+            else:
+                d["centre"] = list(map(float, c.split("/")))
+        if "z" in i:
+            z = p[i.index("z")][1:]
+            if z == "":
+                # reset to normal
+                d["zoom"] = None
+            else:
+                d["zoom"] = float(z)
+
+        movement_list.append(d)
+
+    return movement_list
+
+
 def get_args():
     from argparse import ArgumentParser
 
@@ -1408,6 +1453,9 @@ def get_args():
         help="displays all sorts of things, implies --crude",
         action="store_true",
     )
+    # --movement 20+c-44/172+z600
+    # --movement 40+c+z (back to normal)
+    arg("--movement", help="sim_time[+c[centre lon/lat]][+z[zoom km]]", action="append")
 
     try:
         args = parser.parse_args()
@@ -1415,6 +1463,7 @@ def get_args():
         COMM.Abort(100)
     if args.devel:
         args.crude = True
+    args.movement = process_movement(args)
 
     return args
 
@@ -1492,6 +1541,7 @@ def load_meta(args):
         "devel": args.devel,
         "pause_frames": int(round(args.ptime * args.framerate)),
         "speed": args.speed,
+        "movement": args.movement,
     }
 
     return meta, poi_srf
