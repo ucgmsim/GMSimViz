@@ -1969,7 +1969,7 @@ def l2t(l):
     Converts linear progression into tanh based progression.
     l: linear progression 0->1
     """
-    l = min(1.0, l * TANH_RANGE)
+    l = min(1.0, l * TANH_TRANGE)
     return 0.5 + 0.5 * math.tanh(l - TANH_TRANGE / 2) + TANH_GAP * (l - TANH_TRANGE / 2)
 
 
@@ -2027,9 +2027,7 @@ def add_frames_slip_progress(work, meta, movements):
 def add_frames_camera_reset(work, meta, movements):
     # stage 5 camera reset
     frames_return = meta["t_frames"] * 4
-    diff_azimuth_return = (
-        geo.angle_diff(movements["final_azimuth"], 180) / frames_return
-    )
+    diff_azimuth = geo.angle_diff(movements["final_azimuth"], 180)
     if movements["frames_gm"] == 0:
         msgs = work["msgs"]
         zoom = 1.618
@@ -2037,10 +2035,11 @@ def add_frames_camera_reset(work, meta, movements):
         msgs = work["msgs_post_ts"]
         zoom = 1.2
     for i in range(frames_return):
+        tanh_progress = l2t(i / frames_return - 1)
         scale_t = 1 - min(1, i / (meta["t_frames"] - 1.0))
         over_t = 100 - (100 - OVERLAY_T) * scale_t
-        azimuth = movements["final_azimuth"] + i * diff_azimuth_return
-        tilt = 90 - (1 - (i / float(frames_return - 1))) * (90 - meta["map_tilt"])
+        azimuth = movements["final_azimuth"] + tanh_progress * diff_azimuth
+        tilt = 90 - (1 - tanh_progress) * (90 - meta["map_tilt"])
         msgs.append(
             [
                 timeslice,
