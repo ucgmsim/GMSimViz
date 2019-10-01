@@ -1958,10 +1958,10 @@ def zoom_out_timing(movements):
     # frame index to zoom progression (zoom out within 12.5 seconds)
     if movements["frames_gm"] / movements["fps"] >= 12.5 / zoom_max_fac:
         # transition over 12.5 seconds
-        movements["zoom_out"] = (12.5 * movements["fps"]) / TANH_TRANGE
+        movements["zoom_out"] = (12.5 * movements["fps"])
     else:
         # transition over maximum factor
-        movements["zoom_out"] = (movements["frames_gm"] * 0.618) / TANH_TRANGE
+        movements["zoom_out"] = (movements["frames_gm"] * 0.618)
 
 
 def l2t(l):
@@ -1969,7 +1969,7 @@ def l2t(l):
     Converts linear progression into tanh based progression.
     l: linear progression 0->1
     """
-    l = min(1.0, l * TANH_TRANGE)
+    l = min(TANH_TRANGE, l * TANH_TRANGE)
     return 0.5 + 0.5 * math.tanh(l - TANH_TRANGE / 2) + TANH_GAP * (l - TANH_TRANGE / 2)
 
 
