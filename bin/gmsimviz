@@ -2035,7 +2035,7 @@ def add_frames_camera_reset(work, meta, movements):
         msgs = work["msgs_post_ts"]
         zoom = 1.2
     for i in range(frames_return):
-        tanh_progress = l2t(i / frames_return - 1)
+        tanh_progress = l2t(i / (frames_return - 1))
         scale_t = 1 - min(1, i / (meta["t_frames"] - 1.0))
         over_t = 100 - (100 - OVERLAY_T) * scale_t
         azimuth = movements["final_azimuth"] + tanh_progress * diff_azimuth
