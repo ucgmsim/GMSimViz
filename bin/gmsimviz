@@ -340,7 +340,7 @@ def custom_movement(movement, sim_time, lon, lat, dlon, dlat):
             lon1, lat1 = lon, lat
         else:
             lon1, lat1 = now["centre"]
-        lon0 += (lon1 - lat0) * tanh_progress
+        lon0 += (lon1 - lon0) * tanh_progress
         lat0 += (lat1 - lat0) * tanh_progress
     if "zoom" in now:
         if now["zoom"] is None:
@@ -1532,9 +1532,9 @@ def get_args():
         help="displays all sorts of things, implies --crude",
         action="store_true",
     )
-    # --movement 20+c-44/172+z600
-    # --movement 40+c+z (back to normal)
-    arg("--movement", help="sim_time[+c[centre lon/lat]][+z[zoom km]]", action="append")
+    # --movement 20+c172/-44+z600+t8 (transition from 12->20 seconds to centre at 172/-44 and display 600km accross the window)
+    # --movement 40+c+z (back to normal over the default amount of time)
+    arg("--movement", help="sim_time[+c[centre lon/lat]][+z[zoom km]][+t[transition time]]", action="append")
 
     try:
         args = parser.parse_args()
