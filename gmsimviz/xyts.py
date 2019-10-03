@@ -50,10 +50,12 @@ class XYTSFile:
         self.x0, self.y0, self.z0, self.t0, self.nx, self.ny, self.nz, self.nt = np.fromfile(
             xytf, dtype="%si4" % (endian), count=8
         )
-        self.dx, self.dy, self.hh, self.dt, self.mrot, self.mlat, self.mlon = np.fromfile(
+        self.dx, self.dy, self.hh, dt, self.mrot, self.mlat, self.mlon = np.fromfile(
             xytf, dtype="%sf4" % (endian), count=7
         )
         xytf.close()
+        # dt is sensitive to float error
+        self.dt = np.around(dt, decimals=4)
 
         # determine original sim parameters
         self.dxts = int(round(self.dx / self.hh))
