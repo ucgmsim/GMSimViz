@@ -1743,13 +1743,13 @@ def load_xyts_meta(args, meta, work, poi_srf, frames_sr):
         if args.gm_cut is None:
             meta["xyts_nt"] = xfile.nt
         else:
-            meta["xyts_nt"] = min(xfile.nt, int(round(args.gm_cut / xfile.dt)))
+            meta["xyts_nt"] = min(xfile.nt, int(round(args.gm_cut / xfile.dt)) + 1)
         if args.animate:
             work["msgs"].append([load_xyts, meta, args.xyts_cpt_max])
             work["deps"] += 1
-            frames_gm = math.floor(
-                meta["xyts_dt"] * meta["xyts_nt"] * args.framerate / args.speed
-            )
+            frames_gm = int(round(
+                meta["xyts_dt"] * (meta["xyts_nt"] - 1) * args.framerate / args.speed
+            ))
         # don't allow slip to go beyond GM time
         frames_sr = min(frames_sr, frames_gm)
         # ground motion 3D Z extent based on sim domain size
@@ -1861,16 +1861,16 @@ def add_frames_face_slip(work, meta, movements, frames):
     # stage 1 face slip
     for i in range(frames):
         if meta["s_azimuth"] <= 180:
-            azimuth = 180 - (i / float(frames - 1)) * (180 - meta["s_azimuth"])
+            azimuth = 180 - (i / (frames - 1)) * (180 - meta["s_azimuth"])
         else:
-            azimuth = 180 + (i / float(frames - 1)) * (meta["s_azimuth"] - 180)
-        scale_t = min(float(i), meta["mt_frames"]) / meta["mt_frames"]
+            azimuth = 180 + (i / (frames - 1)) * (meta["s_azimuth"] - 180)
+        scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
         if meta["pointsource"]:
             scale_t = 0
             subtitle = "Fault Location"
         else:
             subtitle = "Fault Slip Distribution"
-        tilt = 90 - (i / float(frames - 1)) * (90 - meta["map_tilt"])
+        tilt = 90 - (i / (frames - 1)) * (90 - meta["map_tilt"])
         work["msgs"].append(
             [
                 timeslice,
@@ -1999,12 +1999,12 @@ def add_frames_slip_progress(work, meta, movements):
     # stage 4 slip animation if no xyts
     if movements["frames_gm"] == 0:
         for i in range(movements["frames_sr"]):
-            sim_time = float(i) / movements["fps"] * meta["speed"]
+            sim_time = i / movements["fps"] * meta["speed"]
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
             else:
                 azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
-            scale_t = min(float(i), meta["mt_frames"]) / meta["mt_frames"]
+            scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
             work["msgs"].append(
                 [
                     timeslice,
@@ -2259,14 +2259,14 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
     ready = range(start_idx, meta["xyts_nt"], inc_idx)
     for i in range(movements["frames_sr"]):
         # frames containing slip rate
-        sim_time = float(i) / movements["fps"] * meta["speed"]
+        sim_time = i / movements["fps"] * meta["speed"]
         xpos = int(round(sim_time / meta["xyts_dt"]))
         if xpos in ready:
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
             else:
                 azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
-            scale_t = min(float(i), meta["mt_frames"]) / meta["mt_frames"]
+            scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
             work["msgs"].append(
                 [
                     timeslice,
@@ -2292,10 +2292,10 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
             )
     for i in range(movements["frames_sr"], movements["frames_gm"]):
         # frames containing only ground motion
-        sim_time = float(i) / movements["fps"] * meta["speed"]
+        sim_time = i / movements["fps"] * meta["speed"]
         xpos = int(round(sim_time / meta["xyts_dt"]))
         scale_x = (
-            min(float(i - movements["frames_sr"]), meta["mt_frames"])
+            min(i - movements["frames_sr"], meta["mt_frames"])
             / meta["mt_frames"]
         )
         if xpos in ready:
