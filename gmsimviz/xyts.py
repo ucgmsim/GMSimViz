@@ -54,7 +54,7 @@ class XYTSFile:
             xytf, dtype="%sf4" % (endian), count=7
         )
         xytf.close()
-        # dt is sensitive to float error
+        # dt is sensitive to float error eg 0.2 stores as 0.199999 (dangerous)
         self.dt = np.around(dt, decimals=4)
 
         # determine original sim parameters
