@@ -680,13 +680,7 @@ def frame_logo(frame, left=False, right=False):
     if left:
         logo = os.path.join(os.path.dirname(geo.__file__), "logo-left.png")
         frame.image(
-            "L",
-            "T",
-            os.path.join(logo),
-            width="2.0i",
-            pos="rel",
-            dx=WINDOW_L,
-            dy=0.02,
+            "L", "T", os.path.join(logo), width="2.0i", pos="rel", dx=WINDOW_L, dy=0.02
         )
     if right:
         logo = os.path.join(os.path.dirname(geo.__file__), "logo-right.png")
@@ -696,7 +690,7 @@ def frame_logo(frame, left=False, right=False):
             os.path.join(logo),
             width="2.5i",
             pos="rel",
-            dx=WINDOW_R-0.15,
+            dx=WINDOW_R - 0.15,
             dy=-0.15,
         )
 
@@ -1363,9 +1357,7 @@ def timeslice(job, meta):
     region[-1] = region[-1][:-1]
     region = list(map(float, region))
     km = geo.ll_dist(region[0], region[1], region[2], region[3])
-    size = gmt.mapproject(
-        region[2], region[3], wd=p.wd, unit="inch", z=p.z
-    )
+    size = gmt.mapproject(region[2], region[3], wd=p.wd, unit="inch", z=p.z)
     inch = math.sqrt(sum(np.power(size, 2)))
     refs = inch / (km * 0.618)
     p.coastlines(width="%sp" % (refs * 20))
@@ -1540,8 +1532,8 @@ def get_args():
     arg(
         "--downscale",
         type=int,
-        default=1,
-        help="ghostscript downscale factor (prevents jitter)",
+        default=2,
+        help="ghostscript downscale factor (prevents jitter), recommended 8",
     )
     arg("--liquefaction-s", help="liquefaction susceptibility hdf5 filepath")
     arg("--liquefaction-p", help="liquefaction probability hdf5 filepath")
@@ -2315,29 +2307,31 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
             xxxxx = i
             xxxxx_t = sim_time
         else:
-            azimuth = 390 + l2t((sim_time - xxxxx_t) / (270 - xxxxx_t)) * geo.angle_diff(390, movements["final_azimuth"])
-        #else:
+            azimuth = 390 + l2t(
+                (sim_time - xxxxx_t) / (270 - xxxxx_t)
+            ) * geo.angle_diff(390, movements["final_azimuth"])
+        # else:
         #    diff = -135 + geo.angle_diff(0, movements["final_azimuth"])
         #    azimuth = 135 + (i - xxx) / (movements["frames_azimuth"] - xxx) * diff
-        #f 30 < sim_time < 40:
+        # f 30 < sim_time < 40:
         #    # move to final azimuth
         #    i30 = 30 * movements["fps"] * meta["speed"]
         #    azimuth30 = 135 + (i30 - xxx) / (movements["frames_azimuth"] - xxx) * diff
         #    azimuth = azimuth30 + l2t((sim_time - 30) / 10) * geo.angle_diff(azimuth30, movements["final_azimuth"])
-        #elif 40 <= sim_time <= 110:
+        # elif 40 <= sim_time <= 110:
         #    # keep still
         #    azimuth = movements["final_azimuth"]
-        #elif 110 < sim_time < 120:
+        # elif 110 < sim_time < 120:
         #    # back to would-be azimuth
         #    i120 = 30 * movements["fps"] * meta["speed"]
         #    azimuth120 = 135 + (i120 - xxx) / (movements["frames_azimuth"] - xxx) * diff
         #    azimuth = azimuth120 + l2t((sim_time - 110) / 10) * geo.angle_diff(azimuth120, movements["final_azimuth"])
-            
+
         ### END HACK
         if xpos in ready:
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
-            #else:
+            # else:
             #    azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
             scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
             work["msgs"].append(
@@ -2369,17 +2363,19 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
         xpos = int(round(sim_time / meta["xyts_dt"]))
         scale_x = min(i - movements["frames_sr"], meta["mt_frames"]) / meta["mt_frames"]
         ### BEGIN HACK
-        #diff = -135 + geo.angle_diff(0, movements["final_azimuth"])
-        #azimuth = 135 + (i - xxx) / (movements["frames_azimuth"] - xxx) * diff
+        # diff = -135 + geo.angle_diff(0, movements["final_azimuth"])
+        # azimuth = 135 + (i - xxx) / (movements["frames_azimuth"] - xxx) * diff
         if sim_time < 270:
-            azimuth = 390 + l2t((sim_time - xxxxx_t) / (270 - xxxxx_t)) * geo.angle_diff(390, movements["final_azimuth"])
+            azimuth = 390 + l2t(
+                (sim_time - xxxxx_t) / (270 - xxxxx_t)
+            ) * geo.angle_diff(390, movements["final_azimuth"])
         else:
             azimuth = movements["final_azimuth"]
         ### END HACK
         if xpos in ready:
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
-            #else:
+            # else:
             #    azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
             work["msgs"].append(
                 [
