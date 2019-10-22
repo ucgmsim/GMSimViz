@@ -137,7 +137,7 @@ Here are details for command options:
 - `-f` set the framerate of the animation eg: 30. The minimum is 5 and each frame is independent so a framerate of 60 would take roughly twice as long as 30.
 - `--title` title on the movie, the default is the basename of the SRF file. In the screenshots at the top of the page, the title is "Kaikoura 2016".
 - `--dpi` dpi of output. Frames are 16 inches x 9 inches so 240 will produce 4k output, 120 for FullHD.
-- `--downscale` render at higher resolution and then downscale. Prevents jitter in object positioning. 8 is ideal for a smooth result.
+- `--downscale` render at higher resolution and then downscale. Prevents jitter in object positioning and increases definition of ground motion etc. 8 is ideal for a smooth result, highly recommended.
 - `-x` XYTS file. This is an output created by the EMOD3D software that simulates ground motion. This provides the simulation domain and ground motion data. The XYTS file format is described [here](./XYTS.md)
 - `--liquefaction-s` and `--landslide-s` Liquefaction and/or landslide suceptibility HDF5 file. Longitude and latitude is stored as an array under 'x' and 'y' respectively. `model` is a 2D array containing the actual values in the shape (y, x).
 - `--liquefaction-p` and `--landslide-p` As above for the probability from given event.

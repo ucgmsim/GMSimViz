@@ -28,22 +28,33 @@ import gmsimviz.gmt as gmt
 import gmsimviz.srf as srf
 import gmsimviz.xyts as xyts
 
-MASTER = 0
+# map will tilt to face slip square on but also limited by MIN and MAX
 TILT_MIN = 40
 TILT_MAX = 20
+# when dipping below surface, map tilt will be 1 degree (almost into the page)
 TILT_DIP = 1
+# frames at 16 inches by 9 inches means 120 dpi is equivalent to 1920x1080 px
 PAGE_WIDTH = 16
 PAGE_HEIGHT = 9
+# colour scale at bottom of page (length, thickness, padding from map)
 SCALE_WIDTH = PAGE_WIDTH / 1.618
 SCALE_SIZE = 0.25
 SCALE_PAD = 0.1
+# default overlay transparency %
 OVERLAY_T = 40
+# transition smoothing using tanh -3 -> 3
+TANH_TRANGE = 6
+# tanh linear gap fill over effective range tanh
+TANH_GAP = (0.5 + 0.5 * math.tanh(-TANH_TRANGE / 2)) / (TANH_TRANGE / 2)
+# try to keep full rotation longer than this
+MIN_ROTATION_DURATION = 5
 # borders on page
 WINDOW_T = 0.8
 WINDOW_B = 0.3
 WINDOW_L = 0.5
 WINDOW_R = 0.5
 
+# MPI stuff
 COMM = MPI.COMM_WORLD
 RANK = COMM.Get_rank()
 SIZE = COMM.Get_size()
@@ -121,7 +132,7 @@ def load_xyts_ts(meta, job):
     xfile = xyts.XYTSFile(meta["xyts_file"], meta_only=False)
     crop_grd = os.path.join(meta["wd"], "xyts", "mask.nc")
     # preload timeslice overlays
-    for t in range(job["start"], xfile.nt, job["inc"]):
+    for t in range(job["start"], meta["xyts_nt"], job["inc"]):
         ts_prefix = os.path.join(meta["wd"], "xyts", "ts%04d" % (t))
         if os.path.isfile("%s.nc" % (ts_prefix)):
             # continuing from previous run
@@ -278,6 +289,71 @@ def load_hdf5(h5file, basename, landmask=True):
     return region, pois
 
 
+def custom_movement(movement, sim_time, lon, lat, dlon, dlat):
+    # enforce that previous and now cannot both be None below
+    if (
+        len(movement) == 0
+        or movement[0]["time"] - movement[0]["transition"] >= sim_time
+    ):
+        return lon, lat, dlon, dlat
+
+    # last completed transition and transition in progress
+    previous_centre = None
+    previous_zoom = None
+    now = None
+    for m in movement:
+        # enforced to be in chronological order
+        if m["time"] - m["transition"] >= sim_time:
+            # haven't reached this yet
+            break
+        elif m["time"] <= sim_time:
+            # transition has completed
+            if "zoom" in m:
+                # here and below m[...] can be None to mean reset to normal
+                previous_zoom = m["zoom"]
+            if "centre" in m:
+                previous_centre = m["centre"]
+        elif m["time"] - m["transition"] < sim_time:
+            # in process of transition
+            now = m
+            break
+
+    # apply previous transitions
+    if previous_zoom is not None:
+        dlon0 = previous_zoom / 2
+        dlat0 = previous_zoom / 2
+    else:
+        dlon0 = dlon
+        dlat0 = dlat
+    if previous_centre is not None:
+        lon0, lat0 = previous_centre
+    else:
+        lon0, lat0 = lon, lat
+    if now is None:
+        return lon0, lat0, dlon0, dlat0
+
+    # apply current transition
+    linear_progress = (sim_time - (now["time"] - now["transition"])) / now["transition"]
+    tanh_progress = l2t(linear_progress)
+    if "centre" in now:
+        if now["centre"] is None:
+            lon1, lat1 = lon, lat
+        else:
+            lon1, lat1 = now["centre"]
+        lon0 += (lon1 - lon0) * tanh_progress
+        lat0 += (lat1 - lat0) * tanh_progress
+    if "zoom" in now:
+        if now["zoom"] is None:
+            dlon1, dlat1 = dlon, dlat
+        else:
+            dlon1 = now["zoom"] / 2
+            dlat1 = now["zoom"] / 2
+        dlon0 += (dlon1 - dlon0) * tanh_progress
+        dlat0 += (dlat1 - dlat0) * tanh_progress
+
+    return lon0, lat0, dlon0, dlat0
+
+
 def frame_init(gmt_ps):
     # begin plot
     frame = gmt.GMTPlot(gmt_ps)
@@ -371,6 +447,11 @@ def frame_window(job, meta, swd):
         dlon1 += (dlon0 - dlon1) * (1 - prog)
         dlat1 += (dlat0 - dlat1) * (1 - prog)
 
+    # modify for manual selection
+    lon1, lat1, dlon1, dlat1 = custom_movement(
+        meta["movement"], job["sim_time"], lon1, lat1, dlon1, dlat1
+    )
+
     km_region = (-dlon1, dlon1, -dlat1, dlat1)
     projection = "OA%s/%s/%s/%s" % (lon1, lat1, job["azimuth"] - 90, PAGE_WIDTH)
     km_region = gmt.fill_space_oblique(
@@ -433,7 +514,11 @@ def frame_window(job, meta, swd):
 
 
 def frame_proj(frame, window, projected, shift=True):
-    # shortcut to switch between geographic and plot projections
+    """
+    shortcut to switch between geographic and plot projections
+    shift: vertically centre map with projected, bring back without projected
+           False is a hack to work with slip overlays projected on cartesian space
+    """
     if projected:
         frame.spacial(
             "OA",
@@ -504,6 +589,9 @@ def frame_outlines(frame, meta):
 
 
 def frame_sliprate(job, meta, window, wd):
+    """
+    Generates sliprate grid at time given window view in cartesian page space.
+    """
     if meta["pointsource"]:
         return
 
@@ -586,18 +674,25 @@ def frame_sliprate(job, meta, window, wd):
             os.remove("%s/slip_%d.grd" % (wd, i))
 
 
-def frame_logo(frame, logo=None):
-    if logo is None:
-        logo = os.path.join(os.path.dirname(geo.__file__), "quakecore-logo.png")
-    frame.image(
-        "R",
-        "T",
-        os.path.join(logo),
-        width="2.5i",
-        pos="rel",
-        dx=WINDOW_R - 0.15,
-        dy=-0.15,
-    )
+def frame_logo(frame, left=False, right=False):
+    # add logos
+    # TODO: adjust logo size to fit height instead and make it easy to replace logos
+    if left:
+        logo = os.path.join(os.path.dirname(geo.__file__), "logo-left.png")
+        frame.image(
+            "L", "T", os.path.join(logo), width="2.0i", pos="rel", dx=WINDOW_L, dy=0.02
+        )
+    if right:
+        logo = os.path.join(os.path.dirname(geo.__file__), "logo-right.png")
+        frame.image(
+            "R",
+            "T",
+            os.path.join(logo),
+            width="2.5i",
+            pos="rel",
+            dx=WINDOW_R - 0.15,
+            dy=-0.15,
+        )
 
 
 def frame_op(op, prefix, seq_from, seq_to):
@@ -661,6 +756,9 @@ def frame_type(sim_time):
 
 
 def frame_srf_surface(frame, plot_type, n_plane, transparency, srf_wd):
+    """
+    Adds SRF grids to plot.
+    """
     if plot_type == "slip" and transparency < 100:
         # show total slip
         for s in range(n_plane):
@@ -788,7 +886,7 @@ def frame_proj_items(frame, job, meta, window):
 
 
 def frame_border_init(scale_y_final, transition, tilt, wd):
-    # calculate inner region for map ticks
+    # calculate inner map region (inside border) for map ticks
     # manually adjusted y as mapproject -I not compatible with -p
     scale_y = transition * scale_y_final
     window_b = max(WINDOW_B, scale_y)
@@ -854,7 +952,7 @@ def frame_border(frame, window_b, job, meta):
             colour="black@%s" % (job["transparency"]),
         )
     # add QuakeCoRE logo
-    frame_logo(frame)
+    frame_logo(frame, left=meta["logo_left"], right=meta["logo_right"])
 
 
 def frame_scales(frame, job, meta, plot, scale_y):
@@ -1004,7 +1102,7 @@ def frame_scale_distribution(frame, srf_data, scale_margin, cpt_y, cpt_max):
 
 def frame_iproj(frame, window, llur_i, window_b):
     """
-    Set projection of the inner area to draw map ticks, legend.
+    Set projection of the inner area (inside borders) to draw map ticks, legend.
     """
     frame.spacial(
         "OA%s/%s/%s/" % (window["c_lon"], window["c_lat"], window["azimuth"] - 90),
@@ -1042,6 +1140,9 @@ def frame_ticks(frame, labels=True):
 
 
 def frame_legend(frame, overlay, transparency):
+    """
+    Add legend for path overlay.
+    """
     legend_file = "%s.legend" % (os.path.splitext(overlay)[0])
     if os.path.exists(legend_file):
         gmt.gmt_set(["FONT_ANNOT_PRIMARY", "12p"])
@@ -1250,6 +1351,17 @@ def timeslice(job, meta):
 
     # ground motion must be in geographic projection due to 3D Z scaling
     frame_proj(p, window, True, shift=False)
+    ### BEGIN HACK
+    # could start with units or end with 'r'
+    region = p.history("R").split("/")
+    region[-1] = region[-1][:-1]
+    region = list(map(float, region))
+    km = geo.ll_dist(region[0], region[1], region[2], region[3])
+    size = gmt.mapproject(region[2], region[3], wd=p.wd, unit="inch", z=p.z)
+    inch = math.sqrt(sum(np.power(size, 2)))
+    refs = inch / (km * 0.618)
+    p.coastlines(width="%sp" % (refs * 20))
+    ### END HACK
     frame_proj_items(p, job, meta, window)
     # start plotting external items relative to border
     scale_y, window_b, llur_i = frame_border_init(
@@ -1337,18 +1449,68 @@ def validate_args(args):
     return args
 
 
+def process_movement(args):
+    movement_list = []
+    if args.movement is None:
+        return movement_list
+
+    for m in args.movement:
+        p = m.split("+")
+        i = [x[0] for x in p]
+        d = {"time": float(p[0])}
+        if "t" not in i:
+            d["transition"] = min(d["time"], args.time)
+        else:
+            d["transition"] = min(d["time"], float(p[i.index("t")][1:]))
+        for ml in movement_list:
+            if (
+                d["time"] - d["transition"] < ml["time"] < d["time"]
+                or d["time"] - d["transition"]
+                < ml["time"] - ml["transition"]
+                < d["time"]
+                or (
+                    ml["time"] - ml["transition"] < d["time"] - d["transition"]
+                    and ml["time"] > d["time"]
+                )
+            ):
+                # transitions interfere with each other
+                COMM.Abort(150)
+        if "c" in i:
+            c = p[i.index("c")][1:]
+            if c == "":
+                # reset to normal
+                d["centre"] = None
+            else:
+                d["centre"] = list(map(float, c.split("/")))
+        if "z" in i:
+            z = p[i.index("z")][1:]
+            if z == "":
+                # reset to normal
+                d["zoom"] = None
+            else:
+                d["zoom"] = float(z)
+
+        movement_list.append(d)
+
+    times = [d["time"] for d in movement_list]
+    if len(times) > len(set(times)):
+        # split time spec not supported, one spec per time
+        COMM.Abort(151)
+
+    # chronological order
+    return [movement_list[mt] for mt in np.argsort(times)]
+
+
 def get_args():
     from argparse import ArgumentParser
 
-    ###
-    ### load
-    ###
     parser = ArgumentParser()
     arg = parser.add_argument
     arg("srf_file", help="srf file to plot")
     arg("--title", help="main title on animation")
     arg("-x", "--xyts", help="xyts file for GM overlay")
-    arg("--gm-cut", help="cutoff time for ground motion", type=float)
+    arg("--gm-cut", help="cutoff sim time (s) for ground motion", type=float)
+    arg("--speed", help="1: real time, 2: double speed etc...", type=float, default=2.0)
     arg("--min-zoom", help="set animation zoom (km)", type=float)
     arg("--srf-cpt-max", help="SRF colour scale max value", type=int)
     arg("--xyts-cpt-max", help="XYTS colour scale max value", type=int)
@@ -1370,8 +1532,8 @@ def get_args():
     arg(
         "--downscale",
         type=int,
-        default=1,
-        help="ghostscript downscale factor (prevents jitter)",
+        default=2,
+        help="ghostscript downscale factor (prevents jitter), recommended 8",
     )
     arg("--liquefaction-s", help="liquefaction susceptibility hdf5 filepath")
     arg("--liquefaction-p", help="liquefaction probability hdf5 filepath")
@@ -1387,6 +1549,15 @@ def get_args():
         help="displays all sorts of things, implies --crude",
         action="store_true",
     )
+    arg("--logo-l", help="include left logo", action="store_true")
+    arg("--logo-r", help="include right logo", action="store_true")
+    # --movement 20+c172/-44+z600+t8 (transition from 12->20 seconds to centre at 172/-44 and display 600km accross the window)
+    # --movement 40+c+z (back to normal over the default amount of time)
+    arg(
+        "--movement",
+        help="sim_time[+c[centre lon/lat]][+z[zoom km]][+t[transition time]]",
+        action="append",
+    )
 
     try:
         args = parser.parse_args()
@@ -1394,11 +1565,15 @@ def get_args():
         COMM.Abort(100)
     if args.devel:
         args.crude = True
+    args.movement = process_movement(args)
 
     return args
 
 
 def load_meta(args):
+    """
+    Common properties of this animation / data.
+    """
 
     # load plane data
     try:
@@ -1458,7 +1633,8 @@ def load_meta(args):
         "gmt_bottom": gmt_bottom,
         "gmt_top": gmt_top,
         "animate": args.animate,
-        "t_frames": int(args.mtime * args.framerate),
+        "t_frames": int(round(args.time * args.framerate)),
+        "mt_frames": int(round(args.mtime * args.framerate)),
         "srf_bounds": bounds,
         "rot": args.rot,
         "downscale": args.downscale,
@@ -1467,12 +1643,19 @@ def load_meta(args):
         "crude": args.crude,
         "devel": args.devel,
         "pause_frames": int(round(args.ptime * args.framerate)),
+        "speed": args.speed,
+        "movement": args.movement,
+        "logo_left": args.logo_l,
+        "logo_right": args.logo_r,
     }
 
     return meta, poi_srf
 
 
 def load_sliprate(srf_file, framerate, meta):
+    """
+    Cumulative slip timeseries from SRF.
+    """
     meta["planes"] = srf.read_header(srf_file, idx=True)
     meta["pointsource"] = (
         meta["planes"][0]["ndip"] == 1 and meta["planes"][0]["nstrike"] == 1
@@ -1493,7 +1676,7 @@ def load_sliprate(srf_file, framerate, meta):
     # internal dt
     srf_dt = srf.srf_dt(srf_file)
     # frames per slip rate increment
-    fpdt = 1 / (srf_dt * framerate)
+    fpdt = 1 / (srf_dt * framerate / meta["speed"])
     # decimation of srf slip rate dt to show
     srf_ddt = max(1, math.floor(fpdt))
     # desimated dt
@@ -1501,7 +1684,7 @@ def load_sliprate(srf_file, framerate, meta):
     ts_sr = int(math.ceil(rup_time / ddt))
     time_sr = ts_sr * ddt
     # frames containing slip rates
-    frames_sr = int(time_sr * framerate)
+    frames_sr = int(round(time_sr * framerate / meta["speed"]))
     # TODO: possibly interpolate in future
     spec_sr = "slipts-%s-%s" % (ddt, time_sr)
     slip_pos, slip_rate = srf.srf2llv_py(srf_file, value=spec_sr, depth=True)
@@ -1526,6 +1709,9 @@ def load_sliprate(srf_file, framerate, meta):
 
 
 def load_slip_cpt(meta, cpt_max):
+    """
+    CPT for SRF slip.
+    """
     if meta["pointsource"]:
         return
 
@@ -1561,7 +1747,7 @@ def load_slip_cpt(meta, cpt_max):
     np.float64(cpt_max).tofile(checkpoint_file)
 
 
-def load_xyts_meta(args, meta, work, poi_srf):
+def load_xyts_meta(args, meta, work, poi_srf, frames_sr):
     meta["xyts_file"] = args.xyts
     frames_gm = 0
     final_azimuth = 180
@@ -1579,13 +1765,23 @@ def load_xyts_meta(args, meta, work, poi_srf):
         meta["xyts_region"] = xregion
         meta["xyts_res"] = xres
         meta["xyts_dt"] = xfile.dt
-        meta["xyts_nt"] = xfile.nt
+        if args.gm_cut is None:
+            meta["xyts_nt"] = xfile.nt
+        else:
+            meta["xyts_nt"] = min(xfile.nt, int(round(args.gm_cut / xfile.dt)) + 1)
         if args.animate:
             work["msgs"].append([load_xyts, meta, args.xyts_cpt_max])
             work["deps"] += 1
-            frames_gm = int(meta["xyts_dt"] * (meta["xyts_nt"] - 0.6) * args.framerate)
-            if args.gm_cut is not None:
-                frames_gm = min(frames_gm, int(args.gm_cut * args.framerate))
+            frames_gm = int(
+                round(
+                    meta["xyts_dt"]
+                    * (meta["xyts_nt"] - 1)
+                    * args.framerate
+                    / args.speed
+                )
+            )
+        # don't allow slip to go beyond GM time
+        frames_sr = min(frames_sr, frames_gm)
         # ground motion 3D Z extent based on sim domain size
         # final size also depends on map tilt angle
         xlen1 = geo.ll_dist(
@@ -1623,7 +1819,7 @@ def load_xyts_meta(args, meta, work, poi_srf):
     diff_azimuth = geo.angle_diff(meta["s_azimuth"], final_azimuth)
     frames_azimuth = int(max(frames_sr, frames_gm) * 0.85)
     # rotate in short direction if rotation speed is too high
-    long_direction = (frames_azimuth / args.framerate) > 5
+    long_direction = (frames_azimuth / args.framerate) > MIN_ROTATION_DURATION
     if diff_azimuth < 0:
         if args.direction == "ccw":
             diff_azimuth -= 360
@@ -1637,6 +1833,7 @@ def load_xyts_meta(args, meta, work, poi_srf):
     diff_azimuth /= frames_azimuth
 
     return {
+        "frames_sr": frames_sr,
         "frames_gm": frames_gm,
         "frames_azimuth": frames_azimuth,
         "final_azimuth": final_azimuth,
@@ -1669,6 +1866,10 @@ def load_overlays(args, movements, wd):
 
 
 def add_frames_single(work, meta, poi):
+    """
+    Add a single frame if not creating an animation.
+    It simply shows the SRF slip, faces the plane.
+    """
     work["msgs"].append(
         (
             timeslice,
@@ -1690,16 +1891,16 @@ def add_frames_face_slip(work, meta, movements, frames):
     # stage 1 face slip
     for i in range(frames):
         if meta["s_azimuth"] <= 180:
-            azimuth = 180 - (i / float(frames - 1)) * (180 - meta["s_azimuth"])
+            azimuth = 180 - (i / (frames - 1)) * (180 - meta["s_azimuth"])
         else:
-            azimuth = 180 + (i / float(frames - 1)) * (meta["s_azimuth"] - 180)
-        scale_t = min(float(i), meta["t_frames"]) / meta["t_frames"]
+            azimuth = 180 + (i / (frames - 1)) * (meta["s_azimuth"] - 180)
+        scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
         if meta["pointsource"]:
             scale_t = 0
             subtitle = "Fault Location"
         else:
             subtitle = "Fault Slip Distribution"
-        tilt = 90 - (i / float(frames - 1)) * (90 - meta["map_tilt"])
+        tilt = 90 - (i / (frames - 1)) * (90 - meta["map_tilt"])
         work["msgs"].append(
             [
                 timeslice,
@@ -1748,17 +1949,15 @@ def add_frames_dip_slip(work, meta, movements):
             ]
         )
     # pause, then reverse frames
-    work["ops"].append(["DUP", movements["frames2now"] + i, meta["pause_frames"]])
-    work["ops"].append(
-        ["REV", movements["frames2now"], frames_dip, meta["pause_frames"]]
-    )
+    work["ops"].append(["DUP", movements["frames2now"] + i, meta["mt_frames"]])
+    work["ops"].append(["REV", movements["frames2now"], frames_dip, meta["mt_frames"]])
     # frames will be duplicated in reverse and paused
-    movements["frames2now"] += frames_dip * 3
+    movements["frames2now"] += frames_dip * 2 + meta["mt_frames"]
 
 
 def add_frames_slip_fade(work, meta, movements):
     # stage 3 slip fadeout
-    frames_fade = meta["t_frames"]
+    frames_fade = meta["mt_frames"]
     for i in range(frames_fade):
         scale_t = 1 - i / (frames_fade - 1.0)
         over_t = 100 - (100 - OVERLAY_T) * scale_t
@@ -1784,28 +1983,40 @@ def add_frames_slip_fade(work, meta, movements):
 
 
 def zoom_out_timing(movements):
-    # tanh linear gap fill over effective range tanh(-3 -> 3)
-    tanh_gap = (0.5 + 0.5 * math.tanh(-3)) / 3.0
+    # maximum zoom out proportion of ground motion duration
+    # if GM moves out beyond view window, decrease factor to zoom out faster
+    zoom_max_fac = 0.618
     # frame index to zoom progression (zoom out within 12.5 seconds)
-    if movements["frames_gm"] / movements["fps"] >= 12.5:
-        # zfac must be a float
-        movements["zoom_out"] = 12.5 * movements["fps"] * 0.2, tanh_gap
+    if movements["frames_gm"] / movements["fps"] >= 12.5 / zoom_max_fac:
+        # transition over 12.5 seconds
+        movements["zoom_out"] = 12.5 * movements["fps"]
     else:
-        movements["zoom_out"] = movements["frames_gm"] * 0.618 * 0.2, tanh_gap
+        # transition over maximum factor
+        movements["zoom_out"] = movements["frames_gm"] * 0.618
 
 
-def i2p(zfacs, i):
+def l2t(l):
+    """
+    Converts linear progression into tanh based progression.
+    l: linear progression 0->1
+    """
+    l = min(TANH_TRANGE, l * TANH_TRANGE)
+    return 0.5 + 0.5 * math.tanh(l - TANH_TRANGE / 2) + TANH_GAP * (l - TANH_TRANGE / 2)
+
+
+def i2p(zfac, i):
     """
     Converts frame number to zoom progression.
     zfacs: progression per frame, tanh offset at 0
     i: frame number
     """
-    return min(
-        1.0, 0.5 + 0.5 * math.tanh(i / zfacs[0] - 3) + zfacs[1] * (i / zfacs[0] - 3)
-    )
+    return l2t(i / zfac)
 
 
 def pois(meta, xpos):
+    """
+    POI from XYTS slice. Needs to be performance improved to be useful.
+    """
     gm_file = os.path.join(meta["wd"], "xyts", "ts%04d.nc" % (xpos))
     if os.path.isfile(gm_file):
         with h5open(gm_file, "r") as h:
@@ -1818,12 +2029,12 @@ def add_frames_slip_progress(work, meta, movements):
     # stage 4 slip animation if no xyts
     if movements["frames_gm"] == 0:
         for i in range(movements["frames_sr"]):
-            sim_time = float(i) / movements["fps"]
+            sim_time = i / movements["fps"] * meta["speed"]
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
             else:
                 azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
-            scale_t = min(float(i), meta["t_frames"]) / meta["t_frames"]
+            scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
             work["msgs"].append(
                 [
                     timeslice,
@@ -1846,10 +2057,8 @@ def add_frames_slip_progress(work, meta, movements):
 
 def add_frames_camera_reset(work, meta, movements):
     # stage 5 camera reset
-    frames_return = meta["t_frames"] * 4
-    diff_azimuth_return = (
-        geo.angle_diff(movements["final_azimuth"], 180) / frames_return
-    )
+    frames_return = meta["t_frames"]
+    diff_azimuth = geo.angle_diff(movements["final_azimuth"], 180)
     if movements["frames_gm"] == 0:
         msgs = work["msgs"]
         zoom = 1.618
@@ -1857,10 +2066,11 @@ def add_frames_camera_reset(work, meta, movements):
         msgs = work["msgs_post_ts"]
         zoom = 1.2
     for i in range(frames_return):
-        scale_t = 1 - min(1, i / (meta["t_frames"] - 1.0))
+        tanh_progress = l2t(i / (frames_return - 1))
+        scale_t = 1 - min(1, i / (meta["mt_frames"] - 1.0))
         over_t = 100 - (100 - OVERLAY_T) * scale_t
-        azimuth = movements["final_azimuth"] + i * diff_azimuth_return
-        tilt = 90 - (1 - (i / float(frames_return - 1))) * (90 - meta["map_tilt"])
+        azimuth = movements["final_azimuth"] + tanh_progress * diff_azimuth
+        tilt = 90 - (1 - tanh_progress) * (90 - meta["map_tilt"])
         msgs.append(
             [
                 timeslice,
@@ -1870,7 +2080,8 @@ def add_frames_camera_reset(work, meta, movements):
                     "scale_t": scale_t,
                     "seq": movements["frames2now"] + i,
                     "sim_time": max(movements["frames_sr"], movements["frames_gm"])
-                    / movements["fps"],
+                    / movements["fps"]
+                    * meta["speed"],
                     "transparency": over_t,
                     "scale_x": 1.0,
                     "view": (movements["poi_gm"], zoom),
@@ -1888,7 +2099,7 @@ def add_frames_overlays(work, meta, movements, args):
     # - liquefaction probability
     # - landslide susceptibility
     # - landslide probability
-    frames_sep = meta["t_frames"] * 2 + meta["pause_frames"]
+    frames_sep = meta["mt_frames"] * 2 + meta["pause_frames"]
     available = (
         args.xyts is not None,
         args.liquefaction_s is not None,
@@ -1924,8 +2135,8 @@ def add_frames_overlays(work, meta, movements, args):
     pois = "poi_gm", "poi_liq_s", "poi_liq_p", "poi_land_s", "poi_land_p"
 
     for x in np.where(available)[0]:
-        for i in range(meta["t_frames"]):
-            scale_t = i / (meta["t_frames"] - 1.0)
+        for i in range(meta["mt_frames"]):
+            scale_t = i / (meta["mt_frames"] - 1.0)
             over_t = 100 - (100 - OVERLAY_T) * scale_t
 
             if args.xyts is not None:
@@ -1958,12 +2169,12 @@ def add_frames_overlays(work, meta, movements, args):
         work["ops"].append(
             [
                 "DUP",
-                movements["frames2now"] + meta["t_frames"] - 1,
+                movements["frames2now"] + meta["mt_frames"] - 1,
                 meta["pause_frames"],
             ]
         )
         work["ops"].append(
-            ["REV", movements["frames2now"], meta["t_frames"], meta["pause_frames"]]
+            ["REV", movements["frames2now"], meta["mt_frames"], meta["pause_frames"]]
         )
         movements["frames2now"] += frames_sep
 
@@ -1977,9 +2188,9 @@ def add_frames_network(work, meta, movements, path_files):
     for poi in poi_paths0:
         if poi[1] > -44.5:
             poi_paths.append([poi[0], poi[1]])
-    pause_frames_road = meta["t_frames"]
-    for i in range(meta["t_frames"]):
-        scale_t = i / (meta["t_frames"] - 1.0)
+    pause_frames_road = meta["mt_frames"]
+    for i in range(meta["mt_frames"]):
+        scale_t = i / (meta["mt_frames"] - 1.0)
         over_t = 100 - 100 * scale_t
         work["msgs"].append(
             [
@@ -2000,13 +2211,13 @@ def add_frames_network(work, meta, movements, path_files):
             ]
         )
     work["ops"].append(["DUP", movements["frames2now"] + i, pause_frames_road])
-    movements["frames2now"] += meta["t_frames"] + pause_frames_road
+    movements["frames2now"] += meta["mt_frames"] + pause_frames_road
     # mid statuses
     for i in range(1, len(path_files)):
         if i == len(path_files) - 1:
             pause_frames_road = meta["pause_frames"]
         elif int(os.path.basename(path_files[i]).split("_")[0]) > 29:
-            pause_frames_road = meta["t_frames"] // 3
+            pause_frames_road = meta["mt_frames"] // 3
         work["msgs"].append(
             [
                 timeslice,
@@ -2028,8 +2239,8 @@ def add_frames_network(work, meta, movements, path_files):
         work["ops"].append(["DUP", movements["frames2now"], pause_frames_road - 1])
         movements["frames2now"] += pause_frames_road
     # end fadeout
-    for i in range(meta["t_frames"]):
-        scale_t = 1 - min(1, i / (meta["t_frames"] - 1.0))
+    for i in range(meta["mt_frames"]):
+        scale_t = 1 - min(1, i / (meta["mt_frames"] - 1.0))
         over_t = 100 - 100 * scale_t
         work["msgs"].append(
             [
@@ -2049,7 +2260,7 @@ def add_frames_network(work, meta, movements, path_files):
                 meta,
             ]
         )
-    movements["frames2now"] += meta["t_frames"]
+    movements["frames2now"] += meta["mt_frames"]
 
 
 def add_frames_start_end(movements, end, delay):
@@ -2064,7 +2275,7 @@ def add_frames_start_end(movements, end, delay):
 
 def xyts_ready(work, meta, cpt_max, nproc):
     # xyts data available, can now process timeslices
-    meta["xyts_cpt_max"] = value
+    meta["xyts_cpt_max"] = cpt_max
     work["deps"] -= 1
 
     # load xyts overlays
@@ -2078,14 +2289,51 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
     ready = range(start_idx, meta["xyts_nt"], inc_idx)
     for i in range(movements["frames_sr"]):
         # frames containing slip rate
-        sim_time = float(i) / movements["fps"]
+        sim_time = i / movements["fps"] * meta["speed"]
         xpos = int(round(sim_time / meta["xyts_dt"]))
+        ### BEGIN HACK
+        zp = i2p(movements["zoom_out"], i)
+        if zp < 1:
+            # boost azimuth
+            azimuth = meta["s_azimuth"] + zp * geo.angle_diff(meta["s_azimuth"], 270)
+            xxx = i
+            xxx_t = sim_time
+        elif sim_time < 25:
+            azimuth = 270 + l2t((sim_time - xxx_t) / (25 - xxx_t)) * (315 - 270)
+            xxxx = i
+            xxxx_t = sim_time
+        elif sim_time < 120:
+            azimuth = 315 + l2t((sim_time - xxxx_t) / (120 - xxxx_t)) * (390 - 315)
+            xxxxx = i
+            xxxxx_t = sim_time
+        else:
+            azimuth = 390 + l2t(
+                (sim_time - xxxxx_t) / (270 - xxxxx_t)
+            ) * geo.angle_diff(390, movements["final_azimuth"])
+        # else:
+        #    diff = -135 + geo.angle_diff(0, movements["final_azimuth"])
+        #    azimuth = 135 + (i - xxx) / (movements["frames_azimuth"] - xxx) * diff
+        # f 30 < sim_time < 40:
+        #    # move to final azimuth
+        #    i30 = 30 * movements["fps"] * meta["speed"]
+        #    azimuth30 = 135 + (i30 - xxx) / (movements["frames_azimuth"] - xxx) * diff
+        #    azimuth = azimuth30 + l2t((sim_time - 30) / 10) * geo.angle_diff(azimuth30, movements["final_azimuth"])
+        # elif 40 <= sim_time <= 110:
+        #    # keep still
+        #    azimuth = movements["final_azimuth"]
+        # elif 110 < sim_time < 120:
+        #    # back to would-be azimuth
+        #    i120 = 30 * movements["fps"] * meta["speed"]
+        #    azimuth120 = 135 + (i120 - xxx) / (movements["frames_azimuth"] - xxx) * diff
+        #    azimuth = azimuth120 + l2t((sim_time - 110) / 10) * geo.angle_diff(azimuth120, movements["final_azimuth"])
+
+        ### END HACK
         if xpos in ready:
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
-            else:
-                azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
-            scale_t = min(float(i), meta["t_frames"]) / meta["t_frames"]
+            # else:
+            #    azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
+            scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
             work["msgs"].append(
                 [
                     timeslice,
@@ -2111,16 +2359,24 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
             )
     for i in range(movements["frames_sr"], movements["frames_gm"]):
         # frames containing only ground motion
-        sim_time = float(i) / movements["fps"]
+        sim_time = i / movements["fps"] * meta["speed"]
         xpos = int(round(sim_time / meta["xyts_dt"]))
-        scale_x = (
-            min(float(i - movements["frames_sr"]), meta["t_frames"]) / meta["t_frames"]
-        )
+        scale_x = min(i - movements["frames_sr"], meta["mt_frames"]) / meta["mt_frames"]
+        ### BEGIN HACK
+        # diff = -135 + geo.angle_diff(0, movements["final_azimuth"])
+        # azimuth = 135 + (i - xxx) / (movements["frames_azimuth"] - xxx) * diff
+        if sim_time < 270:
+            azimuth = 390 + l2t(
+                (sim_time - xxxxx_t) / (270 - xxxxx_t)
+            ) * geo.angle_diff(390, movements["final_azimuth"])
+        else:
+            azimuth = movements["final_azimuth"]
+        ### END HACK
         if xpos in ready:
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
-            else:
-                azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
+            # else:
+            #    azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
             work["msgs"].append(
                 [
                     timeslice,
@@ -2163,8 +2419,7 @@ if RANK == MASTER:
     meta, poi_srf = load_meta(args)
     frames_sr = load_sliprate(args.srf_file, args.framerate, meta)
     load_slip_cpt(meta, args.srf_cpt_max)
-    movements = load_xyts_meta(args, meta, work, poi_srf)
-    movements["frames_sr"] = frames_sr
+    movements = load_xyts_meta(args, meta, work, poi_srf, frames_sr)
     load_overlays(args, movements, meta["wd"])
     # tasks
     if not args.animate:
