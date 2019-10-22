@@ -2291,48 +2291,11 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
         # frames containing slip rate
         sim_time = i / movements["fps"] * meta["speed"]
         xpos = int(round(sim_time / meta["xyts_dt"]))
-        ### BEGIN HACK
-        zp = i2p(movements["zoom_out"], i)
-        if zp < 1:
-            # boost azimuth
-            azimuth = meta["s_azimuth"] + zp * geo.angle_diff(meta["s_azimuth"], 270)
-            xxx = i
-            xxx_t = sim_time
-        elif sim_time < 25:
-            azimuth = 270 + l2t((sim_time - xxx_t) / (25 - xxx_t)) * (315 - 270)
-            xxxx = i
-            xxxx_t = sim_time
-        elif sim_time < 120:
-            azimuth = 315 + l2t((sim_time - xxxx_t) / (120 - xxxx_t)) * (390 - 315)
-            xxxxx = i
-            xxxxx_t = sim_time
-        else:
-            azimuth = 390 + l2t(
-                (sim_time - xxxxx_t) / (270 - xxxxx_t)
-            ) * geo.angle_diff(390, movements["final_azimuth"])
-        # else:
-        #    diff = -135 + geo.angle_diff(0, movements["final_azimuth"])
-        #    azimuth = 135 + (i - xxx) / (movements["frames_azimuth"] - xxx) * diff
-        # f 30 < sim_time < 40:
-        #    # move to final azimuth
-        #    i30 = 30 * movements["fps"] * meta["speed"]
-        #    azimuth30 = 135 + (i30 - xxx) / (movements["frames_azimuth"] - xxx) * diff
-        #    azimuth = azimuth30 + l2t((sim_time - 30) / 10) * geo.angle_diff(azimuth30, movements["final_azimuth"])
-        # elif 40 <= sim_time <= 110:
-        #    # keep still
-        #    azimuth = movements["final_azimuth"]
-        # elif 110 < sim_time < 120:
-        #    # back to would-be azimuth
-        #    i120 = 30 * movements["fps"] * meta["speed"]
-        #    azimuth120 = 135 + (i120 - xxx) / (movements["frames_azimuth"] - xxx) * diff
-        #    azimuth = azimuth120 + l2t((sim_time - 110) / 10) * geo.angle_diff(azimuth120, movements["final_azimuth"])
-
-        ### END HACK
         if xpos in ready:
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
-            # else:
-            #    azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
+            else:
+                azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
             scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
             work["msgs"].append(
                 [
@@ -2362,21 +2325,11 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
         sim_time = i / movements["fps"] * meta["speed"]
         xpos = int(round(sim_time / meta["xyts_dt"]))
         scale_x = min(i - movements["frames_sr"], meta["mt_frames"]) / meta["mt_frames"]
-        ### BEGIN HACK
-        # diff = -135 + geo.angle_diff(0, movements["final_azimuth"])
-        # azimuth = 135 + (i - xxx) / (movements["frames_azimuth"] - xxx) * diff
-        if sim_time < 270:
-            azimuth = 390 + l2t(
-                (sim_time - xxxxx_t) / (270 - xxxxx_t)
-            ) * geo.angle_diff(390, movements["final_azimuth"])
-        else:
-            azimuth = movements["final_azimuth"]
-        ### END HACK
         if xpos in ready:
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
-            # else:
-            #    azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
+            else:
+                azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
             work["msgs"].append(
                 [
                     timeslice,
