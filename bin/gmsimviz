@@ -674,19 +674,31 @@ def frame_sliprate(job, meta, window, wd):
             os.remove("%s/slip_%d.grd" % (wd, i))
 
 
-def frame_logo(frame, logo=None):
-    # add logo in top right corner
-    if logo is None:
-        logo = os.path.join(os.path.dirname(geo.__file__), "quakecore-logo.png")
-    frame.image(
-        "R",
-        "T",
-        os.path.join(logo),
-        width="2.5i",
-        pos="rel",
-        dx=WINDOW_R - 0.15,
-        dy=-0.15,
-    )
+def frame_logo(frame, left=False, right=False):
+    # add logos
+    # TODO: adjust logo size to fit height instead and make it easy to replace logos
+    if left:
+        logo = os.path.join(os.path.dirname(geo.__file__), "logo-left.png")
+        frame.image(
+            "L",
+            "T",
+            os.path.join(logo),
+            width="2.0i",
+            pos="rel",
+            dx=WINDOW_L,
+            dy=0.02,
+        )
+    if right:
+        logo = os.path.join(os.path.dirname(geo.__file__), "logo-right.png")
+        frame.image(
+            "R",
+            "T",
+            os.path.join(logo),
+            width="2.5i",
+            pos="rel",
+            dx=WINDOW_R-0.15,
+            dy=-0.15,
+        )
 
 
 def frame_op(op, prefix, seq_from, seq_to):
@@ -946,7 +958,7 @@ def frame_border(frame, window_b, job, meta):
             colour="black@%s" % (job["transparency"]),
         )
     # add QuakeCoRE logo
-    frame_logo(frame)
+    frame_logo(frame, left=meta["logo_left"], right=meta["logo_right"])
 
 
 def frame_scales(frame, job, meta, plot, scale_y):
@@ -1345,6 +1357,19 @@ def timeslice(job, meta):
 
     # ground motion must be in geographic projection due to 3D Z scaling
     frame_proj(p, window, True, shift=False)
+    ### BEGIN HACK
+    # could start with units or end with 'r'
+    region = p.history("R").split("/")
+    region[-1] = region[-1][:-1]
+    region = list(map(float, region))
+    km = geo.ll_dist(region[0], region[1], region[2], region[3])
+    size = gmt.mapproject(
+        region[2], region[3], wd=p.wd, unit="inch", z=p.z
+    )
+    inch = math.sqrt(sum(np.power(size, 2)))
+    refs = inch / (km * 0.618)
+    p.coastlines(width="%sp" % (refs * 20))
+    ### END HACK
     frame_proj_items(p, job, meta, window)
     # start plotting external items relative to border
     scale_y, window_b, llur_i = frame_border_init(
@@ -1493,7 +1518,7 @@ def get_args():
     arg("--title", help="main title on animation")
     arg("-x", "--xyts", help="xyts file for GM overlay")
     arg("--gm-cut", help="cutoff sim time (s) for ground motion", type=float)
-    arg("--speed", help="1: real time, 2: double speed etc...", type=float, default=1.0)
+    arg("--speed", help="1: real time, 2: double speed etc...", type=float, default=2.0)
     arg("--min-zoom", help="set animation zoom (km)", type=float)
     arg("--srf-cpt-max", help="SRF colour scale max value", type=int)
     arg("--xyts-cpt-max", help="XYTS colour scale max value", type=int)
@@ -1532,6 +1557,8 @@ def get_args():
         help="displays all sorts of things, implies --crude",
         action="store_true",
     )
+    arg("--logo-l", help="include left logo", action="store_true")
+    arg("--logo-r", help="include right logo", action="store_true")
     # --movement 20+c172/-44+z600+t8 (transition from 12->20 seconds to centre at 172/-44 and display 600km accross the window)
     # --movement 40+c+z (back to normal over the default amount of time)
     arg(
@@ -1626,6 +1653,8 @@ def load_meta(args):
         "pause_frames": int(round(args.ptime * args.framerate)),
         "speed": args.speed,
         "movement": args.movement,
+        "logo_left": args.logo_l,
+        "logo_right": args.logo_r,
     }
 
     return meta, poi_srf
@@ -2270,11 +2299,46 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
         # frames containing slip rate
         sim_time = i / movements["fps"] * meta["speed"]
         xpos = int(round(sim_time / meta["xyts_dt"]))
+        ### BEGIN HACK
+        zp = i2p(movements["zoom_out"], i)
+        if zp < 1:
+            # boost azimuth
+            azimuth = meta["s_azimuth"] + zp * geo.angle_diff(meta["s_azimuth"], 270)
+            xxx = i
+            xxx_t = sim_time
+        elif sim_time < 25:
+            azimuth = 270 + l2t((sim_time - xxx_t) / (25 - xxx_t)) * (315 - 270)
+            xxxx = i
+            xxxx_t = sim_time
+        elif sim_time < 120:
+            azimuth = 315 + l2t((sim_time - xxxx_t) / (120 - xxxx_t)) * (390 - 315)
+            xxxxx = i
+            xxxxx_t = sim_time
+        else:
+            azimuth = 390 + l2t((sim_time - xxxxx_t) / (270 - xxxxx_t)) * geo.angle_diff(390, movements["final_azimuth"])
+        #else:
+        #    diff = -135 + geo.angle_diff(0, movements["final_azimuth"])
+        #    azimuth = 135 + (i - xxx) / (movements["frames_azimuth"] - xxx) * diff
+        #f 30 < sim_time < 40:
+        #    # move to final azimuth
+        #    i30 = 30 * movements["fps"] * meta["speed"]
+        #    azimuth30 = 135 + (i30 - xxx) / (movements["frames_azimuth"] - xxx) * diff
+        #    azimuth = azimuth30 + l2t((sim_time - 30) / 10) * geo.angle_diff(azimuth30, movements["final_azimuth"])
+        #elif 40 <= sim_time <= 110:
+        #    # keep still
+        #    azimuth = movements["final_azimuth"]
+        #elif 110 < sim_time < 120:
+        #    # back to would-be azimuth
+        #    i120 = 30 * movements["fps"] * meta["speed"]
+        #    azimuth120 = 135 + (i120 - xxx) / (movements["frames_azimuth"] - xxx) * diff
+        #    azimuth = azimuth120 + l2t((sim_time - 110) / 10) * geo.angle_diff(azimuth120, movements["final_azimuth"])
+            
+        ### END HACK
         if xpos in ready:
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
-            else:
-                azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
+            #else:
+            #    azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
             scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
             work["msgs"].append(
                 [
@@ -2304,11 +2368,19 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
         sim_time = i / movements["fps"] * meta["speed"]
         xpos = int(round(sim_time / meta["xyts_dt"]))
         scale_x = min(i - movements["frames_sr"], meta["mt_frames"]) / meta["mt_frames"]
+        ### BEGIN HACK
+        #diff = -135 + geo.angle_diff(0, movements["final_azimuth"])
+        #azimuth = 135 + (i - xxx) / (movements["frames_azimuth"] - xxx) * diff
+        if sim_time < 270:
+            azimuth = 390 + l2t((sim_time - xxxxx_t) / (270 - xxxxx_t)) * geo.angle_diff(390, movements["final_azimuth"])
+        else:
+            azimuth = movements["final_azimuth"]
+        ### END HACK
         if xpos in ready:
             if i >= movements["frames_azimuth"]:
                 azimuth = movements["final_azimuth"]
-            else:
-                azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
+            #else:
+            #    azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
             work["msgs"].append(
                 [
                     timeslice,
