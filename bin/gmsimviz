@@ -395,7 +395,7 @@ def frame_paths(seq, wd, srf_file):
     return swd, gmt_ps
 
 
-def frame_basemap(frame, crude, paths, proportion):
+def frame_basemap(frame, crude, paths, proportion, scale):
     """
     Draws basemap on plot, frame.
     crude: True for internal GMT (low) resolution geographic data.
@@ -405,7 +405,7 @@ def frame_basemap(frame, crude, paths, proportion):
     if crude:
         frame.basemap(topo=None, highway=None, road=None, res="f")
     else:
-        frame.basemap()
+        frame.basemap(scale=scale)
     if paths:
         if crude:
             frame.land(fill="white", res="f")
@@ -1339,6 +1339,7 @@ def timeslice(job, meta):
         meta["crude"],
         job["sim_time"] == -3,
         job["proportion"] if job["sim_time"] == -3 else 0,
+        scale=meta["downscale"]
     )
     frame_outlines(p, meta)
     # different main items
@@ -1351,17 +1352,8 @@ def timeslice(job, meta):
 
     # ground motion must be in geographic projection due to 3D Z scaling
     frame_proj(p, window, True, shift=False)
-    ### BEGIN HACK
-    # could start with units or end with 'r'
-    region = p.history("R").split("/")
-    region[-1] = region[-1][:-1]
-    region = list(map(float, region))
-    km = geo.ll_dist(region[0], region[1], region[2], region[3])
-    size = gmt.mapproject(region[2], region[3], wd=p.wd, unit="inch", z=p.z)
-    inch = math.sqrt(sum(np.power(size, 2)))
-    refs = inch / (km * 0.618)
-    p.coastlines(width="%sp" % (refs * 20))
-    ### END HACK
+    # add thicker coastlines on top of SRF
+    p.basemap(land=None, water=None, topo=None, highway=None, road=None, scale=2.5*meta["downscale"])
     frame_proj_items(p, job, meta, window)
     # start plotting external items relative to border
     scale_y, window_b, llur_i = frame_border_init(
