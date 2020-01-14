@@ -2856,6 +2856,7 @@ class GMTPlot:
         road_colour="white",
         waternet=None,
         waternet_colour="darkblue",
+        scale=1,
     ):
         """
         Adds land/water/features to map.
@@ -2885,7 +2886,7 @@ class GMTPlot:
             else:
                 raise
         inch = math.sqrt(sum(np.power(size, 2)))
-        refs = inch / (km * 0.618)
+        refs = scale * inch / (km * 0.618)
 
         if land is not None:
             if res is None:
@@ -3271,7 +3272,7 @@ class GMTPlot:
         """
 
         if slat is None:
-            region = map(float, self.history("R").split("/"))
+            region = list(map(float, self.history("R").split("/")))
             # TODO: fix geographic midpoint calculation (make a function)
             slat = (region[3] + region[2]) / 2.0
 
@@ -3977,7 +3978,7 @@ class GMTPlot:
 
         if is_file:
             cmd.append(os.path.abspath(data))
-            Popen(cmd, stdout=self.psf, cwd=self.wd)
+            Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
         else:
             meca = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
             meca.communicate(data.encode("utf-8"))
