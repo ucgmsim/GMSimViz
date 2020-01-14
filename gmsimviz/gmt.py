@@ -3978,7 +3978,7 @@ class GMTPlot:
 
         if is_file:
             cmd.append(os.path.abspath(data))
-            Popen(cmd, stdout=self.psf, cwd=self.wd)
+            Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
         else:
             meca = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
             meca.communicate(data.encode("utf-8"))
