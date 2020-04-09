@@ -2687,7 +2687,7 @@ class GMTPlot:
                     cmd.append("-p")
                 Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
                 # finish crop
-                cmd = [GMT, "psclip", "-C", "-J", "-K", "-O"]
+                cmd = [GMT, "psclip", "-C1", "-J", "-K", "-O"]
                 if self.p:
                     cmd.append("-p")
                 Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
