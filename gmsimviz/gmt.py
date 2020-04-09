@@ -3891,46 +3891,44 @@ class GMTPlot:
                 cmd.append("-W%s,%s,-" % (plane_width, plane_colour))
             if plane_fill is not None:
                 cmd.append("-G%s" % (plane_fill))
+            if self.p:
+                cmd.append("-p")
             planep = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
             planep.communicate(all_edges.encode("utf-8"))
             planep.wait()
         # plot top edges
         if top_colour is not None:
-            topp = Popen(
-                [
-                    GMT,
-                    "psxy",
-                    "-J",
-                    "-R",
-                    "-K",
-                    "-O",
-                    self.z,
-                    "-W%s,%s" % (top_width, top_colour),
-                ],
-                stdin=PIPE,
-                stdout=self.psf,
-                cwd=self.wd,
-            )
+            cmd = [
+                GMT,
+                "psxy",
+                "-J",
+                "-R",
+                "-K",
+                "-O",
+                self.z,
+                "-W%s,%s" % (top_width, top_colour),
+            ]
+            if self.p:
+                cmd.append("-p")
+            topp = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
             topp.communicate(top_edges.encode("utf-8"))
             topp.wait()
         # hypocentre
         if hyp_size > 0 and hyp_colour is not None:
-            hypp = Popen(
-                [
-                    GMT,
-                    "psxy",
-                    "-J",
-                    "-R",
-                    "-K",
-                    "-O",
-                    self.z,
-                    "-W%s,%s" % (hyp_width, hyp_colour),
-                    "-S%s%s" % (hyp_shape, hyp_size),
-                ],
-                stdin=PIPE,
-                stdout=self.psf,
-                cwd=self.wd,
-            )
+            cmd = [
+                GMT,
+                "psxy",
+                "-J",
+                "-R",
+                "-K",
+                "-O",
+                self.z,
+                "-W%s,%s" % (hyp_width, hyp_colour),
+                "-S%s%s" % (hyp_shape, hyp_size),
+            ]
+            if self.p:
+                cmd.append("-p")
+            hypp = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
             hypp.communicate(hypocentre.encode("utf-8"))
             hypp.wait()
 
