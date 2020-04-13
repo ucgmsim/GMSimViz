@@ -3836,6 +3836,7 @@ class GMTPlot:
         hyp_width="1p",
         hyp_colour="black",
         plane_fill=None,
+        depth=False,
     ):
         """
         Plot SRF fault plane onto map.
@@ -3853,16 +3854,16 @@ class GMTPlot:
         """
         if is_srf:
             # use SRF library to retrieve info
-            bounds = srf.get_bounds(in_path)
-            hypocentre = srf.get_hypo(in_path)
+            bounds = srf.get_bounds(in_path, depth=depth)
+            hypocentre = srf.get_hypo(in_path, depth=depth)
 
             # process for input into GMT
             gmt_bounds = [
-                ["%s %s" % tuple(corner) for corner in plane] for plane in bounds
+                [" ".join(map(str, corner)) for corner in plane] for plane in bounds
             ]
             top_edges = "\n>\n".join(["\n".join(corners[:2]) for corners in gmt_bounds])
             all_edges = "\n>\n".join(["\n".join(corners) for corners in gmt_bounds])
-            hypocentre = "%s %s" % tuple(hypocentre)
+            hypocentre = " ".join(map(str, hypocentre))
         else:
             # standard corners file
             # XXX: don't think this works
@@ -3884,9 +3885,16 @@ class GMTPlot:
             top_edges = ">\n".join(["".join(c[:2]) for c in bounds[1:]])
             all_edges = ">\n".join(["".join(c) for c in bounds[1:]])
 
+        if depth:
+            module = "psxyz"
+        else:
+            module = "psxy"
+
         # plot planes
         if not (plane_colour is None and plane_fill is None):
-            cmd = [GMT, "psxy", "-J", "-R", "-L", "-K", "-O", self.z]
+            cmd = [GMT, module, "-J", "-R", "-L", "-K", "-O"]
+            if depth:
+                cmd.append(self.z)
             if plane_colour is not None:
                 cmd.append("-W%s,%s,-" % (plane_width, plane_colour))
             if plane_fill is not None:
@@ -3900,14 +3908,15 @@ class GMTPlot:
         if top_colour is not None:
             cmd = [
                 GMT,
-                "psxy",
+                module,
                 "-J",
                 "-R",
                 "-K",
                 "-O",
-                self.z,
                 "-W%s,%s" % (top_width, top_colour),
             ]
+            if depth:
+                cmd.append(self.z)
             if self.p:
                 cmd.append("-p")
             topp = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
@@ -3917,15 +3926,16 @@ class GMTPlot:
         if hyp_size > 0 and hyp_colour is not None:
             cmd = [
                 GMT,
-                "psxy",
+                module,
                 "-J",
                 "-R",
                 "-K",
                 "-O",
-                self.z,
                 "-W%s,%s" % (hyp_width, hyp_colour),
                 "-S%s%s" % (hyp_shape, hyp_size),
             ]
+            if depth:
+                cmd.append(self.z)
             if self.p:
                 cmd.append("-p")
             hypp = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
