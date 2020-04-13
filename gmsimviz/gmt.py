@@ -3936,6 +3936,8 @@ class GMTPlot:
             ]
             if depth:
                 cmd.append(self.z)
+                # would have to set z range in region
+                cmd.append("-N")
             if self.p:
                 cmd.append("-p")
             hypp = Popen(cmd, stdin=PIPE, stdout=self.psf, cwd=self.wd)
