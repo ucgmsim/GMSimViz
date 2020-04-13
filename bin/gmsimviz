@@ -1186,6 +1186,15 @@ def frame_devel_xy(p, job, window):
         colour="white",
         box_fill="black",
     )
+    p.text(
+        0.5,
+        PAGE_HEIGHT,
+        "z_scale: %s" % (window["z_scale"]),
+        align="LT",
+        size="14p",
+        colour="white",
+        box_fill="black"
+    )
     if len(job["view"]) > 2:
         p.text(
             0.5,
@@ -2366,6 +2375,10 @@ if RANK == MASTER:
     load_slip_cpt(meta, args.srf_cpt_max)
     movements = load_xyts_meta(args, meta, work, poi_srf, frames_sr)
     load_overlays(args, movements, meta["wd"])
+    if args.devel:
+        print("=== META ===")
+        for k in meta:
+            print("\"%s\":" % (k), meta[k])
     # tasks
     if not args.animate:
         add_frames_single(work, meta, movements["poi_srf"])
