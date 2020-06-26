@@ -233,3 +233,44 @@ def path_from_corners(
                 mp.write("%s %s\n" % (point[0], point[1]))
     else:
         return corners
+
+
+def get_distances(locations: np.ndarray, lon: float, lat: float):
+    """Calculates the distance between the array of locations and
+    the specified reference location
+
+    Parameters
+    ----------
+    locations : np.ndarray
+        List of locations
+        Shape [n_locations, 2], column format (lon, lat)
+    lon : float
+        Longitude of the reference location
+    lat
+        Latitude of the reference location
+
+    Returns
+    -------
+    np.ndarray
+        The distances, shape [n_locations]
+    """
+    d = (
+        np.sin(np.radians(locations[:, 1] - lat) / 2.0) ** 2
+        + np.cos(np.radians(lat))
+        * np.cos(np.radians(locations[:, 1]))
+        * np.sin(np.radians(locations[:, 0] - lon) / 2.0) ** 2
+    )
+    d = R_EARTH * 2.0 * np.arctan2(np.sqrt(d), np.sqrt(1 - d))
+
+    return d
+
+
+def closest_location(locations, lon, lat):
+    """
+    Find position and distance of closest location in 2D np.array of (lon, lat).
+    """
+    d = get_distances(locations, lon, lat)
+    i = np.argmin(d)
+
+    return i, d[i]
+
