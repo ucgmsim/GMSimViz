@@ -143,15 +143,19 @@ def update_gmt_path(gmt_bin, wd=None):
 update_gmt_path(GMT)
 
 
-def region_topo(region=None, lon=0, lat=0):
+def get_region(lon, lat):
     """
-    Returns topo file closest to point of interest or given region name.
+    Returns closest region.
     """
-    if region is None:
-        rcode = np.loadtxt(os.path.join(GMT_DATA, "Topo/srtm.ll"), usecols=0, dtype="U2")
-        rloc = np.loadtxt(os.path.join(GMT_DATA, "Topo/srtm.ll"), usecols=(1,2))
-        region = rcode[geo.closest_location(rloc, lon, lat)[0]]
+    rcode = np.loadtxt(os.path.join(GMT_DATA, "Topo/srtm.ll"), usecols=0, dtype="U2")
+    rloc = np.loadtxt(os.path.join(GMT_DATA, "Topo/srtm.ll"), usecols=(1,2))
+    return rcode[geo.closest_location(rloc, lon, lat)[0]]
 
+
+def region_topo(region):
+    """
+    Returns topo file closest to given region name.
+    """
     return os.path.join(GMT_DATA, "Topo/srtm_{}.grd".format(region))
 
 
