@@ -70,7 +70,7 @@ LINZ_RIVER = {"150k": os.path.join(GMT_DATA, "Paths/lds-nz-river-polygons/150k.g
 LINZ_ROAD = os.path.join(GMT_DATA, "Paths/lds-nz-road-centre-line/wgs84.gmt")
 LINZ_HWY = os.path.join(GMT_DATA, "Paths/shwy/wgs84.gmt")
 # OTHER GEO DATA
-TOPO_HIGH = os.path.join(GMT_DATA, "Topo/srtm_all_filt_nz.grd")
+TOPO_HIGH = os.path.join(GMT_DATA, "Topo/srtm_NZ.grd")
 TOPO_LOW = os.path.join(GMT_DATA, "Topo/nztopo.grd")
 CHCH_WATER = os.path.join(GMT_DATA, "Paths/water_network/water.gmt")
 # CPT DATA
@@ -141,6 +141,23 @@ def update_gmt_path(gmt_bin, wd=None):
 
 
 update_gmt_path(GMT)
+
+
+def get_region(lon, lat):
+    """
+    Returns closest region.
+    """
+    rcode = np.loadtxt(os.path.join(GMT_DATA, "Topo/srtm.ll"), usecols=0, dtype="U2")
+    rloc = np.loadtxt(os.path.join(GMT_DATA, "Topo/srtm.ll"), usecols=(1,2))
+    return rcode[geo.closest_location(rloc, lon, lat)[0]]
+
+
+def region_topo(region):
+    """
+    Returns topo file closest to given region name.
+    """
+    return os.path.join(GMT_DATA, "Topo/srtm_{}.grd".format(region))
+
 
 ###
 ### COMMON RESOURCES
@@ -472,80 +489,6 @@ def auto_tick(x_min, x_max, width):
     minor_tick = major_tick / 10.0 * (1 + ((i + 2) % 3 == 0))
 
     return major_tick, minor_tick
-
-
-def get_region(region_name, as_components=False):
-    """
-    Returns region as tuple (x_min, x_max, y_min, y_max).
-    Also returns list of sites which fit in region without crowding.
-    as_components: True will return x_min, x_max etc. as individual values
-    region_name: predefined region name to get parameters for
-    """
-    if region_name == "CANTERBURY":
-        x_min, x_max, y_min, y_max = 171.75, 173.00, -44.00, -43.20
-        region_sites = [
-            "Rolleston",
-            "Darfield",
-            "Lyttelton",
-            "Akaroa",
-            "Kaiapoi",
-            "Rakaia",
-            "Oxford",
-        ]
-    elif region_name == "WIDERCANT":
-        x_min, x_max, y_min, y_max = 170.52, 173.67, -44.4, -42.53
-        region_sites = [
-            "Rolleston",
-            "Darfield",
-            "Lyttelton",
-            "Akaroa",
-            "Kaiapoi",
-            "Rakaia",
-            "Oxford",
-        ]
-    elif region_name == "SOUTHISLAND":
-        x_min, x_max, y_min, y_max = 166.0, 174.5, -47.50, -40.00
-        region_sites = [
-            "Queenstown",
-            "Dunedin",
-            "Tekapo",
-            "Christchurch",
-            "Haast",
-            "Greymouth",
-            "Westport",
-            "Kaikoura",
-            "Nelson",
-            "Blenheim",
-            "Timaru",
-        ]
-    elif region_name == "MIDNZ":
-        x_min, x_max, y_min, y_max = 168.2, 177.9, -45.7, -37.85
-        region_sites = [
-            "Queenstown",
-            "Tekapo",
-            "Timaru",
-            "Christchurch",
-            "Haast",
-            "Greymouth",
-            "Westport",
-            "Kaikoura",
-            "Nelson",
-            "Blenheim",
-            "Wellington",
-            "Masterton",
-            "Napier",
-            "New Plymouth",
-            "Taupo",
-            "Rotorua",
-        ]
-    else:
-        # calling this in a Try block, except TypeError
-        # would be one way of handling this if expanded to 2 vars
-        return None
-
-    if as_components:
-        return x_min, x_max, y_min, y_max, region_sites
-    return (x_min, x_max, y_min, y_max), region_sites
 
 
 def is_native_xyv(xyv_file, x_min, x_max, y_min, y_max, v_min=None):

@@ -395,7 +395,7 @@ def frame_paths(seq, wd, srf_file):
     return swd, gmt_ps
 
 
-def frame_basemap(frame, crude, paths, proportion, scale):
+def frame_basemap(frame, crude, paths, proportion, scale, topo):
     """
     Draws basemap on plot, frame.
     crude: True for internal GMT (low) resolution geographic data.
@@ -405,7 +405,7 @@ def frame_basemap(frame, crude, paths, proportion, scale):
     if crude:
         frame.basemap(topo=None, highway=None, road=None, res="f")
     else:
-        frame.basemap(scale=scale)
+        frame.basemap(topo=topo, scale=scale)
     if paths:
         if crude:
             frame.land(fill="white", res="f")
@@ -1348,7 +1348,8 @@ def timeslice(job, meta):
         meta["crude"],
         job["sim_time"] == -3,
         job["proportion"] if job["sim_time"] == -3 else 0,
-        scale=meta["downscale"]
+        meta["downscale"],
+        meta["topo"]
     )
     frame_outlines(p, meta)
     # different main items
@@ -1621,6 +1622,8 @@ def load_meta(args):
     if not os.path.isdir(srf_wd):
         os.makedirs(srf_wd)
 
+    region = gmt.get_region(hlon, hlat)
+
     # common information passed to frame processes
     meta = {
         "wd": gmt_temp,
@@ -1648,6 +1651,8 @@ def load_meta(args):
         "movement": args.movement,
         "logo_left": args.logo_l,
         "logo_right": args.logo_r,
+        "region": region,
+        "topo": gmt.region_topo(region),
     }
 
     return meta, poi_srf
