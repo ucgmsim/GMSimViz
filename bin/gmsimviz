@@ -1198,7 +1198,7 @@ def frame_devel_xy(p, job, window):
         align="LT",
         size="14p",
         colour="white",
-        box_fill="black"
+        box_fill="black",
     )
     if len(job["view"]) > 2:
         p.text(
@@ -1355,7 +1355,7 @@ def timeslice(job, meta):
         job["proportion"] if job["sim_time"] == -3 else 0,
         meta["downscale"] * 0.5,
         meta["topo"],
-        meta["region"]
+        meta["region"],
     )
     frame_outlines(p, meta)
     # different main items
@@ -1369,7 +1369,14 @@ def timeslice(job, meta):
     # ground motion must be in geographic projection due to 3D Z scaling
     frame_proj(p, window, True, shift=False)
     # add thicker coastlines on top of SRF
-    p.basemap(land=None, water=None, topo=None, highway=None, road=None, scale=2.5*meta["downscale"])
+    p.basemap(
+        land=None,
+        water=None,
+        topo=None,
+        highway=None,
+        road=None,
+        scale=2.5 * meta["downscale"],
+    )
     frame_proj_items(p, job, meta, window)
     # start plotting external items relative to border
     scale_y, window_b, llur_i = frame_border_init(
@@ -2309,7 +2316,10 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
             else:
                 azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
             scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
-            scale_x = max(0, min(i - movements["frames_sr"], meta["mt_frames"])) / meta["mt_frames"]
+            scale_x = (
+                max(0, min(i - movements["frames_sr"], meta["mt_frames"]))
+                / meta["mt_frames"]
+            )
             work["msgs"].append(
                 [
                     timeslice,
@@ -2357,7 +2367,7 @@ if RANK == MASTER:
     if args.devel:
         print("=== META ===")
         for k in meta:
-            print("\"%s\":" % (k), meta[k])
+            print('"%s":' % (k), meta[k])
     # tasks
     if not args.animate:
         add_frames_single(work, meta, movements["poi_srf"])
