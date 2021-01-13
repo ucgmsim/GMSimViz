@@ -811,14 +811,14 @@ def frame_proj_base(frame, plot, job, meta, window):
         mask_path_gm = "%s/xyts/corners-hr.gmt" % (meta["wd"])
         if os.path.exists(mask_path_gm):
             frame.clip(path=mask_path_gm, is_file=True)
-        frame.clip(path=gmt.LINZ_COAST["150k"], is_file=True)
         frame.overlay(
             "%s/overlay/%s.nc" % (meta["wd"], job["overlay"]),
             "%s/overlay/%s.cpt" % (meta["wd"], job["overlay"]),
             transparency=job["transparency"],
             custom_region=job["region"],
         )
-        frame.clip()
+        if os.path.exists(mask_path_gm):
+            frame.clip()
     # load srf plane data
     elif plot == "slip":
         scale_y_final = 0.7
