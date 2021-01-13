@@ -65,8 +65,13 @@ def load_xyts(meta, xyts_cpt_max):
     """
     Complete time-intensive tasks which aren't needed for beginning frames.
     """
+    pgvcpt = "%s/overlay/pgv.cpt" % (meta["wd"])
     # symlinking is the last step, check if this function has previously completed
-    if os.path.exists("%s/overlay/pgv.cpt" % (meta["wd"])):
+    if os.path.islink(pgvcpt):
+        # fix symlink if broken
+        if not os.path.exists(pgvcpt):
+            os.unlink(pgvcpt)
+            os.symlink("%s/xyts/gm.cpt" % (meta["wd"]), pgvcpt)
         # equivalent to return value below
         return gmt.xyv_cpt_range("%s/xyts/pgv.bin" % (meta["wd"]))[2]
 
@@ -114,7 +119,7 @@ def load_xyts(meta, xyts_cpt_max):
         dy=meta["xyts_res"],
         climit=xyts_cpt_max * 0.01,
     )
-    os.symlink("%s/xyts/gm.cpt" % (meta["wd"]), "%s/overlay/pgv.cpt" % (meta["wd"]))
+    os.symlink("%s/xyts/gm.cpt" % (meta["wd"]), pgvcpt)
 
     return xyts_cpt_max
 
