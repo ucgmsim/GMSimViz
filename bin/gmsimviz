@@ -2299,7 +2299,7 @@ def xyts_ready(work, meta, cpt_max, nproc):
 def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
     # timeslice process finished, add frames containing finished timeslice data
     ready = range(start_idx, meta["xyts_nt"], inc_idx)
-    for i in range(movements["frames_sr"]):
+    for i in range(max(movements["frames_sr"], movements["frames_gm"])):
         # frames containing slip rate
         sim_time = i / movements["fps"] * meta["speed"]
         xpos = int(round(sim_time / meta["xyts_dt"]))
@@ -2309,40 +2309,7 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
             else:
                 azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
             scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
-            work["msgs"].append(
-                [
-                    timeslice,
-                    {
-                        "azimuth": azimuth,
-                        "tilt": meta["map_tilt"],
-                        "scale_t": scale_t,
-                        "scale_x": 0.0,
-                        "seq": movements["frames2sim"] + i,
-                        "transparency": OVERLAY_T,
-                        "sim_time": sim_time,
-                        "subtitle": "Simulation",
-                        "view": (
-                            movements["poi_gm"],
-                            1.2,
-                            i2p(movements["zoom_out"], i),
-                            movements["poi_srf"],
-                            1.618,
-                        ),
-                    },
-                    meta,
-                ]
-            )
-    for i in range(movements["frames_sr"], movements["frames_gm"]):
-        # frames containing only ground motion
-        sim_time = i / movements["fps"] * meta["speed"]
-        xpos = int(round(sim_time / meta["xyts_dt"]))
-        scale_x = min(i - movements["frames_sr"], meta["mt_frames"]) / meta["mt_frames"]
-        if xpos in ready:
-            if i >= movements["frames_azimuth"]:
-                azimuth = movements["final_azimuth"]
-            else:
-                azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
-            scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
+            scale_x = max(0, min(i - movements["frames_sr"], meta["mt_frames"])) / meta["mt_frames"]
             work["msgs"].append(
                 [
                     timeslice,
