@@ -2337,13 +2337,14 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
                 azimuth = movements["final_azimuth"]
             else:
                 azimuth = meta["s_azimuth"] + i * movements["diff_azimuth"]
+            scale_t = min(i, meta["mt_frames"]) / meta["mt_frames"]
             work["msgs"].append(
                 [
                     timeslice,
                     {
                         "azimuth": azimuth,
                         "tilt": meta["map_tilt"],
-                        "scale_t": 1.0,
+                        "scale_t": scale_t,
                         "scale_x": scale_x,
                         "seq": movements["frames2sim"] + i,
                         "transparency": OVERLAY_T,
