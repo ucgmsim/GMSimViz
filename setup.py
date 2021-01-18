@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 import os, sys
 
 error_msg = """Please download and extract the resources folder into GMSimViz.
-It is available at: https://goo.gl/mYFCQn"""
+It is available at: https://mega.nz/file/f0hCEQKB#V0yuodZPiVA5Ih97RT-rGgqY84QWKZcmnigcSCqnhfE"""
 
 script_dir = os.path.abspath(os.path.dirname(__file__))
 resources = os.path.join(script_dir, "resources")
