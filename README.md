@@ -70,7 +70,7 @@ Download GMSimViz:
 git clone git@github.com:ucgmsim/GMSimViz.git
 ```
 
-Download the plotting resource GMSimViz_resources.zip file from https://goo.gl/mYFCQn
+Download the plotting resource GMSimViz_resources.zip file from [mega](https://mega.nz/file/f0hCEQKB#V0yuodZPiVA5Ih97RT-rGgqY84QWKZcmnigcSCqnhfE)
 Extract this file to where GMSimViz is located so that GMSimViz/resources exists.
 
 Install with the following command.
