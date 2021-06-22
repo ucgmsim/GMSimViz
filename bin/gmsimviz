@@ -1547,7 +1547,7 @@ def get_args():
     arg(
         "--downscale",
         type=int,
-        default=2,
+        default=8,
         help="ghostscript downscale factor (prevents jitter), recommended 8",
     )
     arg("--liquefaction-s", help="liquefaction susceptibility hdf5 filepath")
@@ -1580,6 +1580,8 @@ def get_args():
         COMM.Abort(100)
     if args.devel:
         args.crude = True
+    if args.crude:
+        args.downscale = 1
     args.movement = process_movement(args)
 
     return args

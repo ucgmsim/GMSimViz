@@ -15,8 +15,6 @@ from subprocess import Popen, PIPE
 
 import numpy as np
 
-from gmsimviz import geo
-
 # assumption that all srf files contain 6 values per line
 VPL = 6.0
 

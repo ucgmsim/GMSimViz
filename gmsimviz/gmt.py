@@ -20,8 +20,6 @@ from time import time
 
 import numpy as np
 
-from gmsimviz.config import config
-
 # only needed if plotting fault planes direct from SRF
 try:
     from gmsimviz import srf

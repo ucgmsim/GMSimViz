@@ -28,12 +28,12 @@ A fully featured result is available at https://youtu.be/qZkOTI4x_cc
 ### Dependencies
 The GMSimViz depends on the following software packages.
 
-* Python (>=2.7) tested with 2.7 and 3.6->3.8. Which version do I have? Run `/usr/bin/env python --version`.
-* Numpy (https://www.numpy.org https://pypi.org/project/numpy/) for Python version (>= 1.10) tested with 1.10, 1.13 and 1.14
-* MPI4Py (https://bitbucket.org/mpi4py/ https://pypi.org/project/mpi4py/) for Python version and mpi backend (https://www.open-mpi.org dependency of mpi4py)
-* H5Py (http://www.h5py.org/ https://pypi.org/project/h5py/) for Python version and hdf5 backend (https://support.hdfgroup.org/HDF5/ dependency of h5py)
-* GMT (>=r19922) requires release after 5.4.4 versions prior to r19922 will have bugs but GMSimViz is designed to work with GMT (>=5.2) tested with Ghostscript 9.18, 9.50, 9.53, between 9.18 and 9.50 were found to produce glitches as well as 9.52.
-* FFMpeg built with image2/png, h.264 encoder support (standard installation) tested with version 3.3
+* Python 3. Which version do I have? Run `/usr/bin/env python --version`.
+* Numpy (https://www.numpy.org https://pypi.org/project/numpy/).
+* MPI4Py (https://bitbucket.org/mpi4py/ https://pypi.org/project/mpi4py/) including mpi backend (https://www.open-mpi.org dependency of mpi4py)
+* H5Py (http://www.h5py.org/ https://pypi.org/project/h5py/) including hdf5 backend (https://support.hdfgroup.org/HDF5/ dependency of h5py)
+* GMT 5.4.5 or 6.x versions should work. Anything older will not be supported. Ghostscript 9.18, 9.50, 9.53 were working, between 9.18 and 9.50 were found to produce glitches as well as 9.52.
+* FFMpeg built with image2/png, h.264 encoder support (standard installation).
 * gawk
 
 For testing:
