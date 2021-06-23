@@ -9,6 +9,7 @@ known issues:
 from glob import glob
 import math
 import os
+from pkg_resources import resource_filename
 from shutil import copy, move, rmtree
 import sys
 from tempfile import mkdtemp
@@ -683,12 +684,12 @@ def frame_logo(frame, left=False, right=False):
     # add logos
     # TODO: adjust logo size to fit height instead and make it easy to replace logos
     if left:
-        logo = os.path.join(os.path.dirname(geo.__file__), "logo-left.png")
+        logo = resource_filename("gmsimviz", "data/img/logo-left.png")
         frame.image(
             "L", "T", os.path.join(logo), width="2.0i", pos="rel", dx=WINDOW_L, dy=0.02
         )
     if right:
-        logo = os.path.join(os.path.dirname(geo.__file__), "logo-right.png")
+        logo = resource_filename("gmsimviz", "data/img/logo-right.png")
         frame.image(
             "R",
             "T",

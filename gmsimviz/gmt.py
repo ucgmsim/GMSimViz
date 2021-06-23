@@ -13,6 +13,7 @@ avg_ll calculated elsewhere should be local function that works over equator
 from distutils.spawn import find_executable
 import math
 import os
+from pkg_resources import resource_filename
 from shutil import copyfile, move
 from subprocess import PIPE, Popen
 from sys import byteorder
@@ -48,37 +49,37 @@ STATUS_INVALID = 1
 # GMT 5.2+ argument mapping
 GMT52_POS = {"map": "g", "plot": "x", "norm": "n", "rel": "j", "rel_out": "J"}
 
-GMT_DATA = config["GMT_DATA"]
-if not os.path.isdir(GMT_DATA):
-    try:
-        GMT_DATA = os.environ["GMT_DATA"]
-    except KeyError:
-        # GMT_DATA files unavailable, only needed if using GMT_DATA
-        pass
 # LINZ DATA
 LINZ_COAST = {
-    "150k": os.path.join(GMT_DATA, "Paths/lds-nz-coastlines-and-islands/150k.gmt")
+    "150k": resource_filename(
+        "gmsimviz", "data/Paths/lds-nz-coastlines-and-islands/150k.gmt"
+    )
 }
 LINZ_LAKE = {
-    "150k": os.path.join(GMT_DATA, "Paths/lds-nz-lake-polygons/150k.gmt"),
-    "1500k": os.path.join(GMT_DATA, "Paths/lds-nz-lake-polygons/1500k.gmt"),
-    "1250k": os.path.join(GMT_DATA, "Paths/lds-nz-lake-polygons/1250k.gmt"),
+    "150k": resource_filename("gmsimviz", "data/Paths/lds-nz-lake-polygons/150k.gmt"),
+    "1500k": resource_filename("gmsimviz", "data/Paths/lds-nz-lake-polygons/1500k.gmt"),
+    "1250k": resource_filename("gmsimviz", "data/Paths/lds-nz-lake-polygons/1250k.gmt"),
 }
-LINZ_RIVER = {"150k": os.path.join(GMT_DATA, "Paths/lds-nz-river-polygons/150k.gmt")}
-LINZ_ROAD = os.path.join(GMT_DATA, "Paths/lds-nz-road-centre-line/wgs84.gmt")
-LINZ_HWY = os.path.join(GMT_DATA, "Paths/shwy/wgs84.gmt")
+LINZ_RIVER = {
+    "150k": resource_filename("gmsimviz", "data/Paths/lds-nz-river-polygons/150k.gmt")
+}
+LINZ_ROAD = resource_filename(
+    "gmsimviz", "data/Paths/lds-nz-road-centre-line/wgs84.gmt"
+)
+LINZ_HWY = resource_filename("gmsimviz", "data/Paths/shwy/wgs84.gmt")
 # OTHER GEO DATA
-TOPO_HIGH = os.path.join(GMT_DATA, "Topo/srtm_NZ.grd")
-TOPO_LOW = os.path.join(GMT_DATA, "Topo/nztopo.grd")
-CHCH_WATER = os.path.join(GMT_DATA, "Paths/water_network/water.gmt")
+TOPO_HIGH = resource_filename("gmsimviz", "data/Topo/srtm_NZ.grd")
+TOPO_LOW = resource_filename("gmsimviz", "data/Topo/nztopo.grd")
+CHCH_WATER = resource_filename("gmsimviz", "data/Paths/water_network/water.gmt")
 # CPT DATA
-CPT_DIR = os.path.join(GMT_DATA, "cpt")
 CPTS = {
-    "nztopo-green-brown": os.path.join(CPT_DIR, "palm_springs_nz_topo.cpt"),
-    "nztopo-grey1": os.path.join(CPT_DIR, "nz_topo_grey1.cpt"),
-    "mmi": os.path.join(CPT_DIR, "mmi.cpt"),
-    "slip": os.path.join(CPT_DIR, "slip.cpt"),
-    "trise": os.path.join(CPT_DIR, "trise.cpt"),
+    "nztopo-green-brown": resource_filename(
+        "gmsimviz", "data/cpt/palm_springs_nz_topo.cpt"
+    ),
+    "nztopo-grey1": resource_filename("gmsimviz", "data/cpt/nz_topo_grey1.cpt"),
+    "mmi": resource_filename("gmsimviz", "data/cpt/mmi.cpt"),
+    "slip": resource_filename("gmsimviz", "data/cpt/slip.cpt"),
+    "trise": resource_filename("gmsimviz", "data/cpt/trise.cpt"),
 }
 
 # awk program to get a proportion (-v p=0<1) of all segments
@@ -145,8 +146,12 @@ def get_region(lon, lat):
     """
     Returns closest region.
     """
-    rcode = np.loadtxt(os.path.join(GMT_DATA, "Topo/srtm.ll"), usecols=0, dtype="U2")
-    rloc = np.loadtxt(os.path.join(GMT_DATA, "Topo/srtm.ll"), usecols=(1,2))
+    rcode = np.loadtxt(
+        resource_filename("gmsimviz", "data/Topo/srtm.ll"), usecols=0, dtype="U2"
+    )
+    rloc = np.loadtxt(
+        resource_filename("gmsimviz", "data/Topo/srtm.ll"), usecols=(1, 2)
+    )
     return rcode[geo.closest_location(rloc, lon, lat)[0]]
 
 
@@ -154,7 +159,7 @@ def region_topo(region):
     """
     Returns topo file closest to given region name.
     """
-    return os.path.join(GMT_DATA, "Topo/srtm_{}.grd".format(region))
+    return resource_filename("gmsimviz", "data/Topo/srtm_{}.grd".format(region))
 
 
 ###
@@ -916,9 +921,7 @@ def table2block(
     cols=None,
     wd=None,
 ):
-    """
-    
-    """
+    """ """
     # determine working directory
     if wd is None:
         wd = os.path.dirname(table_in)
