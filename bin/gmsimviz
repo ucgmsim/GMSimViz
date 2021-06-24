@@ -436,6 +436,8 @@ def frame_window(job, meta, swd):
     lon1, lat1, dlon1, dlat1 = gmt.region_fit_oblique(
         job["view"][0], job["azimuth"] - 90, wd=swd
     )
+    # TODO: adjust dlon1 (dx) after region_fit_oblique to adjust for
+    #       view andgle change in depth
     dlon1 *= job["view"][1]
     dlat1 *= job["view"][1]
     # transitional view adjustment
@@ -2353,6 +2355,9 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
         work["msgs"].extend(work["msgs_post_ts"])
 
 
+if SIZE == 1:
+    print("GMSimViz needs to be run with more than 1 MPI process.")
+    COMM.Abort(1)
 ###
 ### MASTER
 ###
