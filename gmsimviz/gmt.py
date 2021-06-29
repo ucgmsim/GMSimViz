@@ -1645,7 +1645,7 @@ def adjust_latitude(
     return new_height, region + z_region
 
 
-def region_fit_oblique(points, azimuth, wd="."):
+def region_fit_oblique(points, azimuth, tilt=90, wd="."):
     """
     Given points and azimuth, return centre and minimum offsets.
     points: lon, lat pairs
@@ -1656,8 +1656,13 @@ def region_fit_oblique(points, azimuth, wd="."):
     if np.min(points[:, 0]) < -90 and np.max(points[:, 0]) > 90:
         # assume crossing over 180 -> -180, extend past 180
         points[points[:, 0] < 0, 0] += 360
+    if tilt != 90 and points.shape[1] == 3:
+        # have tilt and depths, need to adjust to depth of points
+        fix_depth = True
+    else:
+        fix_depth = False
 
-    # determine centre
+    # determine rough centre (excluding tilt/depths)
     lon_min, lat_min = np.min(points, axis=0)[:2]
     lon_max, lat_max = np.max(points, axis=0)[:2]
     lon0 = sum((lon_min, lon_max)) / 2.0
@@ -1671,6 +1676,30 @@ def region_fit_oblique(points, azimuth, wd="."):
         region=(0, 10, 0, 10),
         region_units="k",
     )
+    if fix_depth:
+        # shift points down assuming depth also given in km
+        points_xy[:, 1] -= np.cos(np.radians(tilt)) * points[:, 2]
+        # find the actual centre point at the surface given depth and map tilt
+        min_xy = np.min(points_xy[:, :2], axis=0)
+        max_xy = np.max(points_xy[:, :2], axis=0)
+        centre = np.mean(np.dstack((min_xy, max_xy)), axis=2)
+        # convert tilted centre surface projection back to geographic coordinates
+        lon0, lat0 = mapproject_multi(
+            centre,
+            wd=wd,
+            projection="OA%s/%s/%s/1i" % (lon0, lat0, azimuth),
+            region=(0, 10, 0, 10),
+            region_units="k",
+            inverse=True,
+        )
+        # cartesian coordinates with correct centre
+        points_xy = mapproject_multi(
+            points,
+            wd=wd,
+            projection="OA%s/%s/%s/1i" % (lon0, lat0, azimuth),
+            region=(0, 10, 0, 10),
+            region_units="k",
+        )
 
     # find furthest cartesian points
     i_xy = np.argmax(np.abs(points_xy), axis=0)

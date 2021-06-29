@@ -423,7 +423,6 @@ def frame_basemap(frame, crude, paths, proportion, scale, topo, region):
                 transparency=(1 - proportion) * 100,
             )
 
-
 def frame_window(job, meta, swd):
     """
     Determine current frame view window size, shape and contents.
@@ -434,17 +433,15 @@ def frame_window(job, meta, swd):
 
     # centre of points and distance (km) to furthest points
     lon1, lat1, dlon1, dlat1 = gmt.region_fit_oblique(
-        job["view"][0], job["azimuth"] - 90, wd=swd
+        job["view"][0], job["azimuth"] - 90, tilt=job["tilt"], wd=swd
     )
-    # TODO: adjust dlon1 (dx) after region_fit_oblique to adjust for
-    #       view andgle change in depth
     dlon1 *= job["view"][1]
     dlat1 *= job["view"][1]
     # transitional view adjustment
     if len(job["view"]) > 2:
         prog = job["view"][2]
         lon0, lat0, dlon0, dlat0 = gmt.region_fit_oblique(
-            job["view"][3], job["azimuth"] - 90, wd=swd
+            job["view"][3], job["azimuth"] - 90, tilt=job["tilt"], wd=swd
         )
         dlon0 *= job["view"][4]
         dlat0 *= job["view"][4]
