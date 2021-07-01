@@ -401,7 +401,7 @@ def frame_paths(seq, wd, srf_file):
     return swd, gmt_ps
 
 
-def frame_basemap(frame, crude, paths, proportion, scale, topo, region):
+def frame_basemap(frame, crude, paths, proportion, scale, region):
     """
     Draws basemap on plot, frame.
     crude: True for internal GMT (low) resolution geographic data.
@@ -411,14 +411,17 @@ def frame_basemap(frame, crude, paths, proportion, scale, topo, region):
     if crude:
         frame.basemap(topo=None, highway=None, road=None, res="f")
     else:
-        frame.basemap(topo=topo, scale=scale, res="150k" if region == "NZ" else "f")
+        frame.basemap(
+            resource_region=region, scale=scale, res="150k" if region == "NZ" else "f"
+        )
     if paths:
         if crude:
             frame.land(fill="white", res="f")
             frame.water(res="f", oceans=False)
         else:
             frame.topo(
-                topo,
+                region,
+                is_region=True,
                 cpt=gmt.CPTS["nztopo-grey1"],
                 transparency=(1 - proportion) * 100,
             )
@@ -1363,7 +1366,6 @@ def timeslice(job, meta):
         job["sim_time"] == -3,
         job["proportion"] if job["sim_time"] == -3 else 0,
         meta["downscale"] * 0.5,
-        meta["topo"],
         meta["region"],
     )
     frame_outlines(p, meta)
@@ -1676,7 +1678,6 @@ def load_meta(args):
         "logo_left": args.logo_l,
         "logo_right": args.logo_r,
         "region": region,
-        "topo": gmt.region_topo(region),
     }
 
     return meta, poi_srf

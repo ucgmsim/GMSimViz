@@ -63,13 +63,8 @@ LINZ_LAKE = {
 LINZ_RIVER = {
     "150k": resource_filename("gmsimviz", "data/Paths/lds-nz-river-polygons/150k.gmt")
 }
-LINZ_ROAD = resource_filename(
-    "gmsimviz", "data/Paths/lds-nz-road-centre-line/wgs84.gmt"
-)
-LINZ_HWY = resource_filename("gmsimviz", "data/Paths/shwy/wgs84.gmt")
 # OTHER GEO DATA
 TOPO_HIGH = resource_filename("gmsimviz", "data/Topo/srtm_NZ.grd")
-TOPO_LOW = resource_filename("gmsimviz", "data/Topo/nztopo.grd")
 CHCH_WATER = resource_filename("gmsimviz", "data/Paths/water_network/water.gmt")
 # CPT DATA
 CPTS = {
@@ -147,11 +142,9 @@ def get_region(lon, lat):
     Returns closest region.
     """
     rcode = np.loadtxt(
-        resource_filename("gmsimviz", "data/Topo/srtm.ll"), usecols=0, dtype="U2"
+        resource_filename("gmsimviz", "data/regions.ll"), usecols=0, dtype="U2"
     )
-    rloc = np.loadtxt(
-        resource_filename("gmsimviz", "data/Topo/srtm.ll"), usecols=(1, 2)
-    )
+    rloc = np.loadtxt(resource_filename("gmsimviz", "data/regions.ll"), usecols=(1, 2))
     return rcode[geo.closest_location(rloc, lon, lat)[0]]
 
 
@@ -159,7 +152,30 @@ def region_topo(region):
     """
     Returns topo file closest to given region name.
     """
-    return resource_filename("gmsimviz", "data/Topo/srtm_{}.grd".format(region))
+    path = resource_filename("gmsimviz", "data/Topo/srtm_{}.grd".format(region))
+    if os.path.isfile(path):
+        return path
+    return None
+
+
+def region_road(region):
+    """
+    Returns road file closest to given region name.
+    """
+    path = resource_filename("gmsimviz", "data/Paths/road/{}.wgs84".format(region))
+    if os.path.isfile(path):
+        return path
+    return None
+
+
+def region_highway(region):
+    """
+    Returns road file closest to given region name.
+    """
+    path = resource_filename("gmsimviz", "data/Paths/highway/{}.wgs84".format(region))
+    if os.path.isfile(path):
+        return path
+    return None
 
 
 ###
@@ -2777,7 +2793,14 @@ class GMTPlot:
             cmd.append("-p")
         Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
 
-    def topo(self, topo_file, topo_file_illu=None, cpt="gray", transparency=0):
+    def topo(
+        self,
+        topo_file,
+        topo_file_illu=None,
+        is_region=False,
+        cpt="gray",
+        transparency=0,
+    ):
         """
         Creates a topography surface using topo files and a colour palette.
         topo_file: file containing topography data
@@ -2786,6 +2809,10 @@ class GMTPlot:
             if not given then the above rule is assumed
         cpt: colour palette to use to display height
         """
+        if is_region:
+            topo_file = region_topo(region)
+            if topo_file is None:
+                return
         topo_file = os.path.abspath(topo_file)
         # assume illumination file if not explicitly given
         # assuming the last part of the file is a file extention
@@ -2830,6 +2857,7 @@ class GMTPlot:
         waternet=None,
         waternet_colour="darkblue",
         scale=1,
+        resource_region="NZ",
     ):
         """
         Adds land/water/features to map.
@@ -2871,7 +2899,12 @@ class GMTPlot:
                 topo_cpt = CPTS["nztopo-green-brown"]
             elif topo_cpt == "grey1":
                 topo_cpt = CPTS["nztopo-grey1"]
-            self.topo(topo, cpt=topo_cpt)
+            if topo == TOPO_HIGH:
+                # old default, now regional
+                self.topo(resource_region, is_region=True, cpt=topo_cpt)
+            else:
+                # explicitly specified
+                self.topo(topo, cpt=topo_cpt)
         if water is not None:
             if res is None:
                 self.water(colour=water, oceans=oceans)
@@ -2880,11 +2913,13 @@ class GMTPlot:
         if road is not None:
             if road == "auto":
                 road = "%sp" % (refs * 2)
-            self.path(LINZ_ROAD, width=road, colour=road_colour)
+            path = region_road(resource_region)
+            self.path(path, width=road, colour=road_colour)
         if highway is not None:
             if highway == "auto":
                 highway = "%sp" % (refs * 4)
-            self.path(LINZ_HWY, width=highway, colour=highway_colour)
+            path = region_highway(resource_region)
+            self.path(path, width=highway, colour=highway_colour)
         if waternet is not None:
             if waternet == "auto":
                 waternet = "%sp" % (refs * 0.1)
