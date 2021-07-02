@@ -2810,7 +2810,7 @@ class GMTPlot:
         cpt: colour palette to use to display height
         """
         if is_region:
-            topo_file = region_topo(region)
+            topo_file = region_topo(topo_file)
             if topo_file is None:
                 return
         topo_file = os.path.abspath(topo_file)
@@ -2914,12 +2914,14 @@ class GMTPlot:
             if road == "auto":
                 road = "%sp" % (refs * 2)
             path = region_road(resource_region)
-            self.path(path, width=road, colour=road_colour)
+            if path is not None:
+                self.path(path, width=road, colour=road_colour)
         if highway is not None:
             if highway == "auto":
                 highway = "%sp" % (refs * 4)
             path = region_highway(resource_region)
-            self.path(path, width=highway, colour=highway_colour)
+            if path is not None:
+                self.path(path, width=highway, colour=highway_colour)
         if waternet is not None:
             if waternet == "auto":
                 waternet = "%sp" % (refs * 0.1)
