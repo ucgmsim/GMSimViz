@@ -162,7 +162,7 @@ def region_road(region):
     """
     Returns road file closest to given region name.
     """
-    path = resource_filename("gmsimviz", "data/Paths/road/{}.wgs84".format(region))
+    path = resource_filename("gmsimviz", "data/Paths/road/{}.gmt".format(region))
     if os.path.isfile(path):
         return path
     return None
@@ -172,7 +172,7 @@ def region_highway(region):
     """
     Returns road file closest to given region name.
     """
-    path = resource_filename("gmsimviz", "data/Paths/highway/{}.wgs84".format(region))
+    path = resource_filename("gmsimviz", "data/Paths/highway/{}.gmt".format(region))
     if os.path.isfile(path):
         return path
     return None
