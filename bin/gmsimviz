@@ -412,7 +412,7 @@ def frame_basemap(frame, crude, paths, proportion, scale, region):
         frame.basemap(topo=None, highway=None, road=None, res="f")
     else:
         frame.basemap(
-            resource_region=region, scale=scale, res="150k" if region == "NZ" else "f"
+            resource_region=region, scale=scale, res=region
         )
     if paths:
         if crude:
