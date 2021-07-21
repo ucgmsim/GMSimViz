@@ -1379,14 +1379,14 @@ def timeslice(job, meta):
 
     # ground motion must be in geographic projection due to 3D Z scaling
     frame_proj(p, window, True, shift=False)
-    # add thicker coastlines on top of SRF
+    # add coastlines on top of SRF
     p.basemap(
         land=None,
         water=None,
         topo=None,
         highway=None,
         road=None,
-        scale=2.5 * meta["downscale"],
+        scale=meta["downscale"] * 0.5,
     )
     frame_proj_items(p, job, meta, window)
     # start plotting external items relative to border
