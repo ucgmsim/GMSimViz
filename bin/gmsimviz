@@ -9,6 +9,7 @@ known issues:
 from glob import glob
 import math
 import os
+from pkg_resources import resource_filename
 from shutil import copy, move, rmtree
 import sys
 from tempfile import mkdtemp
@@ -46,8 +47,8 @@ OVERLAY_T = 40
 TANH_TRANGE = 6
 # tanh linear gap fill over effective range tanh
 TANH_GAP = (0.5 + 0.5 * math.tanh(-TANH_TRANGE / 2)) / (TANH_TRANGE / 2)
-# try to keep full rotation longer than this
-MIN_ROTATION_DURATION = 5
+# prevent dizziness from camera rotation, degrees per second
+MAX_DPS = 6.0
 # borders on page
 WINDOW_T = 0.8
 WINDOW_B = 0.3
@@ -400,7 +401,7 @@ def frame_paths(seq, wd, srf_file):
     return swd, gmt_ps
 
 
-def frame_basemap(frame, crude, paths, proportion, scale, topo, region):
+def frame_basemap(frame, crude, paths, proportion, scale, region):
     """
     Draws basemap on plot, frame.
     crude: True for internal GMT (low) resolution geographic data.
@@ -410,14 +411,17 @@ def frame_basemap(frame, crude, paths, proportion, scale, topo, region):
     if crude:
         frame.basemap(topo=None, highway=None, road=None, res="f")
     else:
-        frame.basemap(topo=topo, scale=scale, res="150k" if region == "NZ" else "f")
+        frame.basemap(
+            resource_region=region, scale=scale, res=region
+        )
     if paths:
         if crude:
             frame.land(fill="white", res="f")
             frame.water(res="f", oceans=False)
         else:
             frame.topo(
-                topo,
+                region,
+                is_region=True,
                 cpt=gmt.CPTS["nztopo-grey1"],
                 transparency=(1 - proportion) * 100,
             )
@@ -432,16 +436,24 @@ def frame_window(job, meta, swd):
         job["azimuth"] = (meta["rot"] + 180) % 360
 
     # centre of points and distance (km) to furthest points
+    # assume a z-scale of 0.3, larger numbers more zoomed out, friendly to deep faults
+    # TODO: z-scale is only known after, make sure flat view can see base of srf
+    poi = np.copy(job["view"][0])
+    if poi.shape[1] == 3:
+        poi[:, 2] *= 0.3
     lon1, lat1, dlon1, dlat1 = gmt.region_fit_oblique(
-        job["view"][0], job["azimuth"] - 90, wd=swd
+        poi, job["azimuth"] - 90, tilt=job["tilt"], wd=swd
     )
     dlon1 *= job["view"][1]
     dlat1 *= job["view"][1]
     # transitional view adjustment
     if len(job["view"]) > 2:
         prog = job["view"][2]
+        poi = np.copy(job["view"][3])
+        if poi.shape[1] == 3:
+            poi[:, 2] *= 0.3
         lon0, lat0, dlon0, dlat0 = gmt.region_fit_oblique(
-            job["view"][3], job["azimuth"] - 90, wd=swd
+            poi, job["azimuth"] - 90, tilt=job["tilt"], wd=swd
         )
         dlon0 *= job["view"][4]
         dlat0 *= job["view"][4]
@@ -683,12 +695,12 @@ def frame_logo(frame, left=False, right=False):
     # add logos
     # TODO: adjust logo size to fit height instead and make it easy to replace logos
     if left:
-        logo = os.path.join(os.path.dirname(geo.__file__), "logo-left.png")
+        logo = resource_filename("gmsimviz", "data/img/logo-left.png")
         frame.image(
             "L", "T", os.path.join(logo), width="2.0i", pos="rel", dx=WINDOW_L, dy=0.02
         )
     if right:
-        logo = os.path.join(os.path.dirname(geo.__file__), "logo-right.png")
+        logo = resource_filename("gmsimviz", "data/img/logo-right.png")
         frame.image(
             "R",
             "T",
@@ -1354,7 +1366,6 @@ def timeslice(job, meta):
         job["sim_time"] == -3,
         job["proportion"] if job["sim_time"] == -3 else 0,
         meta["downscale"] * 0.5,
-        meta["topo"],
         meta["region"],
     )
     frame_outlines(p, meta)
@@ -1368,14 +1379,14 @@ def timeslice(job, meta):
 
     # ground motion must be in geographic projection due to 3D Z scaling
     frame_proj(p, window, True, shift=False)
-    # add thicker coastlines on top of SRF
+    # add coastlines on top of SRF
     p.basemap(
         land=None,
         water=None,
         topo=None,
         highway=None,
         road=None,
-        scale=2.5 * meta["downscale"],
+        scale=meta["downscale"] * 0.5,
     )
     frame_proj_items(p, job, meta, window)
     # start plotting external items relative to border
@@ -1547,7 +1558,7 @@ def get_args():
     arg(
         "--downscale",
         type=int,
-        default=2,
+        default=8,
         help="ghostscript downscale factor (prevents jitter), recommended 8",
     )
     arg("--liquefaction-s", help="liquefaction susceptibility hdf5 filepath")
@@ -1580,6 +1591,8 @@ def get_args():
         COMM.Abort(100)
     if args.devel:
         args.crude = True
+    if args.crude:
+        args.downscale = 1
     args.movement = process_movement(args)
 
     return args
@@ -1665,7 +1678,6 @@ def load_meta(args):
         "logo_left": args.logo_l,
         "logo_right": args.logo_r,
         "region": region,
-        "topo": gmt.region_topo(region),
     }
 
     return meta, poi_srf
@@ -1811,8 +1823,9 @@ def load_xyts_meta(args, meta, work, poi_srf, frames_sr):
         )
         meta["gm_z_km"] = max(xlen1, xlen2) * math.sin(math.radians(meta["map_tilt"]))
         # final view angle based on longer region size
-        start_cnr = int(xlen1 <= xlen2)
-        bearing_xl = (
+        long_cnr = int(xlen1 <= xlen2)
+        # bearing towards X for facing long or short side of domain
+        bearing_xls = [
             geo.ll_bearing(
                 xcnrs[0][start_cnr][0],
                 xcnrs[0][start_cnr][1],
@@ -1821,12 +1834,16 @@ def load_xyts_meta(args, meta, work, poi_srf, frames_sr):
                 midpoint=True,
             )
             + 90
-        )
-
-        if abs(geo.angle_diff(meta["s_azimuth"], bearing_xl)) > 90:
-            final_azimuth = (bearing_xl + 180) % 360
-        else:
-            final_azimuth = bearing_xl % 360
+            for start_cnr in [long_cnr, (long_cnr + 1) % 2]
+        ]
+        # have the ending face closer to the start azimuth
+        # so you can see fault slip again rather than risk it be dipped into the page
+        final_azimuths = []
+        for b in bearing_xls:
+            if abs(geo.angle_diff(meta["s_azimuth"], b)) > 90:
+                final_azimuths.append((b + 180) % 360)
+            else:
+                final_azimuths.append(b % 360)
     else:
         poi_gm = poi_srf
     if args.min_zoom is not None:
@@ -1834,29 +1851,40 @@ def load_xyts_meta(args, meta, work, poi_srf, frames_sr):
             geo.ll_shift(meta["hlat"], meta["hlon"], args.min_zoom / 2, b)[::-1]
             for b in np.arange(8) * 45
         ]
-    # transform over longer direction (angle_diff returns -180 > 180)
-    diff_azimuth = geo.angle_diff(meta["s_azimuth"], final_azimuth)
+    # option combinations for final azimuths (2) and rotation directions
     frames_azimuth = int(max(frames_sr, frames_gm) * 0.85)
-    # rotate in short direction if rotation speed is too high
-    long_direction = (frames_azimuth / args.framerate) > MIN_ROTATION_DURATION
-    if diff_azimuth < 0:
-        if args.direction == "ccw":
-            diff_azimuth -= 360
-        elif long_direction:
-            diff_azimuth += 360
-    else:
-        if args.direction == "cw":
-            diff_azimuth += 360
-        elif long_direction:
-            diff_azimuth -= 360
-    diff_azimuth /= frames_azimuth
+    diff_az = []
+    final_az = []
+    for final_azimuth in final_azimuths:
+        # can rotate over longer or shorter direction
+        # angle_diff returns -180 > 180)
+        diff_azimuth = geo.angle_diff(meta["s_azimuth"], final_azimuth)
+        forward = "ccw" if diff_azimuth < 0 else "cw"
+        reverse = "cw" if diff_azimuth < 0 else "ccw"
+        # closest is counter clockwise
+        if args.direction != reverse:
+            diff_az.append(diff_azimuth)
+            final_az.append(final_azimuth)
+        # taking long direction, clockwise overrall
+        if args.direction != forward:
+            diff_az.append(diff_azimuth + 360)
+            final_az.append(final_azimuth)
+        # extra long option if insisting ccw
+        if args.direction == forward:
+            diff_az.append(diff_azimuth - 360)
+            final_az.append(final_azimuth)
+    # dps stands for degrees-per-second rotation speed
+    dps = abs(np.array(diff_az)) / (frames_azimuth / args.framerate)
+    for rot_opt in np.argsort(dps)[::-1]:
+        if dps[rot_opt] <= MAX_DPS:
+            break
 
     return {
         "frames_sr": frames_sr,
         "frames_gm": frames_gm,
         "frames_azimuth": frames_azimuth,
-        "final_azimuth": final_azimuth,
-        "diff_azimuth": diff_azimuth,
+        "final_azimuth": final_az[rot_opt],
+        "diff_azimuth": diff_az[rot_opt] / frames_azimuth,
         "poi_srf": poi_srf,
         "poi_gm": poi_gm,
         "frames2now": 0,
@@ -2350,6 +2378,9 @@ def xyts_ts_ready(work, meta, movements, start_idx, inc_idx):
         work["msgs"].extend(work["msgs_post_ts"])
 
 
+if SIZE == 1:
+    print("GMSimViz needs to be run with more than 1 MPI process.")
+    COMM.Abort(1)
 ###
 ### MASTER
 ###

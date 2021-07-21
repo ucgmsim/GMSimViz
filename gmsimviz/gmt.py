@@ -13,14 +13,13 @@ avg_ll calculated elsewhere should be local function that works over equator
 from distutils.spawn import find_executable
 import math
 import os
+from pkg_resources import resource_filename
 from shutil import copyfile, move
 from subprocess import PIPE, Popen
 from sys import byteorder
 from time import time
 
 import numpy as np
-
-from gmsimviz.config import config
 
 # only needed if plotting fault planes direct from SRF
 try:
@@ -50,37 +49,20 @@ STATUS_INVALID = 1
 # GMT 5.2+ argument mapping
 GMT52_POS = {"map": "g", "plot": "x", "norm": "n", "rel": "j", "rel_out": "J"}
 
-GMT_DATA = config["GMT_DATA"]
-if not os.path.isdir(GMT_DATA):
-    try:
-        GMT_DATA = os.environ["GMT_DATA"]
-    except KeyError:
-        # GMT_DATA files unavailable, only needed if using GMT_DATA
-        pass
-# LINZ DATA
-LINZ_COAST = {
-    "150k": os.path.join(GMT_DATA, "Paths/lds-nz-coastlines-and-islands/150k.gmt")
-}
-LINZ_LAKE = {
-    "150k": os.path.join(GMT_DATA, "Paths/lds-nz-lake-polygons/150k.gmt"),
-    "1500k": os.path.join(GMT_DATA, "Paths/lds-nz-lake-polygons/1500k.gmt"),
-    "1250k": os.path.join(GMT_DATA, "Paths/lds-nz-lake-polygons/1250k.gmt"),
-}
-LINZ_RIVER = {"150k": os.path.join(GMT_DATA, "Paths/lds-nz-river-polygons/150k.gmt")}
-LINZ_ROAD = os.path.join(GMT_DATA, "Paths/lds-nz-road-centre-line/wgs84.gmt")
-LINZ_HWY = os.path.join(GMT_DATA, "Paths/shwy/wgs84.gmt")
-# OTHER GEO DATA
-TOPO_HIGH = os.path.join(GMT_DATA, "Topo/srtm_NZ.grd")
-TOPO_LOW = os.path.join(GMT_DATA, "Topo/nztopo.grd")
-CHCH_WATER = os.path.join(GMT_DATA, "Paths/water_network/water.gmt")
+# NZ DEFAULT DATA
+COAST_FILE = resource_filename("gmsimviz", "data/Paths/coastline/NZ.gmt")
+WATER_FILE = resource_filename("gmsimviz", "data/Paths/water/NZ.gmt")
+TOPO_FILE = resource_filename("gmsimviz", "data/Topo/srtm_NZ.grd")
+WATERNET_CHCH = resource_filename("gmsimviz", "data/Paths/water_network/water.gmt")
 # CPT DATA
-CPT_DIR = os.path.join(GMT_DATA, "cpt")
 CPTS = {
-    "nztopo-green-brown": os.path.join(CPT_DIR, "palm_springs_nz_topo.cpt"),
-    "nztopo-grey1": os.path.join(CPT_DIR, "nz_topo_grey1.cpt"),
-    "mmi": os.path.join(CPT_DIR, "mmi.cpt"),
-    "slip": os.path.join(CPT_DIR, "slip.cpt"),
-    "trise": os.path.join(CPT_DIR, "trise.cpt"),
+    "nztopo-green-brown": resource_filename(
+        "gmsimviz", "data/cpt/palm_springs_nz_topo.cpt"
+    ),
+    "nztopo-grey1": resource_filename("gmsimviz", "data/cpt/nz_topo_grey1.cpt"),
+    "mmi": resource_filename("gmsimviz", "data/cpt/mmi.cpt"),
+    "slip": resource_filename("gmsimviz", "data/cpt/slip.cpt"),
+    "trise": resource_filename("gmsimviz", "data/cpt/trise.cpt"),
 }
 
 # awk program to get a proportion (-v p=0<1) of all segments
@@ -147,16 +129,25 @@ def get_region(lon, lat):
     """
     Returns closest region.
     """
-    rcode = np.loadtxt(os.path.join(GMT_DATA, "Topo/srtm.ll"), usecols=0, dtype="U2")
-    rloc = np.loadtxt(os.path.join(GMT_DATA, "Topo/srtm.ll"), usecols=(1,2))
+    rcode = np.loadtxt(
+        resource_filename("gmsimviz", "data/regions.ll"), usecols=0, dtype="U2"
+    )
+    rloc = np.loadtxt(resource_filename("gmsimviz", "data/regions.ll"), usecols=(1, 2))
     return rcode[geo.closest_location(rloc, lon, lat)[0]]
 
 
-def region_topo(region):
+def regional_resource(region, resource="topo"):
     """
-    Returns topo file closest to given region name.
+    Returns regional data.
+    resource: one of "coastline", "highway", "road", "topo", "water"
     """
-    return os.path.join(GMT_DATA, "Topo/srtm_{}.grd".format(region))
+    if resource == "topo":
+        path = resource_filename("gmsimviz", "data/Topo/srtm_{}.grd".format(region))
+    else:
+        path = resource_filename("gmsimviz", "data/Paths/{}/{}.gmt".format(resource, region))
+    if os.path.isfile(path):
+        return path
+    return None
 
 
 ###
@@ -918,9 +909,7 @@ def table2block(
     cols=None,
     wd=None,
 ):
-    """
-    
-    """
+    """ """
     # determine working directory
     if wd is None:
         wd = os.path.dirname(table_in)
@@ -1644,7 +1633,7 @@ def adjust_latitude(
     return new_height, region + z_region
 
 
-def region_fit_oblique(points, azimuth, wd="."):
+def region_fit_oblique(points, azimuth, tilt=90, wd="."):
     """
     Given points and azimuth, return centre and minimum offsets.
     points: lon, lat pairs
@@ -1655,8 +1644,13 @@ def region_fit_oblique(points, azimuth, wd="."):
     if np.min(points[:, 0]) < -90 and np.max(points[:, 0]) > 90:
         # assume crossing over 180 -> -180, extend past 180
         points[points[:, 0] < 0, 0] += 360
+    if tilt != 90 and points.shape[1] == 3:
+        # have tilt and depths, need to adjust to depth of points
+        fix_depth = True
+    else:
+        fix_depth = False
 
-    # determine centre
+    # determine rough centre (excluding tilt/depths)
     lon_min, lat_min = np.min(points, axis=0)[:2]
     lon_max, lat_max = np.max(points, axis=0)[:2]
     lon0 = sum((lon_min, lon_max)) / 2.0
@@ -1670,6 +1664,30 @@ def region_fit_oblique(points, azimuth, wd="."):
         region=(0, 10, 0, 10),
         region_units="k",
     )
+    if fix_depth:
+        # shift points down assuming depth also given in km
+        points_xy[:, 1] -= np.cos(np.radians(tilt)) * points[:, 2]
+        # find the actual centre point at the surface given depth and map tilt
+        min_xy = np.min(points_xy[:, :2], axis=0)
+        max_xy = np.max(points_xy[:, :2], axis=0)
+        centre = np.mean(np.dstack((min_xy, max_xy)), axis=2)
+        # convert tilted centre surface projection back to geographic coordinates
+        lon0, lat0 = mapproject_multi(
+            centre,
+            wd=wd,
+            projection="OA%s/%s/%s/1i" % (lon0, lat0, azimuth),
+            region=(0, 10, 0, 10),
+            region_units="k",
+            inverse=True,
+        )
+        # cartesian coordinates with correct centre
+        points_xy = mapproject_multi(
+            points,
+            wd=wd,
+            projection="OA%s/%s/%s/1i" % (lon0, lat0, azimuth),
+            region=(0, 10, 0, 10),
+            region_units="k",
+        )
 
     # find furthest cartesian points
     i_xy = np.argmax(np.abs(points_xy), axis=0)
@@ -2583,57 +2601,90 @@ class GMTPlot:
         tproc.communicate("\n".join(xyan).encode("utf-8"))
         tproc.wait()
 
-    def water(self, colour="lightblue", res="150k", oceans=True):
+    def water(self, colour="lightblue", res="NZ", oceans=True):
         """
         Adds water areas.
         colour: colour of water
         res: resolution of GMT internal data (f,h,i,l,c)
-                or use LINZ data (150k, 1250k, 1500k)
+                or use 2 digit country code / custom data
         """
         # GMT land areas are made up of smaller segments
         # as such you can see lines on them and affect visuals
         # therefore the entire area is filled, but then clipped to water
         # pscoast etc can also slightly overlay tickmark (map) outline
 
-        # using LINZ data
-        if len(res) > 1:
-            if oceans:
-                # start cropping inverted (-N) land area
-                cmd = [
-                    GMT,
-                    "psclip",
-                    "-J",
-                    "-R",
-                    "-K",
-                    "-O",
-                    LINZ_COAST[res],
-                    "-N",
-                    self.z,
-                ]
-                if self.p:
-                    cmd.append("-p")
-                Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
-                # fill map with water colour
-                cmd = [
-                    GMT,
-                    "pscoast",
-                    "-J",
-                    "-R",
-                    "-G%s" % (colour),
-                    "-Dc",
-                    "-K",
-                    "-O",
-                    "-S%s" % (colour),
-                    self.z,
-                ]
-                if self.p:
-                    cmd.append("-p")
-                Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
-                # finish crop
-                cmd = [GMT, "psclip", "-C1", "-J", "-K", "-O"]
-                if self.p:
-                    cmd.append("-p")
-                Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
+        # using custom data
+        coast_path = regional_resource(res, resource="coastline")
+        water_path = regional_resource(res, resource="water")
+        if coast_path is not None and oceans:
+            # start cropping inverted (-N) land area
+            cmd = [
+                GMT,
+                "psclip",
+                "-J",
+                "-R",
+                "-K",
+                "-O",
+                COAST_FILE,
+                "-N",
+                self.z,
+            ]
+            if self.p:
+                cmd.append("-p")
+            Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
+            # fill map with water colour
+            cmd = [
+                GMT,
+                "pscoast",
+                "-J",
+                "-R",
+                "-G%s" % (colour),
+                "-Dc",
+                "-K",
+                "-O",
+                "-S%s" % (colour),
+                self.z,
+            ]
+            if self.p:
+                cmd.append("-p")
+            Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
+            # finish crop
+            cmd = [GMT, "psclip", "-C1", "-J", "-K", "-O"]
+            if self.p:
+                cmd.append("-p")
+            Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
+
+        if water_path is None or coast_path is None:
+            # start cropping to only show wet areas
+            if len(res) > 1:
+                res = "f"
+            cmd = [GMT, "pscoast", "-J", "-R", "-D%s" % (res), "-Sc", "-K", "-O", self.z]
+            if self.p:
+                cmd.append("-p")
+            Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
+            # fill land and water to prevent segment artifacts
+            cmd = [
+                GMT,
+                "pscoast",
+                "-J",
+                "-R",
+                "-G%s" % (colour),
+                "-Dc",
+                "-K",
+                "-O",
+                "-S%s" % (colour),
+                self.z,
+            ]
+            if self.p:
+                cmd.append("-p")
+            Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
+            # crop (-Q) land area off to show only water
+            cmd = [GMT, "pscoast", "-J", "-R", "-Q", "-K", "-O", self.z]
+            if self.p:
+                cmd.append("-p")
+            Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
+
+        if water_path is not None:
             # also add lakes and rivers
             cmd = [
                 GMT,
@@ -2644,63 +2695,24 @@ class GMTPlot:
                 "-O",
                 self.z,
                 "-G%s" % (colour),
-                LINZ_LAKE[res],
+                water_path,
             ]
             if self.p:
                 cmd.append("-p")
             Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
-            cmd = [
-                GMT,
-                "psxy",
-                "-J",
-                "-R",
-                "-K",
-                "-O",
-                self.z,
-                "-G%s" % (colour),
-                LINZ_RIVER[res],
-            ]
-            if self.p:
-                cmd.append("-p")
-            Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
-            return
 
-        # start cropping to only show wet areas
-        cmd = [GMT, "pscoast", "-J", "-R", "-D%s" % (res), "-Sc", "-K", "-O", self.z]
-        if self.p:
-            cmd.append("-p")
-        Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
-        # fill land and water to prevent segment artifacts
-        cmd = [
-            GMT,
-            "pscoast",
-            "-J",
-            "-R",
-            "-G%s" % (colour),
-            "-Dc",
-            "-K",
-            "-O",
-            "-S%s" % (colour),
-            self.z,
-        ]
-        if self.p:
-            cmd.append("-p")
-        Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
-        # crop (-Q) land area off to show only water
-        cmd = [GMT, "pscoast", "-J", "-R", "-Q", "-K", "-O", self.z]
-        if self.p:
-            cmd.append("-p")
-        Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
 
-    def land(self, fill="lightgray", res="150k"):
+    def land(self, fill="lightgray", res="NZ"):
         """
         Fills land area.
         fill: colour of land
         res: resolution 'f' full, 'h' high, 'i' intermediate, 'l' low, 'c' crude
+             or 2 letter country code for custom data
         """
 
         # LINZ correct res option
-        if len(res) > 1:
+        coast_path = regional_resource(res, resource="coastline")
+        if coast_path is not None:
             cmd = [
                 GMT,
                 "psxy",
@@ -2710,7 +2722,7 @@ class GMTPlot:
                 "-O",
                 self.z,
                 "-G%s" % (fill),
-                LINZ_COAST[res],
+                coast_path,
             ]
             if self.p:
                 cmd.append("-p")
@@ -2721,6 +2733,8 @@ class GMTPlot:
         # therefore the whole area needs to be filled
         # then cropped to only include land
         # start cropping to only fill dry areas
+        if len(res) > 1:
+            res = "f"
         cmd = [GMT, "pscoast", "-J", "-R", "-D%s" % (res), "-Gc", "-K", "-O", self.z]
         if self.p:
             cmd.append("-p")
@@ -2747,7 +2761,14 @@ class GMTPlot:
             cmd.append("-p")
         Popen(cmd, stdout=self.psf, cwd=self.wd).wait()
 
-    def topo(self, topo_file, topo_file_illu=None, cpt="gray", transparency=0):
+    def topo(
+        self,
+        topo_file,
+        topo_file_illu=None,
+        is_region=False,
+        cpt="gray",
+        transparency=0,
+    ):
         """
         Creates a topography surface using topo files and a colour palette.
         topo_file: file containing topography data
@@ -2756,6 +2777,10 @@ class GMTPlot:
             if not given then the above rule is assumed
         cpt: colour palette to use to display height
         """
+        if is_region:
+            topo_file = regional_resource(topo_file, resource="topo")
+            if topo_file is None:
+                return
         topo_file = os.path.abspath(topo_file)
         # assume illumination file if not explicitly given
         # assuming the last part of the file is a file extention
@@ -2789,7 +2814,7 @@ class GMTPlot:
         land="darkgreen",
         water="lightblue",
         oceans=True,
-        topo=TOPO_HIGH,
+        topo=TOPO_FILE,
         topo_cpt="green-brown",
         coastlines="auto",
         res=None,
@@ -2800,6 +2825,7 @@ class GMTPlot:
         waternet=None,
         waternet_colour="darkblue",
         scale=1,
+        resource_region="NZ",
     ):
         """
         Adds land/water/features to map.
@@ -2831,51 +2857,54 @@ class GMTPlot:
         inch = math.sqrt(sum(np.power(size, 2)))
         refs = scale * inch / (km * 0.618)
 
+        res_region = res if res is not None else resource_region
         if land is not None:
-            if res is None:
-                self.land(fill=land)
-            else:
-                self.land(fill=land, res=res)
+            self.land(fill=land, res=res_region)
         if topo is not None:
             if topo_cpt == "green-brown":
                 topo_cpt = CPTS["nztopo-green-brown"]
             elif topo_cpt == "grey1":
                 topo_cpt = CPTS["nztopo-grey1"]
-            self.topo(topo, cpt=topo_cpt)
-        if water is not None:
-            if res is None:
-                self.water(colour=water, oceans=oceans)
+            if topo == TOPO_FILE:
+                # old default, now regional
+                self.topo(resource_region, is_region=True, cpt=topo_cpt)
             else:
-                self.water(colour=water, res=res, oceans=oceans)
+                # explicitly specified
+                self.topo(topo, cpt=topo_cpt)
+        if water is not None:
+            self.water(colour=water, res=res_region, oceans=oceans)
         if road is not None:
             if road == "auto":
                 road = "%sp" % (refs * 2)
-            self.path(LINZ_ROAD, width=road, colour=road_colour)
+            path = regional_resource(resource_region, resource="road")
+            if path is not None:
+                self.path(path, width=road, colour=road_colour)
         if highway is not None:
             if highway == "auto":
                 highway = "%sp" % (refs * 4)
-            self.path(LINZ_HWY, width=highway, colour=highway_colour)
+            path = regional_resource(resource_region, resource="highway")
+            if path is not None:
+                self.path(path, width=highway, colour=highway_colour)
         if waternet is not None:
             if waternet == "auto":
                 waternet = "%sp" % (refs * 0.1)
-            self.path(CHCH_WATER, width=waternet, colour=waternet_colour)
+            self.path(WATERNET_CHCH, width=waternet, colour=waternet_colour)
         if coastlines is not None:
             if coastlines == "auto":
                 coastlines = "%sp" % (refs * 3)
-            if res is None:
-                self.coastlines(width=coastlines)
-            else:
-                self.coastlines(width=coastlines, res=res)
+            self.coastlines(width=coastlines, res=res_region)
 
-    def coastlines(self, width=0.3, colour="black", res="150k"):
+    def coastlines(self, width=0.3, colour="black", res="NZ"):
         """
         Draws outline of land.
         width: thickness of line
         colour: colour of line
         res: resolution of coastlines
+             single digit GMT resolution for built in GMT worldwide data
+             2 digit country code where available for custom data
         """
-        # LINZ correct high res option
-        if len(res) > 1:
+        path = regional_resource(res, resource="coastline")
+        if path is not None:
             cmd = [
                 GMT,
                 "psxy",
@@ -2885,7 +2914,7 @@ class GMTPlot:
                 "-O",
                 self.z,
                 "-W%s,%s" % (width, colour),
-                LINZ_COAST[res],
+                path,
             ]
             if self.p:
                 cmd.append("-p")
@@ -2893,6 +2922,8 @@ class GMTPlot:
             return
 
         # internal GMT GSHHG rough traces
+        if len(res) > 1:
+            res="f"
         cmd = [
             GMT,
             "pscoast",

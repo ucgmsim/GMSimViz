@@ -238,7 +238,6 @@ def path_from_corners(
 def get_distances(locations: np.ndarray, lon: float, lat: float):
     """Calculates the distance between the array of locations and
     the specified reference location
-
     Parameters
     ----------
     locations : np.ndarray
@@ -248,7 +247,6 @@ def get_distances(locations: np.ndarray, lon: float, lat: float):
         Longitude of the reference location
     lat
         Latitude of the reference location
-
     Returns
     -------
     np.ndarray
@@ -273,4 +271,3 @@ def closest_location(locations, lon, lat):
     i = np.argmin(d)
 
     return i, d[i]
-
