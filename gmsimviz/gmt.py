@@ -3728,6 +3728,9 @@ class GMTPlot:
                     # assuming distance in points (default)
                     contour_mindist = "%sp" % (float(str(font_size).rstrip("cip")) * 3)
                 cmd.append("-Gn%s/%s" % (contour_apl, contour_mindist))
+            else:
+                # prevent annotations if given cpt file source
+                cmd.append("-A-")
             if self.p:
                 cmd.append("-p")
             Popen(cmd, stdout=self.psf, stderr=self.sink, cwd=self.wd).wait()
