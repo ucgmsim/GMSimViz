@@ -21,9 +21,11 @@ A fully featured result is available at https://youtu.be/qZkOTI4x_cc
   </tr>
 </table>
 
-## November 2023 Update
+### November 2023 Update
 <img src="figures/nov2023.png" width="500">
 Before and after. Try to take into consideration the depth of the fault to make sure it fits on the screen when tilted. This is done by estimating the geographical to page coordinate ratio and can be modified with the `--shift-factor` parameter. The actual z-scaling factor is a dependency which changes after making this adjustment.
+
+New parameters to control the max and min tilt range when facing the fault with `--tilt-min` and `--tilt-min`. The major tilt to show the fault below the surface can also be adjusted from the previous default of 1 degree tilt using `--tilt-dip`.
 
 
 ## Installation
