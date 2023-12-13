@@ -29,11 +29,6 @@ import gmsimviz.gmt as gmt
 import gmsimviz.srf as srf
 import gmsimviz.xyts as xyts
 
-# map will tilt to face slip square on but also limited by MIN and MAX
-TILT_MIN = 40
-TILT_MAX = 20
-# when dipping below surface, map tilt will be 1 degree (almost into the page)
-TILT_DIP = 1
 # frames at 16 inches by 9 inches means 120 dpi is equivalent to 1920x1080 px
 PAGE_WIDTH = 16
 PAGE_HEIGHT = 9
@@ -1535,6 +1530,7 @@ def get_args():
     arg("srf_file", help="srf file to plot")
     arg("--title", help="main title on animation")
     arg("-x", "--xyts", help="xyts file for GM overlay")
+    arg("--no-gm", help="don't create animation of ground motion", action="store_true")
     arg("--gm-cut", help="cutoff sim time (s) for ground motion", type=float)
     arg("--speed", help="1: real time, 2: double speed etc...", type=float, default=2.0)
     arg("--min-zoom", help="set animation zoom (km)", type=float)
@@ -1555,6 +1551,20 @@ def get_args():
     arg("-d", "--delay", help="animation start delay (s)", type=float, default=1.5)
     arg("-e", "--end", help="animation end delay (s)", type=float, default=3.0)
     arg("-r", "--rot", help="fixed rotation (north deg)", type=float, default=1000.0)
+    arg("--tilt-min", help="srf face on tilt will be at least this (deg)", type=int, default=40)
+    arg("--tilt-max", help="srf face on tilt will be at most this (deg)", type=int, default=20)
+    arg(
+        "--tilt-dip",
+        help="when dipping below surface, map tilt will be 1 degree by default (almost into the page)",
+        type=int,
+        default=1
+    )
+    arg(
+        "--shift-factor",
+        help="when shifting to counter hypocentre depth, multiple to account for z_scale",
+        type=float,
+        default=2.0
+    )
     arg(
         "--downscale",
         type=int,
@@ -1613,10 +1623,11 @@ def load_meta(args):
     avg_strike = geo.avg_wbearing([(p["strike"], p["length"]) for p in planes])
     avg_dip = planes[0]["dip"]
     s_azimuth = avg_strike + 90
-    map_tilt = max(90 - avg_dip, TILT_MAX)
-    map_tilt = min(map_tilt, TILT_MIN)
+    map_tilt = max(90 - avg_dip, args.tilt_max)
+    map_tilt = min(map_tilt, args.tilt_min)
     # plane domains
     hlon, hlat, hdepth = srf.get_hypo(args.srf_file, depth=True)
+    poi_srf = []
     if srf.read_header(args.srf_file, idx=True)[0]["ndip"] == 1:
         # extend point source bounds to show more than point
         bounds = [[srf.get_hypo(args.srf_file, depth=True)] * 4]
@@ -1626,13 +1637,25 @@ def load_meta(args):
         gmt_top = ""
     else:
         bounds = srf.get_bounds(args.srf_file, depth=True)
+        ### NEW STUFF TO SHIFT SRF BOUNDS SO THAT WHEN TILTED, HYPOCENTRE IS IN CENTRE
+        ### SHOULD BE TIDIED UP, USING ROUGH ESTIMATES
+        ### ASSUMES ALL PLANES ARE ROUGHLY THE SAME DEPTH
+        ### THE ACTUAL Z_SCALE IS NOT KNOWN AT THIS POINT, IT SHOULD BE AT LEAST ESTIMATED
+        shift_km = hdepth / math.tan(math.radians(map_tilt))
+        shift_deg = shift_km / 111.1 # use ll_shift
+        shift_lon = math.sin(math.radians(s_azimuth)) * shift_deg
+        shift_lat = math.cos(math.radians(s_azimuth)) * shift_deg
+        for plane in bounds:
+            for point in plane:
+                poi_srf.append([point[0] + shift_lon * args.shift_factor, point[1] + shift_lat * args.shift_factor, point[2]])
+        ### NEW STUFF ENDS
         gmt_bottom = "\n>\n".join(
             ["\n".join([" ".join(map(str, b)) for b in p]) for p in bounds]
         )
         gmt_top = "\n>\n".join(
             ["\n".join([" ".join(map(str, b)) for b in p[:2]]) for p in bounds]
         )
-    poi_srf = []
+
     for plane in bounds:
         for point in plane:
             poi_srf.append(point)
@@ -1800,7 +1823,7 @@ def load_xyts_meta(args, meta, work, poi_srf, frames_sr):
             meta["xyts_nt"] = xfile.nt
         else:
             meta["xyts_nt"] = min(xfile.nt, int(round(args.gm_cut / xfile.dt)) + 1)
-        if args.animate:
+        if args.animate and not args.no_gm:
             work["msgs"].append([load_xyts, meta, args.xyts_cpt_max])
             work["deps"] += 1
             frames_gm = int(
@@ -1973,11 +1996,11 @@ def add_frames_face_slip(work, meta, movements, frames):
     movements["frames2now"] += frames
 
 
-def add_frames_dip_slip(work, meta, movements):
+def add_frames_dip_slip(work, meta, movements, tilt_dip):
     # stage 2 dip below surface
     frames_dip = meta["pause_frames"]
     for i in range(frames_dip):
-        tilt2 = 90 - (90 - TILT_DIP) * (i + 1.0) / frames_dip
+        tilt2 = 90 - (90 - tilt_dip) * (i + 1.0) / frames_dip
         tiltv = math.sin(math.radians(tilt2)) * meta["map_tilt"]
         work["msgs"].append(
             [
@@ -2405,17 +2428,18 @@ if RANK == MASTER:
     else:
         add_frames_face_slip(work, meta, movements, int(args.time * args.framerate))
         if not meta["pointsource"]:
-            add_frames_dip_slip(work, meta, movements)
+            add_frames_dip_slip(work, meta, movements, args.tilt_dip)
             add_frames_slip_fade(work, meta, movements)
         else:
             movements["frames2sim"] = movements["frames2now"]
-        zoom_out_timing(movements)
-        add_frames_slip_progress(work, meta, movements)
-        add_frames_camera_reset(work, meta, movements)
-        add_frames_overlays(work, meta, movements, args)
-        if args.paths is not None:
-            add_frames_network(work, meta, movements, args.path_files)
-        add_frames_start_end(movements, args.end, args.delay)
+        if not args.no_gm:
+            zoom_out_timing(movements)
+            add_frames_slip_progress(work, meta, movements)
+            add_frames_camera_reset(work, meta, movements)
+            add_frames_overlays(work, meta, movements, args)
+            if args.paths is not None:
+                add_frames_network(work, meta, movements, args.path_files)
+            add_frames_start_end(movements, args.end, args.delay)
 
     # job tracking
     nslaves = SIZE - 1
