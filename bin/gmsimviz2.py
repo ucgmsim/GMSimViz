@@ -7,11 +7,13 @@ known issues:
 """
 
 from glob import glob
+
+import json
 import math
 import os
 from pkg_resources import resource_filename
 from shutil import copy, move, rmtree
-import sys
+
 from tempfile import mkdtemp
 from time import time, sleep
 
@@ -49,6 +51,65 @@ WINDOW_T = 0.8
 WINDOW_B = 0.3
 WINDOW_L = 0.5
 WINDOW_R = 0.5
+
+
+class _JsonSrfAdapter(object):
+    def __init__(self, path):
+        with open(path, "r") as f:
+            data = json.load(f)
+        self._planes = data.get("planes", [])
+        self._hypo   = data.get("hypo", None)
+        self._bounds = data.get("bounds", None)
+
+        if not self._planes:
+            raise ValueError("JSON has no 'planes' entries")
+        # Validate minimal keys
+        for k in ("centre","nstrike","ndip","length","width","strike","dip","dtop"):
+            if k not in self._planes[0]:
+                raise ValueError("JSON planes missing key: %s" % k)
+
+    # mimic legacy API
+    def read_header(self, _sf, idx=True):
+        return self._planes if idx else [
+            (p["centre"][0], p["centre"][1], p["nstrike"], p["ndip"],
+             p["length"], p["width"], p["strike"], p["dip"],
+             p["dtop"], p.get("shyp",0.5), p.get("dhyp",0.5))
+            for p in self._planes
+        ]
+
+    def get_hypo(self, _sf, depth=True):
+        if self._hypo:
+            return tuple(self._hypo) if depth else tuple(self._hypo[:2])
+        # fallback: plane[0] top
+        p0 = self._planes[0]
+        lon, lat = p0["centre"]
+        dtop = p0.get("dtop", 0.0)
+        return (lon,lat,dtop) if depth else (lon,lat)
+
+    def get_bounds(self, _sf, depth=True):
+        if self._bounds:
+            return self._bounds
+        # synthesize simple rectangles from header if bounds missing
+        import math
+        polys=[]
+        for p in self._planes:
+            lon0, lat0 = p["centre"]
+            L, W = max(0.1,float(p["length"])), max(0.1,float(p["width"]))
+            strike = float(p.get("strike",0.0))
+            dtop = float(p.get("dtop",0.0))
+            lat_k = 1.0/111.1
+            lon_k = lat_k/max(0.2, math.cos(math.radians(lat0)))
+            hx, hy = 0.5*L*lon_k, 0.5*W*lat_k
+            th = math.radians((90.0 - strike)%360.0)
+            corners=[(-hx,-hy),(hx,-hy),(hx,hy),(-hx,hy)]
+            poly=[]
+            for x,y in corners:
+                xr = x*math.cos(th)-y*math.sin(th)
+                yr = x*math.sin(th)+y*math.cos(th)
+                poly.append((lon0+xr, lat0+yr, dtop))
+            polys.append(poly)
+        return polys
+
 
 
 def load_xyts(meta, xyts_cpt_max):
@@ -1425,13 +1486,24 @@ def validate_args(args):
     if args.framerate < 5:
         print("Framerate too low: %s" % (args.framerate))
         MPI.COMM_WORLD.Abort(301)
-    # srf file must exist
-    try:
-        args.srf_file = os.path.abspath(args.srf_file)
-        assert os.path.isfile(args.srf_file)
-    except AssertionError:
-        print("Could not find SRF: %s" % (args.srf_file))
-        MPI.COMM_WORLD.Abort(302)
+
+    if args.srf_json and not os.path.isfile(args.srf_json):
+        print("Could not find SRF JSON: %s" % args.srf_json)
+        MPI.COMM_WORLD.Abort(303)
+
+    if args.srf_json:
+        # title default from JSON name if not set
+        if args.title is None:
+            args.title = os.path.basename(args.srf_json)
+    else:
+        # srf file must exist
+        try:
+            args.srf_file = os.path.abspath(args.srf_file)
+            assert os.path.isfile(args.srf_file)
+        except AssertionError:
+            print("Could not find SRF: %s" % (args.srf_file))
+            MPI.COMM_WORLD.Abort(302)
+
     # xyts is optional
     if args.xyts is not None:
         try:
@@ -1521,6 +1593,9 @@ def get_args():
     parser = ArgumentParser()
     arg = parser.add_argument
     arg("srf_file", help="srf file to plot")
+    arg("--srf-json", dest="srf_json", default=None,
+        help="Path to SRF metadata JSON (planes/hypo/bounds). If provided, overrides parsing of srf_file.")
+
     arg("--title", help="main title on animation")
     arg("-x", "--xyts", help="xyts file for GM overlay")
     arg("--no-gm", help="don't create animation of ground motion", action="store_true")
@@ -1606,9 +1681,22 @@ def load_meta(args):
     Common properties of this animation / data.
     """
 
+    # pick SRF adapter
+    if args.srf_json:
+        srf_adapter = _JsonSrfAdapter(args.srf_json)
+        # Provide call-compatible functions
+        read_header = srf_adapter.read_header
+        get_hypo = srf_adapter.get_hypo
+        get_bounds = srf_adapter.get_bounds
+    else:
+        import srf as _legacy_srf
+        read_header = _legacy_srf.read_header
+        get_hypo = _legacy_srf.get_hypo
+        get_bounds = _legacy_srf.get_bounds
+
     # load plane data
     try:
-        planes = srf.read_header(args.srf_file, idx=True)
+        planes = read_header(args.srf_file, idx=True)
     except (ValueError, IndexError):
         print("Failed to read SRF: %s" % (args.srf_file))
         MPI.COMM_WORLD.Abort(200)
@@ -1619,11 +1707,11 @@ def load_meta(args):
     map_tilt = max(90 - avg_dip, args.tilt_max)
     map_tilt = min(map_tilt, args.tilt_min)
     # plane domains
-    hlon, hlat, hdepth = srf.get_hypo(args.srf_file, depth=True)
+    hlon, hlat, hdepth = get_hypo(args.srf_file, depth=True)
     poi_srf = []
     if srf.read_header(args.srf_file, idx=True)[0]["ndip"] == 1:
         # extend point source bounds to show more than point
-        bounds = [[srf.get_hypo(args.srf_file, depth=True)] * 4]
+        bounds = [[get_hypo(args.srf_file, depth=True)] * 4]
         bounds[0][1] = bounds[0][0][0] + 0.3, bounds[0][0][1] + 0.3, bounds[0][0][2]
         bounds[0][2] = bounds[0][0][0] - 0.3, bounds[0][0][1] - 0.3, bounds[0][0][2]
         gmt_bottom = ""
