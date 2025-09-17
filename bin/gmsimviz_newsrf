@@ -26,10 +26,8 @@ except ImportError:
     print("Missing h5py module.")
     print("Will not be able to plot liquefaction or landslide.")
 
-import gmsimviz.geo as geo
-import gmsimviz.gmt as gmt
-import gmsimviz.srf as srf
-import gmsimviz.xyts as xyts
+
+from gmsimviz import geo, gmt, srf, xyts
 
 # frames at 16 inches by 9 inches means 120 dpi is equivalent to 1920x1080 px
 PAGE_WIDTH = 16
@@ -1681,22 +1679,15 @@ def load_meta(args):
     Common properties of this animation / data.
     """
 
+    _srf = srf
     # pick SRF adapter
     if args.srf_json:
-        srf_adapter = _JsonSrfAdapter(args.srf_json)
-        # Provide call-compatible functions
-        read_header = srf_adapter.read_header
-        get_hypo = srf_adapter.get_hypo
-        get_bounds = srf_adapter.get_bounds
-    else:
-        import srf as _legacy_srf
-        read_header = _legacy_srf.read_header
-        get_hypo = _legacy_srf.get_hypo
-        get_bounds = _legacy_srf.get_bounds
+        _srf = _JsonSrfAdapter(args.srf_json)
+
 
     # load plane data
     try:
-        planes = read_header(args.srf_file, idx=True)
+        planes = _srf.read_header(args.srf_file, idx=True)
     except (ValueError, IndexError):
         print("Failed to read SRF: %s" % (args.srf_file))
         MPI.COMM_WORLD.Abort(200)
@@ -1707,17 +1698,17 @@ def load_meta(args):
     map_tilt = max(90 - avg_dip, args.tilt_max)
     map_tilt = min(map_tilt, args.tilt_min)
     # plane domains
-    hlon, hlat, hdepth = get_hypo(args.srf_file, depth=True)
+    hlon, hlat, hdepth = _srf.get_hypo(args.srf_file, depth=True)
     poi_srf = []
-    if srf.read_header(args.srf_file, idx=True)[0]["ndip"] == 1:
+    if _srf.read_header(args.srf_file, idx=True)[0]["ndip"] == 1:
         # extend point source bounds to show more than point
-        bounds = [[get_hypo(args.srf_file, depth=True)] * 4]
+        bounds = [[_srf.get_hypo(args.srf_file, depth=True)] * 4]
         bounds[0][1] = bounds[0][0][0] + 0.3, bounds[0][0][1] + 0.3, bounds[0][0][2]
         bounds[0][2] = bounds[0][0][0] - 0.3, bounds[0][0][1] - 0.3, bounds[0][0][2]
         gmt_bottom = ""
         gmt_top = ""
     else:
-        bounds = srf.get_bounds(args.srf_file, depth=True)
+        bounds = _srf.get_bounds(args.srf_file, depth=True)
         ### NEW STUFF TO SHIFT SRF BOUNDS SO THAT WHEN TILTED, HYPOCENTRE IS IN CENTRE
         ### SHOULD BE TIDIED UP, USING ROUGH ESTIMATES
         ### ASSUMES ALL PLANES ARE ROUGHLY THE SAME DEPTH
