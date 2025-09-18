@@ -29,6 +29,28 @@ except ImportError:
 
 from gmsimviz import geo, gmt, srf, xyts
 
+import subprocess
+
+def overlay_plane_bounds(frame, infile, pen="1.5p,black", transparency=0):
+    """
+    Draw multi-segment XY polylines (perimeter + top traces) to the current frame
+    using raw GMT 'psxy', appending to frame.psf.
+    """
+    # Use the GMT binary path from the module
+    gmt_bin = getattr(gmt, "GMT", "gmt")
+
+    # Build psxy command. Note: in this codebase many calls omit -J/-R because
+    # GMT history is already set by previous steps (exactly like background()).
+    cmd = [gmt_bin, "psxy", "-K", "-O", f"-W{pen}"]
+    if transparency:
+        cmd.append(f"-t{int(transparency)}")
+    cmd.append(os.path.abspath(infile))
+
+    # Append to the PS canvas for this frame
+    # frame.psf is the open file handle used throughout GMTPlot methods
+    subprocess.run(cmd, cwd=frame.wd, check=False, stdout=frame.psf, stderr=subprocess.DEVNULL)
+
+
 # frames at 16 inches by 9 inches means 120 dpi is equivalent to 1920x1080 px
 PAGE_WIDTH = 16
 PAGE_HEIGHT = 9
@@ -837,7 +859,12 @@ def frame_srf_surface(frame, plot_type, n_plane, transparency, srf_wd):
             bounds_xy = os.path.join(srf_wd, "plane_bounds.xy")
             if os.path.exists(bounds_xy):
                 # fallback: draw boundaries only
-                gmt.map_overlay(wd = frame.wd, meta = frame.meta if hasattr(frame, "meta") else None, infile = bounds_xy, pen = "1.5p,black", transparency = transparency,annotate = False,)
+                overlay_plane_bounds(
+                    frame=frame,
+                    infile=bounds_xy,
+                    pen="1.5p,black",
+                    transparency=transparency,
+                )
 
     elif plot_type == "timeseries":
         # show cumulative slip current sim_time
@@ -907,15 +934,11 @@ def frame_proj_base(frame, plot, job, meta, window):
             if job["transparency"] < 100:
                 # perimeter + top traces
                 # Overlay polylines; we keep transparency and map context consistent
-                # Use your GMT helper for line overlays. If you don't have a dedicated one,
-                # gmt.map_overlay(..., infile=..., pen=...) or gmt.plot_lines(...) usually exists.
-                gmt.map_overlay(
-                    wd=frame.wd,
-                    meta=meta,
+                overlay_plane_bounds(
+                    frame=frame,
                     infile=meta["plane_bounds_xy"],
                     pen="1.5p,black",
                     transparency=job.get("transparency", 0),
-                    annotate=False,
                 )
                 # Nothing else to do in 'slip' stage when JSON supplied
                 # (we intentionally *don't* compute srf_data)
