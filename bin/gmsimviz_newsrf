@@ -825,16 +825,20 @@ def frame_srf_surface(frame, plot_type, n_plane, transparency, srf_wd):
     Adds SRF grids to plot.
     """
     if plot_type == "slip" and transparency < 100:
-        # show total slip
+        # show total slip if grids exist; otherwise boundaries fallback
+        any_grid = False
         for s in range(n_plane):
-            if not os.path.exists("%s/plane_%d_slip_xy.grd" % (frame.wd, s)):
-                continue
-            frame.overlay(
-                "%s/plane_%d_slip_xy.grd" % (frame.wd, s),
-                "%s/slip.cpt" % (srf_wd),
-                transparency=transparency,
-                crop_grd="%s/plane_%d_mask_xy.grd" % (frame.wd, s),
-            )
+            grd = "%s/plane_%d_slip_xy.grd" % (frame.wd, s)
+            if os.path.exists(grd):
+                any_grid = True
+                frame.overlay(grd,"%s/slip.cpt" % (srf_wd),transparency = transparency, crop_grd = "%s/plane_%d_mask_xy.grd" % (frame.wd, s),)
+
+        if not any_grid:
+            bounds_xy = os.path.join(srf_wd, "plane_bounds.xy")
+            if os.path.exists(bounds_xy):
+                # fallback: draw boundaries only
+                gmt.map_overlay(wd = frame.wd, meta = frame.meta if hasattr(frame, "meta") else None, infile = bounds_xy, pen = "1.5p,black", transparency = transparency,annotate = False,)
+
     elif plot_type == "timeseries":
         # show cumulative slip current sim_time
         for s in range(n_plane):
@@ -847,6 +851,14 @@ def frame_srf_surface(frame, plot_type, n_plane, transparency, srf_wd):
                 crop_grd="%s/plane_%d_mask_xy.grd" % (frame.wd, s),
             )
 
+def _write_xy_multiseg(xy_string, path):
+    """
+    Write a multi-segment GMT xy string (with '>' separators) to a file.
+    """
+    with open(path, "w") as f:
+        if xy_string and not xy_string.endswith("\n"):
+            xy_string = xy_string + "\n"
+        f.write(xy_string or "")
 
 def frame_proj_base(frame, plot, job, meta, window):
     # base items dependent on plot type
@@ -887,18 +899,39 @@ def frame_proj_base(frame, plot, job, meta, window):
     # load srf plane data
     elif plot == "slip":
         scale_y_final = 0.7
-        if job["transparency"] < 100 and not meta["pointsource"]:
-            srf_data = gmt.srf2map(
-                meta["srf_file"],
-                frame.wd,
-                prefix="plane",
-                value="slip",
-                cpt_percentile=95,
-                wd=frame.wd,
-                xy=True,
-                dpu=meta["dpi"] / (1 + meta["crude"] * 0.2),
-                pz=window["z_scale"] * math.cos(math.radians(job["tilt"])),
-            )
+
+        # JSON mode: draw only plane boundaries (no slip raster)
+        if meta.get("srf_json"):
+            # Expect meta["gmt_top"] already built during load_meta()
+            # (for JSON: derive from your JSON 'bounds' -> make a ">…"-separated polyline string)
+            if job["transparency"] < 100:
+                # perimeter + top traces
+                # Overlay polylines; we keep transparency and map context consistent
+                # Use your GMT helper for line overlays. If you don't have a dedicated one,
+                # gmt.map_overlay(..., infile=..., pen=...) or gmt.plot_lines(...) usually exists.
+                gmt.map_overlay(
+                    wd=frame.wd,
+                    meta=meta,
+                    infile=meta["plane_bounds_xy"],
+                    pen="1.5p,black",
+                    transparency=job.get("transparency", 0),
+                    annotate=False,
+                )
+                # Nothing else to do in 'slip' stage when JSON supplied
+                # (we intentionally *don't* compute srf_data)
+        else:
+            if job["transparency"] < 100 and not meta["pointsource"]:
+                srf_data = gmt.srf2map(
+                    meta["srf_file"],
+                    frame.wd,
+                    prefix="plane",
+                    value="slip",
+                    cpt_percentile=95,
+                    wd=frame.wd,
+                    xy=True,
+                    dpu=meta["dpi"] / (1 + meta["crude"] * 0.2),
+                    pz=window["z_scale"] * math.cos(math.radians(job["tilt"])),
+                )
     elif plot == "timeseries":
         frame_sliprate(job, meta, window, frame.wd)
 
@@ -1744,6 +1777,8 @@ def load_meta(args):
     if not os.path.isdir(srf_wd):
         os.makedirs(srf_wd)
 
+
+
     region = gmt.get_region(hlon, hlat)
 
     # common information passed to frame processes
@@ -1774,7 +1809,16 @@ def load_meta(args):
         "logo_left": args.logo_l,
         "logo_right": args.logo_r,
         "region": region,
+        "srf_json" : args.srf_json is not None,
     }
+
+    meta["plane_bounds_xy"] = os.path.join(srf_wd, "plane_bounds.xy")
+    with open(meta["plane_bounds_xy"], "w") as f:
+        if gmt_bottom:
+            f.write(gmt_bottom.rstrip() + "\n")
+        if gmt_top:
+            f.write(">\n" + gmt_top.rstrip() + "\n")
+
 
     return meta, poi_srf
 
