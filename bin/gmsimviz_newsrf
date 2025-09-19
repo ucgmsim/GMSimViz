@@ -1724,6 +1724,18 @@ def load_meta(args):
     except (ValueError, IndexError):
         print("Failed to read SRF: %s" % (args.srf_file))
         MPI.COMM_WORLD.Abort(200)
+
+    # NEW: sanity checks
+    if not planes or not isinstance(planes, list) or planes[0] is None:
+        print("ERROR: SRF header produced no planes; if using --srf-json, check the JSON schema.")
+        MPI.COMM_WORLD.Abort(201)
+
+    required_keys = ["centre", "nstrike", "ndip", "length", "width", "strike", "dip", "dtop"]
+    missing = [(i, k) for i, p in enumerate(planes) for k in required_keys if k not in p]
+    if missing:
+        print("ERROR: SRF plane records missing keys:", missing)
+        MPI.COMM_WORLD.Abort(202)
+
     # information from plane data
     avg_strike = geo.avg_wbearing([(p["strike"], p["length"]) for p in planes])
     avg_dip = planes[0]["dip"]
@@ -1733,13 +1745,22 @@ def load_meta(args):
     # plane domains
     hlon, hlat, hdepth = _srf.get_hypo(args.srf_file, depth=True)
     poi_srf = []
-    if _srf.read_header(args.srf_file, idx=True)[0]["ndip"] == 1:
+    ndip0 = planes[0].get("ndip")
+    try:
+        ndip0 = int(ndip0) if ndip0 is not None else None
+    except (ValueError, TypeError):
+        ndip0 = None
+
+    # always define gmt_bottom and gmt_top (never None)
+    gmt_bottom = ""
+    gmt_top = ""
+
+    if ndip0 == 1:
         # extend point source bounds to show more than point
         bounds = [[_srf.get_hypo(args.srf_file, depth=True)] * 4]
         bounds[0][1] = bounds[0][0][0] + 0.3, bounds[0][0][1] + 0.3, bounds[0][0][2]
         bounds[0][2] = bounds[0][0][0] - 0.3, bounds[0][0][1] - 0.3, bounds[0][0][2]
-        gmt_bottom = ""
-        gmt_top = ""
+
     else:
         bounds = _srf.get_bounds(args.srf_file, depth=True)
         ### NEW STUFF TO SHIFT SRF BOUNDS SO THAT WHEN TILTED, HYPOCENTRE IS IN CENTRE
