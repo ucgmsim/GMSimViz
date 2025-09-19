@@ -943,6 +943,7 @@ def frame_proj_base(frame, plot, job, meta, window):
                 )
                 # Nothing else to do in 'slip' stage when JSON supplied
                 # (we intentionally *don't* compute srf_data)
+            srf_data = None
         else:
             if job["transparency"] < 100 and not meta["pointsource"]:
                 srf_data = gmt.srf2map(
@@ -1189,6 +1190,9 @@ def frame_scales(frame, job, meta, plot, scale_y):
 def frame_scale_distribution(frame, srf_data, scale_margin, cpt_y, cpt_max):
     # box-and-whisker slip distribution
 
+    # NEW: JSON mode (or any case with no slip rasters) → nothing to draw
+    if srf_data is None or (isinstance(srf_data, (list, tuple)) and len(srf_data) > 2 and srf_data[2] is None):
+        return
     scale_start = scale_margin
     scale_factor = 1.0 / cpt_max * SCALE_WIDTH
     # max point should not be off the page, leave space for label
