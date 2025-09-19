@@ -31,6 +31,19 @@ from gmsimviz import geo, gmt, srf, xyts
 
 import subprocess
 
+import faulthandler, sys, traceback, os
+faulthandler.enable()
+def _excepthook(exctype, value, tb):
+    try:
+        from mpi4py import MPI
+        r = MPI.COMM_WORLD.Get_rank()
+    except Exception:
+        r = -1
+    sys.stderr.write("\n==== TRACEBACK (rank %s) ====\n" % r)
+    traceback.print_exception(exctype, value, tb)
+    sys.stderr.flush()
+sys.excepthook = _excepthook
+
 def overlay_plane_bounds(frame, infile, pen="1.5p,black", transparency=0):
     """
     Draw multi-segment XY polylines (perimeter + top traces) to the current frame
@@ -1799,6 +1812,8 @@ def load_meta(args):
                 poi_srf.append(
                     [point[0] + shift_lon * args.shift_factor, point[1] + shift_lat * args.shift_factor, point[2]])
         ### NEW STUFF ENDS
+        print("bounds....debug")
+        print(bounds)
         gmt_bottom = "\n>\n".join(
             ["\n".join([" ".join(map(str, b)) for b in p]) for p in bounds]
         )
