@@ -2003,40 +2003,11 @@ def load_meta(args):
         meta["bounds_source"] = "srf_file"
 
     # Debug-only: print expected physical dimensions of SRF
-    try:
-        lon0, lat0 = planes[0]["centre"]
-        strike = float(planes[0]["strike"])
-        # unit vectors (east/north km)
-        deg_per_km_lat = 1.0 / 111.32
-        deg_per_km_lon = deg_per_km_lat / max(0.01, math.cos(math.radians(lat0)))
-        ex = 1.0 # km along-east is +1/deg_per_km_lon degrees in lon
-        ey = 1.0 # km along-north is +1/deg_per_km_lat degrees in lat
 
-        # strike measured clockwise from north  -> components in (E,N):
-        th = math.radians(strike)
-        ux_e = math.sin(th)  # east component
-        ux_n = math.cos(th)  # north component
-        uy_e = ux_n  # dip perp (approx; for outline sanity check only)
-        uy_n = -ux_e
+    if args.devel:
+        print('bounds_LxW_along_axes_km:',
+              f'{planes[0]["length"]:.3f} x {planes[0]["width"]:.3f}')
 
-        # project 4 corners to strike/dip axes (convert deg→km first)
-        pts = bounds[0]
-        xs, ys = [], []
-        for (lon, lat, *_) in pts:
-            dx_km = (lon - lon0) / deg_per_km_lon
-            dy_km = (lat - lat0) / deg_per_km_lat
-            s = dx_km * ux_e + dy_km * ux_n
-            d = dx_km * uy_e + dy_km * uy_n
-            xs.append(s);
-            ys.append(d)
-
-        L_est = max(xs) - min(xs)
-        W_est = max(ys) - min(ys)
-        if args.devel:
-            print(f"bounds_LxW_along_axes_km: {L_est:.3f} x {W_est:.3f}")
-
-    except Exception:
-        print("Failed to calculate SRF physical dimensions")
 
     return meta, poi_srf
 
