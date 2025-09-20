@@ -155,44 +155,6 @@ class _JsonSrfAdapter(object):
             polys.append(poly)
         return polys
 
-    def _bounds_are_consistent(self, bounds, plane0, tol_frac=0.25):
-        """
-        Check JSON bounds vs header using consecutive edge lengths.
-        Accept if within ±tol_frac of header length/width (order-agnostic).
-        """
-
-        if not isinstance(bounds, list) or not bounds or not isinstance(bounds[0], list):
-            return False
-        poly = bounds[0]
-        if len(poly) < 4:
-            return False
-
-        lon0, lat0 = plane0["centre"]
-        # degrees per km at this latitude
-        deg_per_km_lat = self._deg_per_km_lat()
-        deg_per_km_lon = self._deg_per_km_lon(lat0)
-
-        def edge_km(a, b):
-            dx_km = (b[0] - a[0]) / deg_per_km_lon
-            dy_km = (b[1] - a[1]) / deg_per_km_lat
-            return math.hypot(dx_km, dy_km)
-
-        # four edges (wrap around)
-        e = [
-            edge_km(poly[0], poly[1]),
-            edge_km(poly[1], poly[2]),
-            edge_km(poly[2], poly[3]),
-            edge_km(poly[3], poly[0]),
-        ]
-        long_e, short_e = sorted(e, reverse=True)[:2]  # largest ~ L, second ~ W
-        L = float(plane0["length"])
-        W = float(plane0["width"])
-
-        # allow swapped mapping (which edge corresponds to L vs W)
-        ok1 = abs(long_e - L) / max(L, 1e-6) <= tol_frac and abs(short_e - W) / max(W, 1e-6) <= tol_frac
-        ok2 = abs(long_e - W) / max(W, 1e-6) <= tol_frac and abs(short_e - L) / max(L, 1e-6) <= tol_frac
-        return ok1 or ok2
-
     def get_bounds(self, _sf=None, depth=True):
         if self._bounds:
             self._bounds_source = "json_bounds"
