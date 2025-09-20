@@ -1053,6 +1053,7 @@ def frame_proj_base(frame, plot, job, meta, window):
                 )
                 # Nothing else to do in 'slip' stage when JSON supplied
                 # (we intentionally *don't* compute srf_data)
+            srf_data = None
         else:
             if job["transparency"] < 100 and not meta["pointsource"]:
                 srf_data = gmt.srf2map(
@@ -1313,6 +1314,10 @@ def frame_scale_distribution(frame, srf_data, scale_margin, cpt_y, cpt_max):
         return
 
     # box-and-whisker slip distribution
+
+    # NEW: JSON mode (or any case with no slip rasters) → nothing to draw
+    if srf_data is None or (isinstance(srf_data, (list, tuple)) and len(srf_data) > 2 and srf_data[2] is None):
+        return
     scale_start = scale_margin
     scale_factor = 1.0 / cpt_max * SCALE_WIDTH
     # max point should not be off the page, leave space for label
@@ -1872,6 +1877,18 @@ def load_meta(args):
     except (ValueError, IndexError):
         print("Failed to read SRF: %s" % (args.srf_file))
         MPI.COMM_WORLD.Abort(200)
+
+    # NEW: sanity checks
+    if not planes or not isinstance(planes, list) or planes[0] is None:
+        print("ERROR: SRF header produced no planes; if using --srf-json, check the JSON schema.")
+        MPI.COMM_WORLD.Abort(201)
+
+    required_keys = ["centre", "nstrike", "ndip", "length", "width", "strike", "dip", "dtop"]
+    missing = [(i, k) for i, p in enumerate(planes) for k in required_keys if k not in p]
+    if missing:
+        print("ERROR: SRF plane records missing keys:", missing)
+        MPI.COMM_WORLD.Abort(202)
+
     # information from plane data
     avg_strike = geo.avg_wbearing([(p["strike"], p["length"]) for p in planes])
     avg_dip = planes[0]["dip"]
@@ -1881,13 +1898,22 @@ def load_meta(args):
     # plane domains
     hlon, hlat, hdepth = _srf.get_hypo(args.srf_file, depth=True)
     poi_srf = []
-    if _srf.read_header(args.srf_file, idx=True)[0]["ndip"] == 1:
+    ndip0 = planes[0].get("ndip")
+    try:
+        ndip0 = int(ndip0) if ndip0 is not None else None
+    except (ValueError, TypeError):
+        ndip0 = None
+
+    # always define gmt_bottom and gmt_top (never None)
+    gmt_bottom = ""
+    gmt_top = ""
+
+    if ndip0 == 1:
         # extend point source bounds to show more than point
         bounds = [[_srf.get_hypo(args.srf_file, depth=True)] * 4]
         bounds[0][1] = bounds[0][0][0] + 0.3, bounds[0][0][1] + 0.3, bounds[0][0][2]
         bounds[0][2] = bounds[0][0][0] - 0.3, bounds[0][0][1] - 0.3, bounds[0][0][2]
-        gmt_bottom = ""
-        gmt_top = ""
+
     else:
         bounds = _srf.get_bounds(args.srf_file, depth=True)
         ### NEW STUFF TO SHIFT SRF BOUNDS SO THAT WHEN TILTED, HYPOCENTRE IS IN CENTRE
@@ -2703,11 +2729,8 @@ def master_process():
             movements["frames2sim"] = movements["frames2now"]
         if not args.no_gm:
             zoom_out_timing(movements)
-            # This function adds timeslice tasks to a temporary queue
             add_frames_slip_progress(work, meta, movements)
-            # These tasks require xyts data to be ready, so put them in a separate queue
             add_frames_camera_reset(work, meta, movements)
-            # these tasks also require xyts data to be ready
             add_frames_overlays(work, meta, movements, args)
             if args.paths is not None:
                 add_frames_network(work, meta, movements, args.path_files)
@@ -2728,7 +2751,6 @@ def master_process():
         if finished == None:
             pass
         elif finished[0] == load_xyts:
-            # When load_xyts is finished, can now add timeslice tasks
             xyts_ready(work, meta, value, nslaves)
         elif finished[0] == load_xyts_ts:
             xyts_ts_ready(work, meta, movements, finished[2]["start"], nslaves)
@@ -2808,8 +2830,11 @@ def main():
         else:
             slave_process()
     except Exception as e:
+        import traceback
+        print(traceback.format_exc())
         print(f"Process {rank} encountered error: {e}")
         comm.Abort(1)
+
 
 
 if __name__ == "__main__":
