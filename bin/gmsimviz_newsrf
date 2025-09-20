@@ -130,6 +130,81 @@ class _JsonSrfAdapter(object):
             polys.append(poly)
         return polys
 
+    def _deg_per_km_lat(self):  # ~WGS84 mean
+        return 1.0 / 111.32
+
+    def _deg_per_km_lon(self, lat):
+        # protect against cos(lat)~0 near poles
+        return self._deg_per_km_lat() / max(0.01, math.cos(math.radians(lat)))
+
+    def _synth_bounds_from_header(self, depth=True):
+        polys = []
+        for p in self._planes:
+            lon0, lat0 = p["centre"]
+            L = float(p["length"])
+            W = float(p["width"])
+            strike = float(p.get("strike", 0.0))
+            dtop = float(p.get("dtop", 0.0))
+            # convert km → degrees at this latitude
+            hx = 0.5 * L * self._deg_per_km_lon(lat0)
+            hy = 0.5 * W * self._deg_per_km_lat()
+            # strike is clockwise from north; rotate XY (east,x; north,y)
+            th = math.radians((90.0 - strike) % 360.0)
+            corners = [(-hx,-hy), (hx,-hy), (hx,hy), (-hx,hy)]
+            poly = []
+            for x,y in corners:
+                xr = x*math.cos(th) - y*math.sin(th)
+                yr = x*math.sin(th) + y*math.cos(th)
+                if depth:
+                    poly.append([lon0 + xr, lat0 + yr, dtop])
+                else:
+                    poly.append([lon0 + xr, lat0 + yr])
+            polys.append(poly)
+        return polys
+
+    def _bounds_are_consistent(self, bounds, plane0, tol_frac=0.35):
+        """
+        Compare the long/short edge lengths of bounds vs header L/W.
+        Accept if both within ±tol_frac.
+        """
+        if not isinstance(bounds, list) or not bounds or not isinstance(bounds[0], list):
+            return False
+        # crude length estimate from two farthest corners (deg→km at centre lat)
+        from itertools import combinations
+        lon0, lat0 = plane0["centre"]
+        lon_k = self._deg_per_km_lon(lat0)
+        lat_k = self._deg_per_km_lat()
+
+        def deg2km(a, b):
+            dx = (a[0] - b[0]) * lon_k
+            dy = (a[1] - b[1]) * lat_k
+            return math.hypot(dx, dy)
+
+        # use the first polygon to estimate
+        poly = bounds[0]
+        if not isinstance(poly, list) or len(poly) < 4:
+            return False
+        dists = [deg2km(a, b) for a,b in combinations(poly[:4], 2)]
+        long_km = max(dists)
+        # estimate short edge as area/long (rectangle assumption)
+        # or use the 2nd-largest distance heuristic
+        d_sorted = sorted(dists, reverse=True)
+        short_km = d_sorted[1] if len(d_sorted) > 1 else long_km
+
+        L = float(plane0["length"])
+        W = float(plane0["width"])
+        # allow swapping (which edge is "long" depends on ordering)
+        ok1 = abs(long_km - L)/L <= tol_frac and abs(short_km - W)/W <= tol_frac
+        ok2 = abs(long_km - W)/W <= tol_frac and abs(short_km - L)/L <= tol_frac
+        return ok1 or ok2
+
+    def get_bounds(self, _sf, depth=True):
+        # Prefer synthesized bounds (always correct scale).
+        synth = self._synth_bounds_from_header(depth=depth)
+        # If JSON provided bounds and they look consistent, use them instead.
+        if self._bounds and self._bounds_are_consistent(self._bounds, self._planes[0]):
+            return self._bounds
+        return synth
 
 
 def load_xyts(meta, xyts_cpt_max):
@@ -678,7 +753,13 @@ def frame_outlines(frame, meta):
 def frame_sliprate(job, meta, window, wd):
     """
     Generates sliprate grid at time given window view in cartesian page space.
+    JSON mode ( --srf-json ): no SRF rasters/binaries → skip.
     """
+
+    # JSON mode: boundaries-only rendering elsewhere; no sliprate grids here
+    if meta.get("srf_json"):
+        return
+
     if meta["pointsource"]:
         return
 
@@ -686,22 +767,39 @@ def frame_sliprate(job, meta, window, wd):
     srt = int(round(job["sim_time"] / meta["srf_dt"]))
     if srt >= meta["sr_len"]:
         srt = meta["sr_len"] - 1
+
+    # Safe window/job access
+    z_scale = float(window.get("z_scale", 1.0)) if isinstance(window, dict) else 1.0
+    tilt = float(job.get("tilt", 0.0))
+
     for i in range(meta["n_plane"] * (job["transparency"] < 100)):
+        subf_path = "%s/subfaults_%d.bin" % (meta["srf_wd"], i)
+        ts_path = "%s/sliptss_%d.bin" % (meta["srf_wd"], i)
+        if not os.path.exists(subf_path) or not os.path.exists(ts_path):
+            # nothing to render for this plane at this stage
+            continue
         # lon, lat, depth
-        subfaults = np.fromfile("%s/subfaults_%d.bin" % (meta["srf_wd"], i), dtype="3f")
+
+        subfaults = np.fromfile(subf_path, dtype="3f")
+        if subfaults.size == 0:
+            continue
+        subfaults = subfaults.reshape((-1,3))
         # reproject
-        xyv = np.empty((subfaults.shape[0], 3))
+        xyv = np.empty((subfaults.shape[0], 3), dtype=np.float32)
+
         xyv[:, :2] = gmt.mapproject_multi(
-            subfaults[:, :2], wd=wd, z="-Jz%s" % (window["z_scale"]), p=True
+            subfaults[:, :2], wd=wd, z="-Jz%s" % (z_scale), p=True
         )
         xyv[:, 1] += (
-                subfaults[:, 2] * window["z_scale"] * math.cos(math.radians(job["tilt"]))
+                subfaults[:, 2] * z_scale * math.cos(math.radians(tilt))
         )
-        xyv[:, 2] = np.memmap(
-            "%s/sliptss_%d.bin" % (meta["srf_wd"], i),
-            dtype="f",
-            shape=(len(subfaults), meta["sr_len"]),
-        )[:, srt]
+        try:
+            mm = np.memmap(ts_path, dtype="f", mode="r", shape=(len(subfaults), meta["sr_len"]))
+            xyv[:, 2] = mm[:, srt]
+            del mm
+        except Exception:
+            continue
+
         del subfaults
         # region
         x_min, y_min = np.min(xyv[:, :2], axis=0)
@@ -721,7 +819,7 @@ def frame_sliprate(job, meta, window, wd):
             for point in bounds:
                 bounds_f.write("%s %s\n" % tuple(point))
         # XY mask grid
-        res = (1.0 + meta["crude"] * 0.2) / meta["dpi"]
+        res = (1.0 + (1 if meta.get("crude") else 0) * 0.2) / float(meta.get("dpi", 120))
         rc = gmt.grd_mask(
             "%s/plane_%d_bounds.xy" % (wd, i),
             "%s/plane_%d_mask_xy.grd" % (wd, i),
@@ -868,15 +966,28 @@ def frame_srf_surface(frame, plot_type, n_plane, transparency, srf_wd):
 
     elif plot_type == "timeseries":
         # show cumulative slip current sim_time
-        for s in range(n_plane):
-            if not os.path.exists("%s/slip_%d.grd" % (frame.wd, s)):
-                continue
-            frame.overlay(
-                "%s/slip_%d.grd" % (frame.wd, s),
-                "%s/slip.cpt" % (srf_wd),
-                transparency=transparency,
-                crop_grd="%s/plane_%d_mask_xy.grd" % (frame.wd, s),
-            )
+        any_grid = False
+
+        for s in range(int(n_plane or 0)):
+            grd = f"{frame.wd}/slip_{s}.grd"
+            if os.path.exists(grd):
+                any_grid = True
+                frame.overlay(
+                    grd,
+                    f"{srf_wd}/slip.cpt",
+                    transparency=transparency,
+                    crop_grd=f"{frame.wd}/plane_{s}_mask_xy.grd",
+                )
+        if not any_grid:
+            bounds_xy = os.path.join(srf_wd, "plane_bounds.xy")
+            if os.path.exists(bounds_xy):
+                # fallback: draw boundaries only
+                overlay_plane_bounds(
+                    frame=frame,
+                    infile=bounds_xy,
+                    pen="1.5p,black",
+                    transparency=transparency,
+                )
 
 def _write_xy_multiseg(xy_string, path):
     """
@@ -1096,51 +1207,62 @@ def frame_scales(frame, job, meta, plot, scale_y):
             cross_tick=meta["slip_cpt_max"] / 20.0,
         )
     elif plot == "timeseries":
-        cpt_label = ""
-        y = scale_y
-        if meta["xyts_file"] is not None:
-            x0 = WINDOW_L * 2.0
-            x1 = scale_margin
-            diff = x1 - x0
-            x = x0 + diff * job["scale_x"]
-            length0 = PAGE_WIDTH / 2.0 - WINDOW_L * 3
-            length1 = SCALE_WIDTH
-            diff = length1 - length0
-            length = length0 + diff * job["scale_x"]
-            if meta["pointsource"]:
+        # JSON mode: boundaries-only (no SRF timeseries rasters)
+        if meta.get("srf_json"):
+            # draw the same outlines file we wrote in load_meta()
+            overlay_plane_bounds(
+                frame=frame,
+                infile=meta["plane_bounds_xy"],
+                pen="1.5p,black",
+                transparency=job.get("transparency", 0),
+            )
+            srf_data = None  # make it explicit for downstream (e.g., legends/scales)
+        else:
+            cpt_label = ""
+            y = scale_y
+            if meta["xyts_file"] is not None:
+                x0 = WINDOW_L * 2.0
+                x1 = scale_margin
+                diff = x1 - x0
+                x = x0 + diff * job["scale_x"]
+                length0 = PAGE_WIDTH / 2.0 - WINDOW_L * 3
+                length1 = SCALE_WIDTH
+                diff = length1 - length0
+                length = length0 + diff * job["scale_x"]
+                if meta["pointsource"]:
+                    x = scale_margin
+                    length = SCALE_WIDTH
+                frame.cpt_scale(
+                    x,
+                    y,
+                    "%s/xyts/gm.cpt" % (meta["wd"]),
+                    length=length,
+                    align="LT",
+                    dy=SCALE_PAD,
+                    thickness=SCALE_SIZE,
+                    major=meta["xyts_cpt_max"] / 5.0,
+                    minor=meta["xyts_cpt_max"] / 20.0,
+                    cross_tick=meta["xyts_cpt_max"] / 20.0,
+                    label="Ground motion (cm/s)",
+                )
+                x += length + WINDOW_L * 2 + scale_margin * job["scale_x"]
+            else:
                 x = scale_margin
                 length = SCALE_WIDTH
-            frame.cpt_scale(
-                x,
-                y,
-                "%s/xyts/gm.cpt" % (meta["wd"]),
-                length=length,
-                align="LT",
-                dy=SCALE_PAD,
-                thickness=SCALE_SIZE,
-                major=meta["xyts_cpt_max"] / 5.0,
-                minor=meta["xyts_cpt_max"] / 20.0,
-                cross_tick=meta["xyts_cpt_max"] / 20.0,
-                label="Ground motion (cm/s)",
-            )
-            x += length + WINDOW_L * 2 + scale_margin * job["scale_x"]
-        else:
-            x = scale_margin
-            length = SCALE_WIDTH
-        if not meta["pointsource"]:
-            frame.cpt_scale(
-                x,
-                y,
-                "%s/slip.cpt" % (meta["srf_wd"]),
-                length=length,
-                align="LT",
-                dy=SCALE_PAD,
-                thickness=SCALE_SIZE,
-                major=meta["slip_cpt_max"] / 5.0,
-                minor=meta["slip_cpt_max"] / 20.0,
-                cross_tick=meta["slip_cpt_max"] / 20.0,
-                label="Cumulative Slip (cm)",
-            )
+            if not meta["pointsource"]:
+                frame.cpt_scale(
+                    x,
+                    y,
+                    "%s/slip.cpt" % (meta["srf_wd"]),
+                    length=length,
+                    align="LT",
+                    dy=SCALE_PAD,
+                    thickness=SCALE_SIZE,
+                    major=meta["slip_cpt_max"] / 5.0,
+                    minor=meta["slip_cpt_max"] / 20.0,
+                    cross_tick=meta["slip_cpt_max"] / 20.0,
+                    label="Cumulative Slip (cm)",
+                )
     elif plot == "surface":
         # default: use internal cpt steps
         major = None
@@ -1186,8 +1308,11 @@ def frame_scales(frame, job, meta, plot, scale_y):
 
 
 def frame_scale_distribution(frame, srf_data, scale_margin, cpt_y, cpt_max):
-    # box-and-whisker slip distribution
 
+    if srf_data is None or (isinstance(srf_data, (list,tuple)) and len(srf_data) > 2 and srf_data[2] is None):
+        return
+
+    # box-and-whisker slip distribution
     scale_start = scale_margin
     scale_factor = 1.0 / cpt_max * SCALE_WIDTH
     # max point should not be off the page, leave space for label
@@ -1940,7 +2065,8 @@ def load_slip_cpt(meta, cpt_max):
     meta["slip_cpt_max"] = cpt_max
     np.float64(cpt_max).tofile(checkpoint_file)
 
-
+# The load_xyts task is now explicitly added as the first item in the work queue.
+# This ensures it's the first task to be processed by a slave.
 def load_xyts_meta(args, meta, work, poi_srf, frames_sr):
     meta["xyts_file"] = args.xyts
     frames_gm = 0
@@ -2577,8 +2703,11 @@ def master_process():
             movements["frames2sim"] = movements["frames2now"]
         if not args.no_gm:
             zoom_out_timing(movements)
+            # This function adds timeslice tasks to a temporary queue
             add_frames_slip_progress(work, meta, movements)
+            # These tasks require xyts data to be ready, so put them in a separate queue
             add_frames_camera_reset(work, meta, movements)
+            # these tasks also require xyts data to be ready
             add_frames_overlays(work, meta, movements, args)
             if args.paths is not None:
                 add_frames_network(work, meta, movements, args.path_files)
@@ -2599,6 +2728,7 @@ def master_process():
         if finished == None:
             pass
         elif finished[0] == load_xyts:
+            # When load_xyts is finished, can now add timeslice tasks
             xyts_ready(work, meta, value, nslaves)
         elif finished[0] == load_xyts_ts:
             xyts_ts_ready(work, meta, movements, finished[2]["start"], nslaves)
