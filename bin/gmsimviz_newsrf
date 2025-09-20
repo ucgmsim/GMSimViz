@@ -107,29 +107,6 @@ class _JsonSrfAdapter(object):
         dtop = p0.get("dtop", 0.0)
         return (lon,lat,dtop) if depth else (lon,lat)
 
-    def get_bounds(self, _sf, depth=True):
-        if self._bounds:
-            return self._bounds
-        # synthesize simple rectangles from header if bounds missing
-        import math
-        polys=[]
-        for p in self._planes:
-            lon0, lat0 = p["centre"]
-            L, W = max(0.1,float(p["length"])), max(0.1,float(p["width"]))
-            strike = float(p.get("strike",0.0))
-            dtop = float(p.get("dtop",0.0))
-            lat_k = 1.0/111.1
-            lon_k = lat_k/max(0.2, math.cos(math.radians(lat0)))
-            hx, hy = 0.5*L*lon_k, 0.5*W*lat_k
-            th = math.radians((90.0 - strike)%360.0)
-            corners=[(-hx,-hy),(hx,-hy),(hx,hy),(-hx,hy)]
-            poly=[]
-            for x,y in corners:
-                xr = x*math.cos(th)-y*math.sin(th)
-                yr = x*math.sin(th)+y*math.cos(th)
-                poly.append((lon0+xr, lat0+yr, dtop))
-            polys.append(poly)
-        return polys
 
     def _deg_per_km_lat(self):  # ~WGS84 mean
         return 1.0 / 111.32
@@ -202,8 +179,7 @@ class _JsonSrfAdapter(object):
     def get_bounds(self, _sf=None, depth=True):
         # _sf is ignored in JSON mode
         if _sf not in (None,"",False):
-            print("Warning: get_bounds() called with non-default _sf in JSON mode")
-
+            print("W")
         # Prefer synthesized bounds (always correct scale).
         synth = self._synth_bounds_from_header(depth=depth)
         # If JSON provided bounds and they look consistent, use them instead.
