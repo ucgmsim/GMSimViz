@@ -34,27 +34,55 @@ def main():
 
     srf_file = sm_srf.read_srf(args.srf)
     header = srf_file.header
-    planes=[]
+    planes = []
     for _, row in header.iterrows():
-        # column aliases
         def coalesce(*names, default=None):
             for n in names:
-                if n in row: return row[n]
+                if n in row and not (row[n] is None or (isinstance(row[n], float) and math.isnan(row[n]))):
+                    return row[n]
             return default
-        elon = float(coalesce("elon","lon"))
-        elat = float(coalesce("elat","lat"))
+
+        elon = float(coalesce("elon", "lon", "elng"))
+        elat = float(coalesce("elat", "lat"))
+        nstk = int(coalesce("nstk", "nstrike", "n_strike", default=1))
+        ndip = int(coalesce("ndip", "n_dip", "n_dip_cells", default=1))
+
+        # Try all the usual suspects for fault length/width (km)
+        L = coalesce("flen", "flen_km", "fault_length", "length", "length_km", "len_km")
+        W = coalesce("fwid", "fwid_km", "fault_width", "width", "width_km", "wid_km")
+
+        # If not present, derive from spacings (km) × counts
+        # Typical names for along-strike and along-dip cell size:
+        dl = coalesce("dl", "dl_km", "dlen", "dlen_km", "dx_km", "strike_dx_km")
+        dd = coalesce("dd", "dd_km", "ddip", "ddip_km", "dy_km", "dip_dy_km")
+
+        if L is None and dl is not None:
+            L = float(dl) * float(nstk)
+        if W is None and dd is not None:
+            W = float(dd) * float(ndip)
+
+        # Final guard: if still missing, hard fail so you don’t silently get 1.0
+        if L is None or W is None:
+            raise ValueError(
+                f"Could not determine plane length/width (km). "
+                f"Have nstk={nstk}, ndip={ndip}, dl={dl}, dd={dd}. "
+                f"Header columns: {list(header.columns)}"
+            )
+
         planes.append({
-            "centre":[elon, elat],
-            "nstrike": int(coalesce("nstk","nstrike", default=1)),
-            "ndip":    int(coalesce("ndip","n_dip", default=1)),
-            "length":  float(coalesce("flen","length", default=1.0)),
-            "width":   float(coalesce("fwid","width", default=1.0)),
-            "strike":  float(coalesce("strike","stk", default=0.0)),
-            "dip":     float(coalesce("dip", default=45.0)),
-            "shyp":    float(coalesce("shyp", default=0.5)),
-            "dhyp":    float(coalesce("dhyp", default=0.5)),
-            "dtop":    float(coalesce("dtop","depth_top", default=0.0)),
+            "centre": [elon, elat],
+            "nstrike": nstk,
+            "ndip": ndip,
+            "length": float(L),
+            "width": float(W),
+            "strike": float(coalesce("strike", "stk", "strike_deg", default=0.0)),
+            "dip": float(coalesce("dip", "dip_deg", default=45.0)),
+            "shyp": float(coalesce("shyp", default=0.5)),
+            "dhyp": float(coalesce("dhyp", default=0.5)),
+            "dtop": float(coalesce("dtop", "depth_top", "top_depth", default=0.0)),
         })
+
+    print("Header LxW (km):", planes[0]["length"], "x", planes[0]["width"])
 
     # hypocentre: earliest tinit if present, else plane[0] top
     pts = srf_file.points
