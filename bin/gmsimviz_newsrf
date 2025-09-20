@@ -1638,6 +1638,7 @@ def validate_args(args):
         # title default from JSON name if not set
         if args.title is None:
             args.title = os.path.basename(args.srf_json)
+        args.srf_file = None  # not used in JSON mode
     else:
         # srf file must exist
         try:
@@ -1830,6 +1831,7 @@ def load_meta(args):
         _srf = _JsonSrfAdapter(args.srf_json)
 
 
+
     # load plane data
     try:
         planes = _srf.read_header(args.srf_file, idx=True)
@@ -1842,21 +1844,25 @@ def load_meta(args):
         print("ERROR: SRF header produced no planes; if using --srf-json, check the JSON schema.")
         MPI.COMM_WORLD.Abort(201)
 
+
+
     required_keys = ["centre", "nstrike", "ndip", "length", "width", "strike", "dip", "dtop"]
     missing = [(i, k) for i, p in enumerate(planes) for k in required_keys if k not in p]
     if missing:
         print("ERROR: SRF plane records missing keys:", missing)
         MPI.COMM_WORLD.Abort(202)
 
-    # information from plane data
-    avg_strike = geo.avg_wbearing([(p["strike"], p["length"]) for p in planes])
-    avg_dip = planes[0]["dip"]
+    # Averages across planes (length-weighted strike; dip = first plane or avg)
+    avg_strike = geo.avg_wbearing([(p["strike"], max(1e-6, p["length"])) for p in planes])
+    avg_dip = sum(p["dip"] for p in planes) / len(planes)
     s_azimuth = avg_strike + 90
-    map_tilt = max(90 - avg_dip, args.tilt_max)
+    map_tilt = max(90 - avg_dip, args.tilt_max);
     map_tilt = min(map_tilt, args.tilt_min)
+
     # plane domains
     hlon, hlat, hdepth = _srf.get_hypo(args.srf_file, depth=True)
     poi_srf = []
+
     ndip0 = planes[0].get("ndip")
     try:
         ndip0 = int(ndip0) if ndip0 is not None else None
@@ -1883,25 +1889,19 @@ def load_meta(args):
             bounds = srf.get_bounds(args.srf_file, depth=True)
             print("Using SRF bounds from SRF file")
 
-        ### NEW STUFF TO SHIFT SRF BOUNDS SO THAT WHEN TILTED, HYPOCENTRE IS IN CENTRE
-        ### SHOULD BE TIDIED UP, USING ROUGH ESTIMATES
-        ### ASSUMES ALL PLANES ARE ROUGHLY THE SAME DEPTH
-        ### THE ACTUAL Z_SCALE IS NOT KNOWN AT THIS POINT, IT SHOULD BE AT LEAST ESTIMATED
-        shift_km = hdepth / math.tan(math.radians(map_tilt))
-        shift_deg = shift_km / 111.1  # use ll_shift
+        shift_km = hdepth / max(1e-6, math.tan(math.radians(map_tilt)))
+        shift_deg = shift_km / 111.1
         shift_lon = math.sin(math.radians(s_azimuth)) * shift_deg
         shift_lat = math.cos(math.radians(s_azimuth)) * shift_deg
-        for plane in bounds:
-            for point in plane:
-                poi_srf.append(
-                    [point[0] + shift_lon * args.shift_factor, point[1] + shift_lat * args.shift_factor, point[2]])
-        ### NEW STUFF ENDS
-        gmt_bottom = "\n>\n".join(
-            ["\n".join([" ".join(map(str, b)) for b in p]) for p in bounds]
-        )
-        gmt_top = "\n>\n".join(
-            ["\n".join([" ".join(map(str, b)) for b in p[:2]]) for p in bounds]
-        )
+
+        for poly in bounds:
+            for point in poly:
+                poi_srf.append([point[0] + shift_lon * args.shift_factor,
+                                point[1] + shift_lat * args.shift_factor, point[2]])
+
+        # Build multi-plane GMT strings (bottom perimeters; top edges)
+        gmt_bottom = "\n>\n".join("\n".join(" ".join(map(str, pt)) for pt in poly) for poly in bounds)
+        gmt_top = "\n>\n".join("\n".join(" ".join(map(str, pt)) for pt in poly[:2]) for poly in bounds)
 
     for plane in bounds:
         for point in plane:
@@ -1915,8 +1915,8 @@ def load_meta(args):
         gmt_temp = mkdtemp(prefix="_GMSimViz_")
 
     srf_wd = os.path.join(gmt_temp, "srf")
-    if not os.path.isdir(srf_wd):
-        os.makedirs(srf_wd)
+    # Write a combined bounds XY (and per-plane files as needed)
+    os.makedirs(srf_wd, exist_ok=True)
 
     region = gmt.get_region(hlon, hlat)
 
@@ -1953,23 +1953,27 @@ def load_meta(args):
 
     meta["plane_bounds_xy"] = os.path.join(srf_wd, "plane_bounds.xy")
     with open(meta["plane_bounds_xy"], "w") as f:
-        if gmt_bottom:
-            f.write(gmt_bottom.rstrip() + "\n")
-        if gmt_top:
-            f.write(">\n" + gmt_top.rstrip() + "\n")
+        for i, poly in enumerate(bounds):
+            for pt in poly: f.write(f"{pt[0]} {pt[1]} {pt[2]}\n")
+            f.write(">\n")
+    # Optional: per-plane XYs for mask-making
+    for i, poly in enumerate(bounds):
+        with open(f"{meta['srf_wd']}/plane_{i}_bounds.xy", "w") as f:
+            for pt in poly: f.write(f"{pt[0]} {pt[1]}\n")
 
     # Report whether JSON used provided bounds or synthetic from header
-    if args.srf_json and hasattr(_srf, 'bounds_source'):
-        meta["bounds_source"] = _srf.bounds_source() or "unknown"
-    else:
-        meta["bounds_source"] = "srf_file"
+    # Store for later
+    meta["planes"] = planes
+    meta["n_plane"] = len(planes)
+    meta["srf_bounds"] = bounds
+    meta["bounds_source"] = getattr(_srf, "bounds_source", lambda: "unknown")()
+
 
     # Debug-only: print expected physical dimensions of SRF
 
     if args.devel:
-        print('bounds_LxW_along_axes_km:',
-              f'{planes[0]["length"]:.3f} x {planes[0]["width"]:.3f}')
-
+        for i,plane in enumerate(planes):
+            print(f"Plane {i}: bounds_LxW_along_axes_km: {plane["length"]:.3f} x {planes["width"]:.3f}")
 
     return meta, poi_srf
 
