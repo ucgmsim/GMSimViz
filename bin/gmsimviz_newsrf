@@ -199,7 +199,11 @@ class _JsonSrfAdapter(object):
         ok2 = abs(long_km - W)/W <= tol_frac and abs(short_km - L)/L <= tol_frac
         return ok1 or ok2
 
-    def get_bounds(self, _sf, depth=True):
+    def get_bounds(self, _sf=None, depth=True):
+        # _sf is ignored in JSON mode
+        if _sf not in (None,"",False):
+            print("Warning: get_bounds() called with non-default _sf in JSON mode")
+
         # Prefer synthesized bounds (always correct scale).
         synth = self._synth_bounds_from_header(depth=depth)
         # If JSON provided bounds and they look consistent, use them instead.
@@ -1922,7 +1926,12 @@ def load_meta(args):
         bounds[0][2] = bounds[0][0][0] - 0.3, bounds[0][0][1] - 0.3, bounds[0][0][2]
 
     else:
-        bounds = _srf.get_bounds(args.srf_file, depth=True)
+        if args.srf_json:
+            # JSON mode: ignore SRF file completely
+            bounds = _srf.get_bounds(None, depth=True)
+        else:
+            # Legacy mode: SRF file
+            bounds = srf.get_bounds(args.srf_file, depth=True)
 
         ### NEW STUFF TO SHIFT SRF BOUNDS SO THAT WHEN TILTED, HYPOCENTRE IS IN CENTRE
         ### SHOULD BE TIDIED UP, USING ROUGH ESTIMATES
