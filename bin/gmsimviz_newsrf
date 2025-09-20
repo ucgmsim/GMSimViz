@@ -179,7 +179,7 @@ class _JsonSrfAdapter(object):
     def get_bounds(self, _sf=None, depth=True):
         # _sf is ignored in JSON mode
         if _sf not in (None,"",False):
-            print("W")
+            print("Warning: get_bounds() called with non-empty _sf in JSON mode")
         # Prefer synthesized bounds (always correct scale).
         synth = self._synth_bounds_from_header(depth=depth)
         # If JSON provided bounds and they look consistent, use them instead.
@@ -1905,9 +1905,11 @@ def load_meta(args):
         if args.srf_json:
             # JSON mode: ignore SRF file completely
             bounds = _srf.get_bounds(None, depth=True)
+            print("Using SRF bounds from JSON")
         else:
             # Legacy mode: SRF file
             bounds = srf.get_bounds(args.srf_file, depth=True)
+            print("Using SRF bounds from SRF file")
 
         ### NEW STUFF TO SHIFT SRF BOUNDS SO THAT WHEN TILTED, HYPOCENTRE IS IN CENTRE
         ### SHOULD BE TIDIED UP, USING ROUGH ESTIMATES
@@ -1943,8 +1945,6 @@ def load_meta(args):
     srf_wd = os.path.join(gmt_temp, "srf")
     if not os.path.isdir(srf_wd):
         os.makedirs(srf_wd)
-
-
 
     region = gmt.get_region(hlon, hlat)
 
@@ -1987,7 +1987,7 @@ def load_meta(args):
             f.write(">\n" + gmt_top.rstrip() + "\n")
 
     # Report whether JSON used provided bounds or synthetic from header
-    if hasattr(_srf, 'bounds_source'):
+    if args.srf_json and hasattr(_srf, 'bounds_source'):
         meta["bounds_source"] = _srf.bounds_source() or "unknown"
     else:
         meta["bounds_source"] = "srf_file"
@@ -2008,7 +2008,7 @@ def load_meta(args):
             print(f'"bounds_source": {meta["bounds_source"]}')
             print(f'"bounds_size_km": {dx_km:.3f} x {dy_km:.3f}')
     except Exception:
-        pass
+        print("Failed to calculate SRF physical dimensions")
 
     return meta, poi_srf
 
