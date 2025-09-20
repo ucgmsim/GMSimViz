@@ -48,8 +48,8 @@ def main():
         ndip = int(coalesce("ndip", "n_dip", "n_dip_cells", default=1))
 
         # Try all the usual suspects for fault length/width (km)
-        L = coalesce("flen", "flen_km", "fault_length", "length", "length_km", "len_km")
-        W = coalesce("fwid", "fwid_km", "fault_width", "width", "width_km", "wid_km")
+        L = coalesce("len", "flen", "flen_km", "fault_length", "length", "length_km", "len_km")
+        W = coalesce("wid", "fwid", "fwid_km", "fault_width", "width", "width_km", "wid_km")
 
         # If not present, derive from spacings (km) × counts
         # Typical names for along-strike and along-dip cell size:
@@ -70,7 +70,7 @@ def main():
             )
 
         planes.append({
-            "centre": [elon, elat],
+            "centre": [float(elon), float(elat)],
             "nstrike": nstk,
             "ndip": ndip,
             "length": float(L),
