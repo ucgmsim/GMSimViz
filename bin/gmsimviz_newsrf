@@ -80,6 +80,7 @@ class _JsonSrfAdapter(object):
         self._planes = data.get("planes", [])
         self._hypo   = data.get("hypo", None)
         self._bounds = data.get("bounds", None)
+        self._bounds_source = None
 
         if not self._planes:
             raise ValueError("JSON has no 'planes' entries")
@@ -203,8 +204,14 @@ class _JsonSrfAdapter(object):
         synth = self._synth_bounds_from_header(depth=depth)
         # If JSON provided bounds and they look consistent, use them instead.
         if self._bounds and self._bounds_are_consistent(self._bounds, self._planes[0]):
+            self._bounds_source = "json_bounds"
             return self._bounds
+        self._bounds_source = "synth_from_header"
         return synth
+
+    def bounds_source(self):
+        return self._bounds_source
+
 
 
 def load_xyts(meta, xyts_cpt_max):
@@ -1916,6 +1923,7 @@ def load_meta(args):
 
     else:
         bounds = _srf.get_bounds(args.srf_file, depth=True)
+
         ### NEW STUFF TO SHIFT SRF BOUNDS SO THAT WHEN TILTED, HYPOCENTRE IS IN CENTRE
         ### SHOULD BE TIDIED UP, USING ROUGH ESTIMATES
         ### ASSUMES ALL PLANES ARE ROUGHLY THE SAME DEPTH
@@ -1993,6 +2001,29 @@ def load_meta(args):
         if gmt_top:
             f.write(">\n" + gmt_top.rstrip() + "\n")
 
+    # Report whether JSON used provided bounds or synthetic from header
+    if hasattr(_srf, 'bounds_source'):
+        meta["bounds_source"] = _srf.bounds_source() or "unknown"
+    else:
+        meta["bounds_source"] = "srf_file"
+
+    # Debug-only: print expected physical dimensions of SRF
+    try:
+        lon0, lat0 = planes[0]["centre"]
+        deg_per_km_lat = 1.0 / 111.32
+        deg_per_km_lon = deg_per_km_lat / max(0.01, math.cos(math.radians(lat0)))
+        xs = [pt[0] for pt in bounds[0]]
+        ys = [pt[1] for pt in bounds[0]]
+        dx_km = (max(xs) - min(xs)) / deg_per_km_lon
+        dy_km = (max(ys) - min(ys)) / deg_per_km_lat
+        meta["bounds_dx_km"] = float(dx_km)
+        meta["bounds_dy_km"] = float(dy_km)
+
+        if args.devel:
+            print(f'"bounds_source": {meta["bounds_source"]}')
+            print(f'"bounds_size_km": {dx_km:.3f} x {dy_km:.3f}')
+    except Exception:
+        pass
 
     return meta, poi_srf
 
