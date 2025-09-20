@@ -194,21 +194,14 @@ class _JsonSrfAdapter(object):
         return ok1 or ok2
 
     def get_bounds(self, _sf=None, depth=True):
-        # _sf is ignored in JSON mode
-        if _sf not in (None,"",False):
-            print("Warning: get_bounds() called with non-empty _sf in JSON mode")
-        # Prefer synthesized bounds (always correct scale).
-        synth = self._synth_bounds_from_header(depth=depth)
-        # If JSON provided bounds and they look consistent, use them instead.
-        if self._bounds and self._bounds_are_consistent(self._bounds, self._planes[0]):
+        if self._bounds:
             self._bounds_source = "json_bounds"
             return self._bounds
         self._bounds_source = "synth_from_header"
-        return synth
+        return self._synth_bounds_from_header(depth=depth)
 
     def bounds_source(self):
         return self._bounds_source
-
 
 
 def load_xyts(meta, xyts_cpt_max):
