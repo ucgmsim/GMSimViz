@@ -140,40 +140,41 @@ class _JsonSrfAdapter(object):
             polys.append(poly)
         return polys
 
-    def _bounds_are_consistent(self, bounds, plane0, tol_frac=0.35):
+    def _bounds_are_consistent(self, bounds, plane0, tol_frac=0.25):
         """
-        Compare the long/short edge lengths of bounds vs header L/W.
-        Accept if both within ±tol_frac.
+        Check JSON bounds vs header using consecutive edge lengths.
+        Accept if within ±tol_frac of header length/width (order-agnostic).
         """
+
         if not isinstance(bounds, list) or not bounds or not isinstance(bounds[0], list):
             return False
-        # crude length estimate from two farthest corners (deg→km at centre lat)
-        from itertools import combinations
-        lon0, lat0 = plane0["centre"]
-        lon_k = self._deg_per_km_lon(lat0)
-        lat_k = self._deg_per_km_lat()
-
-        def deg2km(a, b):
-            dx = (a[0] - b[0]) * lon_k
-            dy = (a[1] - b[1]) * lat_k
-            return math.hypot(dx, dy)
-
-        # use the first polygon to estimate
         poly = bounds[0]
-        if not isinstance(poly, list) or len(poly) < 4:
+        if len(poly) < 4:
             return False
-        dists = [deg2km(a, b) for a,b in combinations(poly[:4], 2)]
-        long_km = max(dists)
-        # estimate short edge as area/long (rectangle assumption)
-        # or use the 2nd-largest distance heuristic
-        d_sorted = sorted(dists, reverse=True)
-        short_km = d_sorted[1] if len(d_sorted) > 1 else long_km
 
+        lon0, lat0 = plane0["centre"]
+        deg_per_km_lat = 1.0 / 111.32
+        deg_per_km_lon = deg_per_km_lat / max(0.01, math.cos(math.radians(lat0)))
+
+        def edge_km(a, b):
+            dx_km = (b[0] - a[0]) / deg_per_km_lon
+            dy_km = (b[1] - a[1]) / deg_per_km_lat
+            return math.hypot(dx_km, dy_km)
+
+        # four edges (wrap around)
+        e = [
+            edge_km(poly[0], poly[1]),
+            edge_km(poly[1], poly[2]),
+            edge_km(poly[2], poly[3]),
+            edge_km(poly[3], poly[0]),
+        ]
+        long_e, short_e = sorted(e, reverse=True)[:2]  # largest ~ L, second ~ W
         L = float(plane0["length"])
         W = float(plane0["width"])
-        # allow swapping (which edge is "long" depends on ordering)
-        ok1 = abs(long_km - L)/L <= tol_frac and abs(short_km - W)/W <= tol_frac
-        ok2 = abs(long_km - W)/W <= tol_frac and abs(short_km - L)/L <= tol_frac
+
+        # allow swapped mapping (which edge corresponds to L vs W)
+        ok1 = abs(long_e - L) / max(L, 1e-6) <= tol_frac and abs(short_e - W) / max(W, 1e-6) <= tol_frac
+        ok2 = abs(long_e - W) / max(W, 1e-6) <= tol_frac and abs(short_e - L) / max(L, 1e-6) <= tol_frac
         return ok1 or ok2
 
     def get_bounds(self, _sf=None, depth=True):
@@ -1995,18 +1996,36 @@ def load_meta(args):
     # Debug-only: print expected physical dimensions of SRF
     try:
         lon0, lat0 = planes[0]["centre"]
+        strike = float(planes[0]["strike"])
+        # unit vectors (east/north km)
         deg_per_km_lat = 1.0 / 111.32
         deg_per_km_lon = deg_per_km_lat / max(0.01, math.cos(math.radians(lat0)))
-        xs = [pt[0] for pt in bounds[0]]
-        ys = [pt[1] for pt in bounds[0]]
-        dx_km = (max(xs) - min(xs)) / deg_per_km_lon
-        dy_km = (max(ys) - min(ys)) / deg_per_km_lat
-        meta["bounds_dx_km"] = float(dx_km)
-        meta["bounds_dy_km"] = float(dy_km)
+        ex = 1.0 # km along-east is +1/deg_per_km_lon degrees in lon
+        ey = 1.0 # km along-north is +1/deg_per_km_lat degrees in lat
 
+        # strike measured clockwise from north  -> components in (E,N):
+        th = math.radians(strike)
+        ux_e = math.sin(th)  # east component
+        ux_n = math.cos(th)  # north component
+        uy_e = ux_n  # dip perp (approx; for outline sanity check only)
+        uy_n = -ux_e
+
+        # project 4 corners to strike/dip axes (convert deg→km first)
+        pts = bounds[0]
+        xs, ys = [], []
+        for (lon, lat, *_) in pts:
+            dx_km = (lon - lon0) / deg_per_km_lon
+            dy_km = (lat - lat0) / deg_per_km_lat
+            s = dx_km * ux_e + dy_km * ux_n
+            d = dx_km * uy_e + dy_km * uy_n
+            xs.append(s);
+            ys.append(d)
+
+        L_est = max(xs) - min(xs)
+        W_est = max(ys) - min(ys)
         if args.devel:
-            print(f'"bounds_source": {meta["bounds_source"]}')
-            print(f'"bounds_size_km": {dx_km:.3f} x {dy_km:.3f}')
+            print(f'"bounds_LxW_along_axes_km": {L_est:.3f} x {W_est:.3f}')
+
     except Exception:
         print("Failed to calculate SRF physical dimensions")
 
