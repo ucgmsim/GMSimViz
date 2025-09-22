@@ -1869,6 +1869,7 @@ def load_meta(args):
     except (ValueError, TypeError):
         ndip0 = None
 
+
     # always define gmt_bottom and gmt_top (never None)
     gmt_bottom = ""
     gmt_top = ""
@@ -1949,6 +1950,7 @@ def load_meta(args):
         "logo_right": args.logo_r,
         "region": region,
         "srf_json" : args.srf_json is not None,
+        "pointsource": True if ndip0 == 1 else False,
     }
 
     meta["plane_bounds_xy"] = os.path.join(srf_wd, "plane_bounds.xy")
