@@ -1638,7 +1638,7 @@ def validate_args(args):
         # title default from JSON name if not set
         if args.title is None:
             args.title = os.path.basename(args.srf_json)
-        args.srf_file = None  # not used in JSON mode
+        #args.srf_file = None  # not used in JSON mode
     else:
         # srf file must exist
         try:
