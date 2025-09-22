@@ -1973,7 +1973,7 @@ def load_meta(args):
 
     if args.devel:
         for i,plane in enumerate(planes):
-            print(f"Plane {i}: bounds_LxW_along_axes_km: {plane["length"]:.3f} x {planes["width"]:.3f}")
+            print(f"Plane {i}: bounds_LxW_along_axes_km: {plane['length']:.3f} x {plane['width']:.3f}")
 
     return meta, poi_srf
 
