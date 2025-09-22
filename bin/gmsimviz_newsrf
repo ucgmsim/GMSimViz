@@ -2689,8 +2689,12 @@ def master_process():
     work = {"msgs": [], "msgs_post_ts": [], "ops": [], "deps": 0}
 
     meta, poi_srf = load_meta(args)
-    frames_sr = load_sliprate(args.srf_file, args.framerate, meta)
-    load_slip_cpt(meta, args.srf_cpt_max)
+    if args.srf_json:
+        frames_sr = 0
+    else:
+        frames_sr = load_sliprate(args.srf_file, args.framerate, meta)
+        load_slip_cpt(meta, args.srf_cpt_max)
+
     movements = load_xyts_meta(args, meta, work, poi_srf, frames_sr)
     load_overlays(args, movements, meta["wd"], meta['crude'])
     if args.devel:
@@ -2702,12 +2706,20 @@ def master_process():
     if not args.animate:
         add_frames_single(work, meta, movements["poi_srf"])
     else:
-        add_frames_face_slip(work, meta, movements, int(args.time * args.framerate))
-        if not meta["pointsource"]:
-            add_frames_dip_slip(work, meta, movements, args.tilt_dip)
-            add_frames_slip_fade(work, meta, movements)
-        else:
+        # In JSON mode, there are no SRF rasters to show before XYTS;
+        # skip all SRF-visualisation phases (face/dip/fade). Go straight to GM.
+        if args.srf_json:
+            # Ensure timeline starts at the XYTS phase
             movements["frames2sim"] = movements["frames2now"]
+        else:
+            # Classic SRF path: show slip distribution first
+            add_frames_face_slip(work, meta, movements, int(args.time * args.framerate))
+            if not meta["pointsource"]:
+                add_frames_dip_slip(work, meta, movements, args.tilt_dip)
+                add_frames_slip_fade(work, meta, movements)
+            else:
+                movements["frames2sim"] = movements["frames2now"]
+
         if not args.no_gm:
             zoom_out_timing(movements)
             add_frames_slip_progress(work, meta, movements)
